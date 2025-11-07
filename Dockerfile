@@ -2,10 +2,9 @@
 # Use platform flag for cross-platform builds
 FROM --platform=linux/amd64 ghcr.io/developmentseed/titiler:latest
 
-# Install Azure authentication libraries
+# Install Azure authentication library (OAuth tokens only)
 RUN pip install --no-cache-dir \
-    azure-identity>=1.15.0 \
-    azure-storage-blob>=12.19.0
+    azure-identity>=1.15.0
 
 # Set working directory
 WORKDIR /app
@@ -16,7 +15,6 @@ COPY custom_main.py /app/custom_main.py
 # Production settings
 ENV LOCAL_MODE=false
 ENV USE_AZURE_AUTH=true
-ENV USE_SAS_TOKEN=true
 
 # Expose port
 EXPOSE 8000
