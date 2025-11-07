@@ -1,0 +1,27 @@
+# Local development Dockerfile for TiTiler with Azure support
+# Use platform flag to force AMD64 on Apple Silicon (via emulation)
+FROM --platform=linux/amd64 ghcr.io/developmentseed/titiler:latest
+
+# Install Azure authentication libraries
+RUN pip install --no-cache-dir \
+    azure-identity>=1.15.0 \
+    azure-storage-blob>=12.19.0
+
+# Copy custom main application
+COPY custom_main.py /app/custom_main.py
+
+# Set working directory
+WORKDIR /app
+
+# Set the module name for uvicorn to use
+ENV MODULE_NAME=custom_main
+
+# Default to local development mode
+ENV LOCAL_MODE=true
+ENV USE_AZURE_AUTH=false
+
+# Expose port
+EXPOSE 8000
+
+# The CMD will be overridden by docker-compose for local development with --reload
+CMD ["uvicorn", "custom_main:app", "--host", "0.0.0.0", "--port", "8000"]

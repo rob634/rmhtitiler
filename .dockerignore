@@ -1,0 +1,46 @@
+# Git
+.git
+.gitignore
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+venv/
+env/
+ENV/
+.venv
+*.egg-info/
+
+# IDEs
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Documentation (not needed in container)
+*.md
+!README.md
+
+# Local development files
+docker-compose.yml
+.env*
+.dockerignore
+
+# Test data (not needed in production container)
+data/
+*.tif
+*.tiff
+
+# Logs
+logs/
+*.log
+
+# Azure local credentials
+.azure/

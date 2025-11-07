@@ -1,0 +1,143 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>TiTiler COG Viewer</title>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+    <style>
+        body {
+            margin: 0;
+            padding: 0;
+            font-family: Arial, sans-serif;
+        }
+        #map {
+            position: absolute;
+            top: 0;
+            bottom: 0;
+            width: 100%;
+        }
+        .info {
+            padding: 10px;
+            background: white;
+            box-shadow: 0 0 15px rgba(0,0,0,0.2);
+            border-radius: 5px;
+            max-width: 400px;
+        }
+        .info h4 {
+            margin: 0 0 5px;
+            color: #777;
+        }
+        .url-input {
+            width: 100%;
+            padding: 8px;
+            margin: 10px 0;
+            box-sizing: border-box;
+            font-size: 12px;
+        }
+        button {
+            padding: 8px 15px;
+            background: #4CAF50;
+            color: white;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+        }
+        button:hover {
+            background: #45a049;
+        }
+    </style>
+</head>
+<body>
+    <div id="map"></div>
+
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+    <script>
+        // Initialize the map
+        const map = L.map('map').setView([39.5, -105.5], 8);
+
+        // Add OpenStreetMap base layer
+        L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+            attribution: '© OpenStreetMap contributors'
+        }).addTo(map);
+
+        // TiTiler endpoint
+        const titilerEndpoint = 'http://localhost:8000';
+
+        // Default COG URL - Your Azure Storage COG
+        let cogUrl = '/vsiaz/silver-cogs/copy47_of_dctest3_R1C2_cog_analysis.tif';
+
+        let cogLayer = null;
+
+        // Function to load COG
+        async function loadCOG(url) {
+            try {
+                // Remove existing layer
+                if (cogLayer) {
+                    map.removeLayer(cogLayer);
+                }
+
+                // Get COG info to determine bounds
+                const infoUrl = `${titilerEndpoint}/cog/info?url=${encodeURIComponent(url)}`;
+                const response = await fetch(infoUrl);
+                const info = await response.json();
+
+                console.log('COG Info:', info);
+
+                // Create tile layer
+                const tileUrl = `${titilerEndpoint}/cog/tiles/WebMercatorQuad/{z}/{x}/{y}.png?url=${encodeURIComponent(url)}`;
+
+                cogLayer = L.tileLayer(tileUrl, {
+                    attribution: 'TiTiler',
+                    maxZoom: 22
+                }).addTo(map);
+
+                // Fit map to COG bounds if available
+                if (info.bounds) {
+                    const bounds = L.latLngBounds(
+                        [info.bounds[1], info.bounds[0]],
+                        [info.bounds[3], info.bounds[2]]
+                    );
+                    map.fitBounds(bounds);
+                }
+
+                console.log('COG loaded successfully!');
+            } catch (error) {
+                console.error('Error loading COG:', error);
+                alert('Error loading COG: ' + error.message);
+            }
+        }
+
+        // Add info control
+        const info = L.control({position: 'topright'});
+
+        info.onAdd = function (map) {
+            this._div = L.DomUtil.create('div', 'info');
+            this._div.innerHTML = `
+                <h4>TiTiler COG Viewer</h4>
+                <p><strong>Local TiTiler:</strong> ${titilerEndpoint}</p>
+                <input type="text" class="url-input" id="cogUrlInput"
+                    placeholder="Enter COG URL..."
+                    value="${cogUrl}">
+                <button onclick="updateCOG()">Load COG</button>
+                <p style="font-size: 11px; color: #666; margin-top: 10px;">
+                    Viewing your Azure Storage COG with SAS token authentication
+                </p>
+            `;
+            return this._div;
+        };
+
+        info.addTo(map);
+
+        // Function to update COG from input
+        window.updateCOG = function() {
+            const input = document.getElementById('cogUrlInput');
+            cogUrl = input.value;
+            loadCOG(cogUrl);
+        };
+
+        // Load the default COG on startup
+        loadCOG(cogUrl);
+    </script>
+</body>
+</html>

@@ -1,0 +1,6 @@
+# Production dependencies for TiTiler with Azure Managed Identity
+# These are installed in addition to the base TiTiler image
+
+# Azure authentication - works with Managed Identity in production
+azure-identity>=1.15.0
+azure-storage-blob>=12.19.0

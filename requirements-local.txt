@@ -1,0 +1,14 @@
+# Local development dependencies for TiTiler with Azure support
+titiler.core>=0.15.0
+titiler.extensions>=0.15.0
+titiler.mosaic>=0.15.0
+
+# Azure authentication (works with both local Azure CLI and managed identity)
+azure-identity>=1.15.0
+azure-storage-blob>=12.19.0
+
+# FastAPI and server
+fastapi>=0.109.0
+uvicorn[standard]>=0.27.0
+
+# GDAL will be provided by the base TiTiler image
