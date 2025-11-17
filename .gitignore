@@ -1,0 +1,30 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+env/
+venv/
+*.egg-info/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Docker
+.dockerignore
+
+# Azure credentials (sensitive!)
+.azure/
+*.pem
+*.key
+
+# Environment
+.env
+.env.local
+
+# Logs
+*.log

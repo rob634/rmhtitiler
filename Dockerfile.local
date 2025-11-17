@@ -1,0 +1,27 @@
+# Local development Dockerfile for TiTiler-pgSTAC with Azure OAuth authentication
+FROM --platform=linux/amd64 ghcr.io/stac-utils/titiler-pgstac:latest
+
+# Install Azure authentication library and development tools
+RUN pip install --no-cache-dir \
+    azure-identity>=1.15.0 \
+    azure-cli
+
+# Copy Azure CLI credentials from host (for local development OAuth)
+# This avoids Docker volume mount read-only issues on macOS
+COPY --chown=root:root .azure /root/.azure
+
+# Set working directory
+WORKDIR /app
+
+# Copy custom application
+COPY custom_pgstac_main.py /app/custom_pgstac_main.py
+
+# Local development settings
+ENV LOCAL_MODE=true
+ENV USE_AZURE_AUTH=true
+
+# Expose port
+EXPOSE 8000
+
+# Development command (with reload)
+CMD ["uvicorn", "custom_pgstac_main:app", "--host", "0.0.0.0", "--port", "8000", "--reload"]

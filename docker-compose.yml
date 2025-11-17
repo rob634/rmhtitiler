@@ -1,0 +1,31 @@
+# Local development environment with Azure PostgreSQL
+version: '3.8'
+
+services:
+  # TiTiler-pgSTAC application (using Azure PostgreSQL)
+  titiler-pgstac:
+    build:
+      context: .
+      dockerfile: Dockerfile.local
+    environment:
+      LOCAL_MODE: "true"
+      USE_AZURE_AUTH: "true"  # Use OAuth (will fall back to storage key if RBAC not ready)
+      AZURE_STORAGE_ACCOUNT: "rmhazuregeo"
+      # Azure PostgreSQL with pgSTAC already installed
+      DATABASE_URL: "postgresql://rob634:B%40lamb634%40@rmhpgflex.postgres.database.azure.com:5432/geopgflex?sslmode=require"
+      CPL_VSIL_CURL_ALLOWED_EXTENSIONS: ".tif,.tiff"
+      GDAL_DISABLE_READDIR_ON_OPEN: "EMPTY_DIR"
+      GDAL_HTTP_MERGE_CONSECUTIVE_RANGES: "YES"
+      GDAL_HTTP_MULTIPLEX: "YES"
+      GDAL_HTTP_VERSION: "2"
+      VSI_CACHE: "TRUE"
+      VSI_CACHE_SIZE: "536870912"
+      # Pass Azure CLI credentials from host (for OAuth)
+      AZURE_CONFIG_DIR: "/root/.azure"
+    ports:
+      - "8000:8000"
+    volumes:
+      - ./custom_pgstac_main.py:/app/custom_pgstac_main.py
+      # Note: Azure CLI credentials are copied at build time (see Dockerfile.local)
+      # This avoids Docker volume mount read-only issues on macOS
+    command: ["uvicorn", "custom_pgstac_main:app", "--host", "0.0.0.0", "--port", "8000", "--reload"]
