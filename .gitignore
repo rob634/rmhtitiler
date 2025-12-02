@@ -22,9 +22,13 @@ venv/
 *.pem
 *.key
 
-# Environment
+# Environment (contains credentials)
 .env
 .env.local
+.env.test
+
+# Docker Compose with credentials (use docker-compose.yml.template)
+docker-compose.yml
 
 # Logs
 *.log

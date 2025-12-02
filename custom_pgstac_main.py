@@ -7,6 +7,7 @@ OAuth tokens grant access to ALL containers based on RBAC role assignments.
 Based on: rmhtitiler v2.0.0 (OAuth Bearer Token Authentication)
 """
 import os
+import asyncio
 import logging
 from datetime import datetime, timezone
 from threading import Lock
@@ -189,6 +190,47 @@ def get_azure_storage_oauth_token() -> Optional[str]:
             logger.error("Full traceback:", exc_info=True)
             logger.error("=" * 80)
             raise
+
+
+async def token_refresh_background_task():
+    """
+    Background task that proactively refreshes OAuth token every 45 minutes.
+    Ensures GDAL always has a fresh token, preventing timeout issues.
+    """
+    REFRESH_INTERVAL = 45 * 60  # 45 minutes in seconds
+
+    while True:
+        await asyncio.sleep(REFRESH_INTERVAL)
+
+        if USE_AZURE_AUTH and AZURE_STORAGE_ACCOUNT:
+            try:
+                logger.info("=" * 60)
+                logger.info("🔄 Background token refresh triggered")
+                logger.info("=" * 60)
+
+                # Force cache invalidation to get fresh token
+                with oauth_token_cache["lock"]:
+                    oauth_token_cache["expires_at"] = None
+
+                # Get fresh token
+                token = get_azure_storage_oauth_token()
+
+                if token:
+                    # Update environment and GDAL config
+                    os.environ["AZURE_STORAGE_ACCOUNT"] = AZURE_STORAGE_ACCOUNT
+                    os.environ["AZURE_STORAGE_ACCESS_TOKEN"] = token
+
+                    from rasterio import _env
+                    _env.set_gdal_config("AZURE_STORAGE_ACCOUNT", AZURE_STORAGE_ACCOUNT)
+                    _env.set_gdal_config("AZURE_STORAGE_ACCESS_TOKEN", token)
+
+                    logger.info("✅ Background token refresh complete")
+                    logger.info(f"   Next refresh in {REFRESH_INTERVAL // 60} minutes")
+                else:
+                    logger.warning("⚠ Background refresh: No token returned")
+
+            except Exception as e:
+                logger.error(f"❌ Background token refresh failed: {e}")
 
 
 def get_postgres_password_from_keyvault() -> str:
@@ -647,6 +689,14 @@ async def startup_event():
                     logger.info("TIP: Run 'az login' to authenticate locally")
     else:
         logger.info("Azure Storage authentication is disabled")
+
+    # ============================================
+    # STEP 4: START BACKGROUND TOKEN REFRESH
+    # ============================================
+
+    if USE_AZURE_AUTH:
+        asyncio.create_task(token_refresh_background_task())
+        logger.info("🔄 Background token refresh task started (45-minute interval)")
 
     logger.info("=" * 60)
     logger.info("✅ TiTiler-pgSTAC startup complete")

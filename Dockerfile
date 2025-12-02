@@ -1,5 +1,5 @@
 # Production Dockerfile for TiTiler-pgSTAC with Azure Managed Identity OAuth
-FROM --platform=linux/amd64 ghcr.io/stac-utils/titiler-pgstac:latest
+FROM ghcr.io/stac-utils/titiler-pgstac:latest
 
 # Install Azure authentication library (for Managed Identity OAuth)
 RUN pip install --no-cache-dir azure-identity>=1.15.0
@@ -15,15 +15,9 @@ ENV LOCAL_MODE=false
 ENV USE_AZURE_AUTH=true
 
 # Environment variables set via Azure App Service Configuration:
-# - DATABASE_URL: PostgreSQL connection string
-# - AZURE_STORAGE_ACCOUNT: Storage account name (rmhazuregeo)
-# - CPL_VSIL_CURL_ALLOWED_EXTENSIONS=.tif,.tiff
-# - GDAL_DISABLE_READDIR_ON_OPEN=EMPTY_DIR
-# - GDAL_HTTP_MERGE_CONSECUTIVE_RANGES=YES
-# - GDAL_HTTP_MULTIPLEX=YES
-# - GDAL_HTTP_VERSION=2
-# - VSI_CACHE=TRUE
-# - VSI_CACHE_SIZE=536870912
+# See .env.template for full list of required variables
+# Key variables: POSTGRES_*, AZURE_STORAGE_ACCOUNT, USE_AZURE_AUTH, LOCAL_MODE
+# GDAL optimization: CPL_VSIL_*, GDAL_*, VSI_*
 
 # Expose port
 EXPOSE 8000
