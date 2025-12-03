@@ -13,7 +13,7 @@ from datetime import datetime, timezone
 from threading import Lock
 from typing import Optional
 
-from fastapi import FastAPI, Request
+from fastapi import FastAPI, Request, Response
 from fastapi.middleware.cors import CORSMiddleware
 from starlette.middleware.base import BaseHTTPMiddleware
 
@@ -501,41 +501,109 @@ add_search_register_route(
 )
 
 
-@app.get("/healthz", tags=["Health"])
-async def health():
-    """Health check endpoint with OAuth token and database status."""
-    status = {
-        "status": "healthy",
-        "azure_auth_enabled": USE_AZURE_AUTH,
-        "local_mode": LOCAL_MODE,
-        "auth_type": "OAuth Bearer Token"
+@app.get("/livez", tags=["Health"])
+async def liveness():
+    """
+    Liveness probe - responds immediately to indicate container is running.
+    
+    This endpoint is for Azure App Service startup probes. It responds
+    before database connection is established, preventing the container
+    from being killed during slow database connections or MI token acquisition.
+    
+    Use /healthz for full readiness checks.
+    """
+    return {
+        "status": "alive",
+        "message": "Container is running"
     }
 
-    # OAuth status
-    if USE_AZURE_AUTH:
-        status["storage_account"] = AZURE_STORAGE_ACCOUNT
 
-        if oauth_token_cache["token"] and oauth_token_cache["expires_at"]:
+@app.get("/healthz", tags=["Health"])
+async def health(response: Response):
+    """
+    Readiness probe - full health check with diagnostic details.
+    
+    Returns HTTP 200 for healthy, HTTP 503 for degraded/unhealthy.
+    Response body always includes detailed status for debugging.
+    
+    Status levels:
+        - healthy: All systems operational (HTTP 200)
+        - degraded: App running but some features unavailable (HTTP 503)
+        - unhealthy: Critical failure (HTTP 503)
+    
+    Checks performed:
+        1. Database connection (required for pgSTAC searches)
+        2. Storage OAuth token (required for Azure blob access)
+    """
+    checks = {}
+    issues = []
+    
+    # Check 1: Database connection
+    db_connected = hasattr(app.state, "pool") and app.state.pool is not None
+    checks["database"] = {
+        "status": "ok" if db_connected else "fail",
+        "required_for": ["pgSTAC searches", "mosaic endpoints"]
+    }
+    if db_connected and DATABASE_URL:
+        checks["database"]["host"] = DATABASE_URL.split("@")[1].split("/")[0] if "@" in DATABASE_URL else "unknown"
+    if not db_connected:
+        issues.append("Database not connected - pgSTAC search endpoints will fail")
+    
+    # Check 2: Storage OAuth token
+    if USE_AZURE_AUTH:
+        token_valid = oauth_token_cache["token"] and oauth_token_cache["expires_at"]
+        if token_valid:
             now = datetime.now(timezone.utc)
             time_until_expiry = (oauth_token_cache["expires_at"] - now).total_seconds()
-            status["token_expires_in_seconds"] = max(0, int(time_until_expiry))
-            status["token_scope"] = "ALL containers (RBAC-based)"
-            status["token_status"] = "active"
+            checks["storage_oauth"] = {
+                "status": "ok" if time_until_expiry > 300 else "warning",
+                "expires_in_seconds": max(0, int(time_until_expiry)),
+                "storage_account": AZURE_STORAGE_ACCOUNT,
+                "required_for": ["Azure blob storage access"]
+            }
+            if time_until_expiry <= 300:
+                issues.append(f"OAuth token expires soon ({int(time_until_expiry)}s) - may cause access issues")
         else:
-            status["token_status"] = "not_initialized"
-
-    # Database status
-    try:
-        # Check database connection
-        if hasattr(app.state, "pool") and app.state.pool:
-            status["database_status"] = "connected"
-            status["database_url"] = DATABASE_URL.split("@")[1].split("/")[0] if DATABASE_URL else None
-        else:
-            status["database_status"] = "not_connected"
-    except Exception as e:
-        status["database_status"] = f"error: {str(e)}"
-
-    return status
+            checks["storage_oauth"] = {
+                "status": "fail",
+                "storage_account": AZURE_STORAGE_ACCOUNT,
+                "required_for": ["Azure blob storage access"]
+            }
+            issues.append("Storage OAuth token not initialized - cannot access Azure blobs")
+    else:
+        checks["storage_oauth"] = {
+            "status": "disabled",
+            "note": "Azure auth disabled - using anonymous/SAS access"
+        }
+    
+    # Determine overall status
+    has_critical_failure = not db_connected or (USE_AZURE_AUTH and not oauth_token_cache["token"])
+    
+    if not issues:
+        overall_status = "healthy"
+        response.status_code = 200
+    elif has_critical_failure:
+        overall_status = "degraded"
+        response.status_code = 503  # Service Unavailable - don't send traffic
+    else:
+        overall_status = "healthy"  # Warnings but functional
+        response.status_code = 200
+    
+    return {
+        "status": overall_status,
+        "checks": checks,
+        "issues": issues if issues else None,
+        "config": {
+            "postgres_auth_mode": POSTGRES_AUTH_MODE,
+            "azure_auth_enabled": USE_AZURE_AUTH,
+            "local_mode": LOCAL_MODE
+        },
+        "available_features": {
+            "cog_tiles": USE_AZURE_AUTH and bool(oauth_token_cache["token"]),
+            "pgstac_searches": db_connected,
+            "mosaic_json": db_connected
+        }
+    }
 
 
 @app.get("/", tags=["Info"])
@@ -547,7 +615,8 @@ async def root():
         "version": "1.0.0",
         "auth_type": "OAuth Bearer Token (Managed Identity)",
         "endpoints": {
-            "health": "/healthz",
+            "liveness": "/livez",
+            "readiness": "/healthz",
             "docs": "/docs",
             "redoc": "/redoc",
             "search_list": "/searches",
@@ -580,15 +649,23 @@ async def startup_event():
     # STEP 1: BUILD DATABASE_URL BASED ON AUTH MODE
     # ============================================
 
-    # Validate common required variables
+    # Validate common required variables - warn but don't crash
     if not all([POSTGRES_HOST, POSTGRES_DB, POSTGRES_USER]):
-        logger.error("Missing PostgreSQL environment variables!")
-        logger.error(f"  POSTGRES_HOST: {POSTGRES_HOST}")
-        logger.error(f"  POSTGRES_DB: {POSTGRES_DB}")
-        logger.error(f"  POSTGRES_USER: {POSTGRES_USER}")
-        raise ValueError("POSTGRES_HOST, POSTGRES_DB, POSTGRES_USER are required")
+        logger.warning("=" * 60)
+        logger.warning("⚠️  Missing PostgreSQL environment variables!")
+        logger.warning(f"  POSTGRES_HOST: {POSTGRES_HOST or '(not set)'}")
+        logger.warning(f"  POSTGRES_DB: {POSTGRES_DB or '(not set)'}")
+        logger.warning(f"  POSTGRES_USER: {POSTGRES_USER or '(not set)'}")
+        logger.warning("")
+        logger.warning("The app will start but database features will not work.")
+        logger.warning("Set these environment variables and restart the app.")
+        logger.warning("=" * 60)
+        # Don't raise - let the app start for health checks
+        logger.info("✅ TiTiler-pgSTAC startup complete (degraded mode - no database)")
+        return
 
     postgres_password = None
+    db_auth_failed = False
 
     if POSTGRES_AUTH_MODE == "managed_identity":
         logger.info("🔐 PostgreSQL Authentication Mode: Managed Identity")
@@ -596,46 +673,60 @@ async def startup_event():
             postgres_password = get_postgres_oauth_token()
         except Exception as e:
             logger.error(f"✗ Failed to acquire PostgreSQL OAuth token: {e}")
-            raise
+            logger.warning("⚠️  MI authentication failed - app will start in degraded mode")
+            db_auth_failed = True
 
     elif POSTGRES_AUTH_MODE == "key_vault":
         logger.info("🔐 PostgreSQL Authentication Mode: Key Vault")
         if not KEY_VAULT_NAME:
             logger.error("KEY_VAULT_NAME environment variable not set!")
-            raise ValueError("KEY_VAULT_NAME is required for key_vault auth mode")
-        try:
-            postgres_password = get_postgres_password_from_keyvault()
-        except Exception as e:
-            logger.error(f"✗ Failed to retrieve password from Key Vault: {e}")
-            raise
+            logger.warning("⚠️  App will start in degraded mode")
+            db_auth_failed = True
+        else:
+            try:
+                postgres_password = get_postgres_password_from_keyvault()
+            except Exception as e:
+                logger.error(f"✗ Failed to retrieve password from Key Vault: {e}")
+                logger.warning("⚠️  Key Vault authentication failed - app will start in degraded mode")
+                db_auth_failed = True
 
     elif POSTGRES_AUTH_MODE == "password":
         logger.info("🔐 PostgreSQL Authentication Mode: Environment Variable Password")
         if not POSTGRES_PASSWORD:
             logger.error("POSTGRES_PASSWORD environment variable not set!")
-            raise ValueError("POSTGRES_PASSWORD is required for password auth mode")
-        postgres_password = POSTGRES_PASSWORD
-        logger.info(f"✓ Using password from environment variable")
-        logger.info(f"  Password length: {len(postgres_password)} characters")
+            logger.warning("⚠️  App will start in degraded mode")
+            db_auth_failed = True
+        else:
+            postgres_password = POSTGRES_PASSWORD
+            logger.info(f"✓ Using password from environment variable")
+            logger.info(f"  Password length: {len(postgres_password)} characters")
 
     else:
         logger.error(f"Invalid POSTGRES_AUTH_MODE: {POSTGRES_AUTH_MODE}")
         logger.error("Valid modes: managed_identity, key_vault, password")
-        raise ValueError(f"Invalid POSTGRES_AUTH_MODE: {POSTGRES_AUTH_MODE}")
+        logger.warning("⚠️  App will start in degraded mode")
+        db_auth_failed = True
 
-    # Build DATABASE_URL
-    DATABASE_URL = (
-        f"postgresql://{POSTGRES_USER}:{postgres_password}"
-        f"@{POSTGRES_HOST}:{POSTGRES_PORT}/{POSTGRES_DB}?sslmode=require"
-    )
+    # Build DATABASE_URL only if authentication succeeded
+    if db_auth_failed or not postgres_password:
+        logger.warning("=" * 60)
+        logger.warning("⚠️  Database authentication failed")
+        logger.warning("App will start but database features will not work.")
+        logger.warning("=" * 60)
+        DATABASE_URL = None
+    else:
+        DATABASE_URL = (
+            f"postgresql://{POSTGRES_USER}:{postgres_password}"
+            f"@{POSTGRES_HOST}:{POSTGRES_PORT}/{POSTGRES_DB}?sslmode=require"
+        )
 
-    logger.info(f"✓ Built DATABASE_URL with {POSTGRES_AUTH_MODE} authentication")
-    logger.info(f"  Host: {POSTGRES_HOST}")
-    logger.info(f"  Database: {POSTGRES_DB}")
-    logger.info(f"  User: {POSTGRES_USER}")
+        logger.info(f"✓ Built DATABASE_URL with {POSTGRES_AUTH_MODE} authentication")
+        logger.info(f"  Host: {POSTGRES_HOST}")
+        logger.info(f"  Database: {POSTGRES_DB}")
+        logger.info(f"  User: {POSTGRES_USER}")
 
     # ============================================
-    # STEP 2: CONNECT TO DATABASE
+    # STEP 2: CONNECT TO DATABASE (non-fatal if fails)
     # ============================================
 
     if DATABASE_URL:
@@ -653,10 +744,11 @@ async def startup_event():
             logger.error("  - Verify user exists in database")
             logger.error("  - Verify MI token is valid (if using MI)")
             logger.error("  - Check firewall rules allow App Service")
-            raise
+            logger.error("")
+            logger.warning("⚠️  App will start in degraded mode - database features unavailable")
+            # Don't raise - let the app start for health checks
     else:
-        logger.error("DATABASE_URL not configured!")
-        raise ValueError("DATABASE_URL is required")
+        logger.warning("DATABASE_URL not configured - running in degraded mode")
 
     # ============================================
     # STEP 3: INITIALIZE STORAGE OAUTH

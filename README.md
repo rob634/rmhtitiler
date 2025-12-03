@@ -6,9 +6,9 @@ A production-ready TiTiler-pgSTAC deployment with Azure Managed Identity OAuth a
 
 ### Production Deployment
 
-**Live Instance**: [https://rmhtitiler-ghcyd7g0bxdvc2hc.eastus-01.azurewebsites.net](https://rmhtitiler-ghcyd7g0bxdvc2hc.eastus-01.azurewebsites.net)
+**Live Instance**: Configure your deployed App Service URL
 
-**API Documentation**: [https://rmhtitiler-ghcyd7g0bxdvc2hc.eastus-01.azurewebsites.net/docs](https://rmhtitiler-ghcyd7g0bxdvc2hc.eastus-01.azurewebsites.net/docs)
+**API Documentation**: `https://<your-app-name>.<ase-domain>/docs`
 
 ### Local Development
 
@@ -38,33 +38,35 @@ curl http://localhost:8000/healthz
 
 **Get COG Info:**
 ```bash
-curl "https://rmhtitiler-ghcyd7g0bxdvc2hc.eastus-01.azurewebsites.net/cog/info?url=/vsiaz/silver-cogs/namangan14aug2019_R2C2cog_cog_analysis.tif"
+curl "https://<your-app-url>/cog/info?url=/vsiaz/<container>/<path-to-cog>.tif"
 ```
 
 **Get Tile:**
 ```bash
-curl "https://rmhtitiler-ghcyd7g0bxdvc2hc.eastus-01.azurewebsites.net/cog/tiles/WebMercatorQuad/14/11454/6143.png?url=/vsiaz/silver-cogs/namangan14aug2019_R2C2cog_cog_analysis.tif" -o tile.png
+curl "https://<your-app-url>/cog/tiles/WebMercatorQuad/14/11454/6143.png?url=/vsiaz/<container>/<path-to-cog>.tif" -o tile.png
 ```
 
 **Interactive Viewer:**
-[https://rmhtitiler-ghcyd7g0bxdvc2hc.eastus-01.azurewebsites.net/cog/WebMercatorQuad/map.html?url=/vsiaz/silver-cogs/namangan14aug2019_R2C2cog_cog_analysis.tif](https://rmhtitiler-ghcyd7g0bxdvc2hc.eastus-01.azurewebsites.net/cog/WebMercatorQuad/map.html?url=/vsiaz/silver-cogs/namangan14aug2019_R2C2cog_cog_analysis.tif)
+```
+https://<your-app-url>/cog/WebMercatorQuad/map.html?url=/vsiaz/<container>/<path-to-cog>.tif
+```
 
 ### 2. pgSTAC Search
 
 **Register Search:**
 ```bash
-curl -X POST "https://rmhtitiler-ghcyd7g0bxdvc2hc.eastus-01.azurewebsites.net/searches/register" \
+curl -X POST "https://<your-app-url>/searches/register" \
   -H "Content-Type: application/json" \
-  -d '{"collections":["system-rasters"],"limit":10}'
+  -d '{"collections":["<collection-name>"],"limit":10}'
 ```
 
 **Response:**
 ```json
 {
-  "id": "31046149e1e628bfb40f400d77183742",
+  "id": "<search-hash-id>",
   "links": [
     {
-      "href": "https://rmhtitiler-ghcyd7g0bxdvc2hc.eastus-01.azurewebsites.net/searches/31046149e1e628bfb40f400d77183742/WebMercatorQuad/tilejson.json",
+      "href": "https://<your-app-url>/searches/<search-hash-id>/WebMercatorQuad/tilejson.json",
       "rel": "tilejson"
     }
   ]
@@ -73,26 +75,26 @@ curl -X POST "https://rmhtitiler-ghcyd7g0bxdvc2hc.eastus-01.azurewebsites.net/se
 
 **Get Tile from Search:**
 ```bash
-curl "https://rmhtitiler-ghcyd7g0bxdvc2hc.eastus-01.azurewebsites.net/searches/31046149e1e628bfb40f400d77183742/tiles/WebMercatorQuad/14/11454/6143.png?assets=data" -o search_tile.png
+curl "https://<your-app-url>/searches/<search-hash-id>/tiles/WebMercatorQuad/14/11454/6143.png?assets=data" -o search_tile.png
 ```
 
 **Search Viewer:**
 ```
-https://rmhtitiler-ghcyd7g0bxdvc2hc.eastus-01.azurewebsites.net/searches/{search_id}/WebMercatorQuad/map.html?assets=data
+https://<your-app-url>/searches/{search_id}/WebMercatorQuad/map.html?assets=data
 ```
 
 ### 3. MosaicJSON
 
 **Create Mosaic:**
 ```bash
-curl -X POST "https://rmhtitiler-ghcyd7g0bxdvc2hc.eastus-01.azurewebsites.net/mosaicjson/" \
+curl -X POST "https://<your-app-url>/mosaicjson/" \
   -H "Content-Type: application/json" \
   -d @mosaic.json
 ```
 
 **Mosaic Tiles:**
 ```
-https://rmhtitiler-ghcyd7g0bxdvc2hc.eastus-01.azurewebsites.net/mosaicjson/tiles/WebMercatorQuad/{z}/{x}/{y}.png
+https://<your-app-url>/mosaicjson/tiles/WebMercatorQuad/{z}/{x}/{y}.png
 ```
 
 ## 🏗️ Architecture
@@ -209,13 +211,45 @@ az webapp restart --name $APP_NAME --resource-group $RESOURCE_GROUP
 
 ## 📊 Monitoring
 
-### Health Check
+### Health Endpoints
+
+The application provides two health endpoints for Kubernetes/Azure health probes:
+
+| Endpoint | Purpose | When to Use |
+|----------|---------|-------------|
+| `/livez` | Liveness probe | Azure startup probe - responds immediately |
+| `/healthz` | Readiness probe | Full health check including database status |
+
+#### Liveness Probe (`/livez`)
 
 ```bash
-curl https://rmhtitiler-ghcyd7g0bxdvc2hc.eastus-01.azurewebsites.net/healthz
+curl https://<your-app-url>/livez
 ```
 
 **Response:**
+```json
+{
+  "status": "alive",
+  "message": "Container is running"
+}
+```
+
+This endpoint responds immediately after container startup, before database connections are established. Configure Azure App Service to use this for the **startup probe** to prevent container restarts during slow MI token acquisition.
+
+**Azure App Service Configuration:**
+```bash
+az webapp config set --name <app-name> --resource-group <rg> \
+  --startup-file "" \
+  --generic-configurations '{"healthCheckPath": "/livez"}'
+```
+
+#### Readiness Probe (`/healthz`)
+
+```bash
+curl https://<your-app-url>/healthz
+```
+
+**Response (healthy):**
 ```json
 {
   "status": "healthy",
@@ -227,6 +261,15 @@ curl https://rmhtitiler-ghcyd7g0bxdvc2hc.eastus-01.azurewebsites.net/healthz
   "token_scope": "ALL containers (RBAC-based)",
   "token_status": "active",
   "database_status": "connected"
+}
+```
+
+**Response (degraded - database not connected):**
+```json
+{
+  "status": "degraded",
+  "azure_auth_enabled": true,
+  "database_status": "not_connected"
 }
 ```
 
