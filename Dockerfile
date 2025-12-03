@@ -22,5 +22,5 @@ ENV USE_AZURE_AUTH=true
 # Expose port
 EXPOSE 8000
 
-# Production command with multiple workers for concurrency
-CMD ["uvicorn", "custom_pgstac_main:app", "--host", "0.0.0.0", "--port", "8000", "--workers", "4"]
+# Production command - single worker to ensure OAuth token consistency across requests
+CMD ["uvicorn", "custom_pgstac_main:app", "--host", "0.0.0.0", "--port", "8000", "--workers", "1"]
