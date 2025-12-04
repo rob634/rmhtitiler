@@ -43,6 +43,13 @@ oauth_token_cache = {
     "lock": Lock()
 }
 
+# PostgreSQL OAuth token cache (for managed_identity mode)
+postgres_token_cache = {
+    "token": None,
+    "expires_at": None,
+    "lock": Lock()
+}
+
 # Configuration - Storage Authentication
 USE_AZURE_AUTH = os.getenv("USE_AZURE_AUTH", "false").lower() == "true"
 AZURE_STORAGE_ACCOUNT = os.getenv("AZURE_STORAGE_ACCOUNT")
