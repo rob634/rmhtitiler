@@ -72,6 +72,7 @@ POSTGRES_PORT = os.getenv("POSTGRES_PORT", "5432")
 POSTGRES_PASSWORD = os.getenv("POSTGRES_PASSWORD")  # For "password" mode
 KEY_VAULT_NAME = os.getenv("KEY_VAULT_NAME")  # For "key_vault" mode
 KEY_VAULT_SECRET_NAME = os.getenv("KEY_VAULT_SECRET_NAME", "postgres-password")  # For "key_vault" mode
+POSTGRES_MI_CLIENT_ID = os.getenv("POSTGRES_MI_CLIENT_ID")  # For "managed_identity" mode - user-assigned MI client ID
 
 # DATABASE_URL will be built at startup based on auth mode
 DATABASE_URL = None
@@ -377,29 +378,51 @@ def get_postgres_oauth_token() -> str:
         logger.info("=" * 80)
 
         try:
-            from azure.identity import DefaultAzureCredential
+            from azure.identity import DefaultAzureCredential, ManagedIdentityCredential
 
             # Step 1: Create credential
-            logger.debug("Step 1/2: Creating DefaultAzureCredential...")
-            try:
-                credential = DefaultAzureCredential()
-                logger.info("✓ DefaultAzureCredential created successfully")
-            except Exception as cred_error:
-                logger.error("=" * 80)
-                logger.error("❌ FAILED TO CREATE AZURE CREDENTIAL")
-                logger.error("=" * 80)
-                logger.error(f"Error Type: {type(cred_error).__name__}")
-                logger.error(f"Error Message: {str(cred_error)}")
-                logger.error("")
-                logger.error("Troubleshooting:")
-                if LOCAL_MODE:
-                    logger.error("  - Run: az login")
-                    logger.error("  - Verify: az account show")
-                else:
-                    logger.error("  - Verify Managed Identity: az webapp identity show --name <app> --resource-group <rg>")
-                    logger.error("  - Wait 2-3 minutes after enabling identity")
-                logger.error("=" * 80)
-                raise
+            # Use user-assigned managed identity if POSTGRES_MI_CLIENT_ID is set
+            # Otherwise fall back to DefaultAzureCredential (for local dev with az login)
+            if POSTGRES_MI_CLIENT_ID and not LOCAL_MODE:
+                logger.debug(f"Step 1/2: Creating ManagedIdentityCredential with client_id={POSTGRES_MI_CLIENT_ID}...")
+                try:
+                    credential = ManagedIdentityCredential(client_id=POSTGRES_MI_CLIENT_ID)
+                    logger.info(f"✓ ManagedIdentityCredential created for user-assigned MI: {POSTGRES_MI_CLIENT_ID}")
+                except Exception as cred_error:
+                    logger.error("=" * 80)
+                    logger.error("❌ FAILED TO CREATE MANAGED IDENTITY CREDENTIAL")
+                    logger.error("=" * 80)
+                    logger.error(f"Error Type: {type(cred_error).__name__}")
+                    logger.error(f"Error Message: {str(cred_error)}")
+                    logger.error(f"Client ID: {POSTGRES_MI_CLIENT_ID}")
+                    logger.error("")
+                    logger.error("Troubleshooting:")
+                    logger.error("  - Verify user-assigned MI is assigned to App Service")
+                    logger.error("  - Verify client ID is correct")
+                    logger.error("  - az webapp identity show --name <app> --resource-group <rg>")
+                    logger.error("=" * 80)
+                    raise
+            else:
+                logger.debug("Step 1/2: Creating DefaultAzureCredential (local dev mode)...")
+                try:
+                    credential = DefaultAzureCredential()
+                    logger.info("✓ DefaultAzureCredential created successfully")
+                except Exception as cred_error:
+                    logger.error("=" * 80)
+                    logger.error("❌ FAILED TO CREATE AZURE CREDENTIAL")
+                    logger.error("=" * 80)
+                    logger.error(f"Error Type: {type(cred_error).__name__}")
+                    logger.error(f"Error Message: {str(cred_error)}")
+                    logger.error("")
+                    logger.error("Troubleshooting:")
+                    if LOCAL_MODE:
+                        logger.error("  - Run: az login")
+                        logger.error("  - Verify: az account show")
+                    else:
+                        logger.error("  - Set POSTGRES_MI_CLIENT_ID for user-assigned MI")
+                        logger.error("  - Or verify system-assigned MI is enabled")
+                    logger.error("=" * 80)
+                    raise
 
             # Step 2: Get token for PostgreSQL scope (DIFFERENT from storage!)
             logger.debug("Step 2/2: Requesting token for scope 'https://ossrdbms-aad.database.windows.net/.default'...")
