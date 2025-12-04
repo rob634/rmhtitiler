@@ -194,19 +194,24 @@ def get_azure_storage_oauth_token() -> Optional[str]:
 
 async def token_refresh_background_task():
     """
-    Background task that proactively refreshes OAuth token every 45 minutes.
-    Ensures GDAL always has a fresh token, preventing timeout issues.
+    Background task that proactively refreshes OAuth tokens every 45 minutes.
+    Refreshes both Storage and PostgreSQL tokens to prevent expiration.
     """
     REFRESH_INTERVAL = 45 * 60  # 45 minutes in seconds
 
     while True:
         await asyncio.sleep(REFRESH_INTERVAL)
 
+        logger.info("=" * 60)
+        logger.info("🔄 Background token refresh triggered")
+        logger.info("=" * 60)
+
+        # ============================================
+        # REFRESH STORAGE TOKEN
+        # ============================================
         if USE_AZURE_AUTH and AZURE_STORAGE_ACCOUNT:
             try:
-                logger.info("=" * 60)
-                logger.info("🔄 Background token refresh triggered")
-                logger.info("=" * 60)
+                logger.info("🔄 Refreshing Storage OAuth token...")
 
                 # Force cache invalidation to get fresh token
                 with oauth_token_cache["lock"]:
@@ -224,13 +229,56 @@ async def token_refresh_background_task():
                     _env.set_gdal_config("AZURE_STORAGE_ACCOUNT", AZURE_STORAGE_ACCOUNT)
                     _env.set_gdal_config("AZURE_STORAGE_ACCESS_TOKEN", token)
 
-                    logger.info("✅ Background token refresh complete")
-                    logger.info(f"   Next refresh in {REFRESH_INTERVAL // 60} minutes")
+                    logger.info("✅ Storage token refresh complete")
                 else:
-                    logger.warning("⚠ Background refresh: No token returned")
+                    logger.warning("⚠ Storage token refresh: No token returned")
 
             except Exception as e:
-                logger.error(f"❌ Background token refresh failed: {e}")
+                logger.error(f"❌ Storage token refresh failed: {e}")
+
+        # ============================================
+        # REFRESH POSTGRESQL TOKEN (if using managed_identity)
+        # ============================================
+        if POSTGRES_AUTH_MODE == "managed_identity":
+            try:
+                logger.info("🔄 Refreshing PostgreSQL OAuth token...")
+
+                # Force cache invalidation to get fresh token
+                with postgres_token_cache["lock"]:
+                    postgres_token_cache["expires_at"] = None
+
+                # Get fresh token
+                new_pg_token = get_postgres_oauth_token()
+
+                if new_pg_token:
+                    # Rebuild DATABASE_URL with new token
+                    new_database_url = (
+                        f"postgresql://{POSTGRES_USER}:{new_pg_token}"
+                        f"@{POSTGRES_HOST}:{POSTGRES_PORT}/{POSTGRES_DB}?sslmode=require"
+                    )
+
+                    # Recreate the database connection pool with new token
+                    try:
+                        # Close existing pool
+                        await close_db_connection(app)
+                        logger.info("  Closed existing database connection pool")
+
+                        # Create new pool with fresh token
+                        db_settings = PostgresSettings(database_url=new_database_url)
+                        await connect_to_db(app, settings=db_settings)
+                        logger.info("✅ PostgreSQL token refresh complete - new connection pool created")
+
+                    except Exception as pool_err:
+                        logger.error(f"❌ Failed to recreate connection pool: {pool_err}")
+                        raise
+                else:
+                    logger.warning("⚠ PostgreSQL token refresh: No token returned")
+
+            except Exception as e:
+                logger.error(f"❌ PostgreSQL token refresh failed: {e}")
+
+        logger.info(f"   Next refresh in {REFRESH_INTERVAL // 60} minutes")
+        logger.info("=" * 60)
 
 
 def get_postgres_password_from_keyvault() -> str:
@@ -289,8 +337,8 @@ def get_postgres_oauth_token() -> str:
     """
     Get OAuth token for Azure PostgreSQL using Managed Identity.
 
-    This is called ONCE at startup to build the DATABASE_URL connection string.
-    Token is valid for ~1 hour. App restarts naturally refresh the token.
+    Uses caching with automatic refresh when token is within 5 minutes of expiry.
+    Token is valid for ~1 hour and is automatically refreshed.
 
     Returns:
         str: OAuth bearer token for Azure Database for PostgreSQL
@@ -298,93 +346,111 @@ def get_postgres_oauth_token() -> str:
     Raises:
         RuntimeError: If token acquisition fails
     """
-    logger.info("=" * 80)
-    logger.info("🔑 Acquiring OAuth token for PostgreSQL")
-    logger.info("=" * 80)
-    logger.info(f"Mode: {'DEVELOPMENT (Azure CLI)' if LOCAL_MODE else 'PRODUCTION (Managed Identity)'}")
-    logger.info(f"PostgreSQL Host: {POSTGRES_HOST}")
-    logger.info(f"PostgreSQL User: {POSTGRES_USER}")
-    logger.info(f"Token Scope: https://ossrdbms-aad.database.windows.net/.default")
-    logger.info("=" * 80)
+    with postgres_token_cache["lock"]:
+        now = datetime.now(timezone.utc)
 
-    try:
-        from azure.identity import DefaultAzureCredential
+        # Check cached token (refresh 5 minutes before expiry)
+        if postgres_token_cache["token"] and postgres_token_cache["expires_at"]:
+            time_until_expiry = (postgres_token_cache["expires_at"] - now).total_seconds()
 
-        # Step 1: Create credential
-        logger.debug("Step 1/2: Creating DefaultAzureCredential...")
-        try:
-            credential = DefaultAzureCredential()
-            logger.info("✓ DefaultAzureCredential created successfully")
-        except Exception as cred_error:
-            logger.error("=" * 80)
-            logger.error("❌ FAILED TO CREATE AZURE CREDENTIAL")
-            logger.error("=" * 80)
-            logger.error(f"Error Type: {type(cred_error).__name__}")
-            logger.error(f"Error Message: {str(cred_error)}")
-            logger.error("")
-            logger.error("Troubleshooting:")
-            if LOCAL_MODE:
-                logger.error("  - Run: az login")
-                logger.error("  - Verify: az account show")
+            if time_until_expiry > 300:  # More than 5 minutes remaining
+                logger.debug(f"✓ Using cached PostgreSQL OAuth token, expires in {time_until_expiry:.0f}s")
+                return postgres_token_cache["token"]
             else:
-                logger.error("  - Verify Managed Identity: az webapp identity show --name <app> --resource-group <rg>")
-                logger.error("  - Wait 2-3 minutes after enabling identity")
-            logger.error("=" * 80)
-            raise
+                logger.info(f"⚠ PostgreSQL OAuth token expires in {time_until_expiry:.0f}s, refreshing...")
 
-        # Step 2: Get token for PostgreSQL scope (DIFFERENT from storage!)
-        logger.debug("Step 2/2: Requesting token for scope 'https://ossrdbms-aad.database.windows.net/.default'...")
+        # Generate new token
+        logger.info("=" * 80)
+        logger.info("🔑 Acquiring OAuth token for PostgreSQL")
+        logger.info("=" * 80)
+        logger.info(f"Mode: {'DEVELOPMENT (Azure CLI)' if LOCAL_MODE else 'PRODUCTION (Managed Identity)'}")
+        logger.info(f"PostgreSQL Host: {POSTGRES_HOST}")
+        logger.info(f"PostgreSQL User: {POSTGRES_USER}")
+        logger.info(f"Token Scope: https://ossrdbms-aad.database.windows.net/.default")
+        logger.info("=" * 80)
+
         try:
-            # IMPORTANT: PostgreSQL scope is different from Storage!
-            token = credential.get_token("https://ossrdbms-aad.database.windows.net/.default")
-            access_token = token.token
-            expires_on = datetime.fromtimestamp(token.expires_on, tz=timezone.utc)
+            from azure.identity import DefaultAzureCredential
 
-            logger.info(f"✓ PostgreSQL OAuth token acquired")
-            logger.info(f"  Token length: {len(access_token)} characters")
-            logger.info(f"  Token expires at: {expires_on.isoformat()}")
-            logger.debug(f"  Token starts with: {access_token[:20]}...")
+            # Step 1: Create credential
+            logger.debug("Step 1/2: Creating DefaultAzureCredential...")
+            try:
+                credential = DefaultAzureCredential()
+                logger.info("✓ DefaultAzureCredential created successfully")
+            except Exception as cred_error:
+                logger.error("=" * 80)
+                logger.error("❌ FAILED TO CREATE AZURE CREDENTIAL")
+                logger.error("=" * 80)
+                logger.error(f"Error Type: {type(cred_error).__name__}")
+                logger.error(f"Error Message: {str(cred_error)}")
+                logger.error("")
+                logger.error("Troubleshooting:")
+                if LOCAL_MODE:
+                    logger.error("  - Run: az login")
+                    logger.error("  - Verify: az account show")
+                else:
+                    logger.error("  - Verify Managed Identity: az webapp identity show --name <app> --resource-group <rg>")
+                    logger.error("  - Wait 2-3 minutes after enabling identity")
+                logger.error("=" * 80)
+                raise
 
-        except Exception as token_error:
+            # Step 2: Get token for PostgreSQL scope (DIFFERENT from storage!)
+            logger.debug("Step 2/2: Requesting token for scope 'https://ossrdbms-aad.database.windows.net/.default'...")
+            try:
+                # IMPORTANT: PostgreSQL scope is different from Storage!
+                token = credential.get_token("https://ossrdbms-aad.database.windows.net/.default")
+                access_token = token.token
+                expires_on = datetime.fromtimestamp(token.expires_on, tz=timezone.utc)
+
+                logger.info(f"✓ PostgreSQL OAuth token acquired")
+                logger.info(f"  Token length: {len(access_token)} characters")
+                logger.info(f"  Token expires at: {expires_on.isoformat()}")
+                logger.debug(f"  Token starts with: {access_token[:20]}...")
+
+            except Exception as token_error:
+                logger.error("=" * 80)
+                logger.error("❌ FAILED TO GET POSTGRESQL OAUTH TOKEN")
+                logger.error("=" * 80)
+                logger.error(f"Error Type: {type(token_error).__name__}")
+                logger.error(f"Error Message: {str(token_error)}")
+                logger.error(f"PostgreSQL Host: {POSTGRES_HOST}")
+                logger.error(f"PostgreSQL User: {POSTGRES_USER}")
+                logger.error("")
+                logger.error("Troubleshooting:")
+                logger.error("  - Verify database user exists:")
+                logger.error(f"    psql -c \"SELECT rolname FROM pg_roles WHERE rolname='{POSTGRES_USER}';\"")
+                logger.error("  - Verify user was created with correct name matching MI")
+                logger.error("  - Check MI is assigned to App Service")
+                logger.error("=" * 80)
+                raise
+
+            # Cache token
+            postgres_token_cache["token"] = access_token
+            postgres_token_cache["expires_at"] = expires_on
+
+            logger.info("=" * 80)
+            logger.info("✅ PostgreSQL OAuth token successfully acquired and cached")
+            logger.info("=" * 80)
+            logger.info(f"   PostgreSQL Host: {POSTGRES_HOST}")
+            logger.info(f"   PostgreSQL User: {POSTGRES_USER}")
+            logger.info(f"   Valid until: {expires_on.isoformat()}")
+            logger.info("=" * 80)
+
+            return access_token
+
+        except Exception as e:
             logger.error("=" * 80)
-            logger.error("❌ FAILED TO GET POSTGRESQL OAUTH TOKEN")
+            logger.error("❌ CATASTROPHIC FAILURE IN POSTGRESQL TOKEN GENERATION")
             logger.error("=" * 80)
-            logger.error(f"Error Type: {type(token_error).__name__}")
-            logger.error(f"Error Message: {str(token_error)}")
+            logger.error(f"Error Type: {type(e).__name__}")
+            logger.error(f"Error Message: {str(e)}")
+            logger.error(f"Mode: {'DEVELOPMENT' if LOCAL_MODE else 'PRODUCTION'}")
             logger.error(f"PostgreSQL Host: {POSTGRES_HOST}")
             logger.error(f"PostgreSQL User: {POSTGRES_USER}")
             logger.error("")
-            logger.error("Troubleshooting:")
-            logger.error("  - Verify database user exists:")
-            logger.error(f"    psql -c \"SELECT rolname FROM pg_roles WHERE rolname='{POSTGRES_USER}';\"")
-            logger.error("  - Verify user was created with correct name matching MI")
-            logger.error("  - Check MI is assigned to App Service")
+            logger.error("Full traceback:", exc_info=True)
             logger.error("=" * 80)
             raise
-
-        logger.info("=" * 80)
-        logger.info("✅ PostgreSQL OAuth token successfully acquired")
-        logger.info("=" * 80)
-        logger.info(f"   PostgreSQL Host: {POSTGRES_HOST}")
-        logger.info(f"   PostgreSQL User: {POSTGRES_USER}")
-        logger.info(f"   Valid until: {expires_on.isoformat()}")
-        logger.info("=" * 80)
-
-        return access_token
-
-    except Exception as e:
-        logger.error("=" * 80)
-        logger.error("❌ CATASTROPHIC FAILURE IN POSTGRESQL TOKEN GENERATION")
-        logger.error("=" * 80)
-        logger.error(f"Error Type: {type(e).__name__}")
-        logger.error(f"Error Message: {str(e)}")
-        logger.error(f"Mode: {'DEVELOPMENT' if LOCAL_MODE else 'PRODUCTION'}")
-        logger.error(f"PostgreSQL Host: {POSTGRES_HOST}")
-        logger.error(f"PostgreSQL User: {POSTGRES_USER}")
-        logger.error("")
-        logger.error("Full traceback:", exc_info=True)
-        logger.error("=" * 80)
-        raise
 
 
 class AzureAuthMiddleware(BaseHTTPMiddleware):
@@ -575,7 +641,27 @@ async def health(response: Response):
             "status": "disabled",
             "note": "Azure auth disabled - using anonymous/SAS access"
         }
-    
+
+    # Check 3: PostgreSQL OAuth token (only for managed_identity mode)
+    if POSTGRES_AUTH_MODE == "managed_identity":
+        pg_token_valid = postgres_token_cache["token"] and postgres_token_cache["expires_at"]
+        if pg_token_valid:
+            now = datetime.now(timezone.utc)
+            time_until_expiry = (postgres_token_cache["expires_at"] - now).total_seconds()
+            checks["postgres_oauth"] = {
+                "status": "ok" if time_until_expiry > 300 else "warning",
+                "expires_in_seconds": max(0, int(time_until_expiry)),
+                "required_for": ["PostgreSQL database connection"]
+            }
+            if time_until_expiry <= 300:
+                issues.append(f"PostgreSQL OAuth token expires soon ({int(time_until_expiry)}s) - may cause DB reconnect")
+        else:
+            checks["postgres_oauth"] = {
+                "status": "fail",
+                "required_for": ["PostgreSQL database connection"]
+            }
+            issues.append("PostgreSQL OAuth token not initialized - database may fail on token expiry")
+
     # Determine overall status
     has_critical_failure = not db_connected or (USE_AZURE_AUTH and not oauth_token_cache["token"])
     
