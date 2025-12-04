@@ -635,7 +635,8 @@ async def health(response: Response):
     issues = []
     
     # Check 1: Database connection
-    db_connected = hasattr(app.state, "pool") and app.state.pool is not None
+    # titiler-pgstac uses "dbpool" attribute, not "pool"
+    db_connected = hasattr(app.state, "dbpool") and app.state.dbpool is not None
     checks["database"] = {
         "status": "ok" if db_connected else "fail",
         "required_for": ["pgSTAC searches", "mosaic endpoints"]
