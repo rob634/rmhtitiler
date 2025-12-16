@@ -1,10 +1,11 @@
-# Production Dockerfile for TiTiler with Azure Managed Identity
-# Use platform flag for cross-platform builds
-FROM --platform=linux/amd64 ghcr.io/developmentseed/titiler:latest
+# Production Dockerfile for TiTiler with Azure OAuth authentication
+FROM ghcr.io/developmentseed/titiler:latest
 
-# Install Azure authentication library (OAuth tokens only)
+# Install Azure authentication and xarray support
 RUN pip install --no-cache-dir \
-    azure-identity>=1.15.0
+    azure-identity>=1.15.0 \
+    "titiler.xarray[full]>=0.18.0" \
+    adlfs>=2024.4.1
 
 # Set working directory
 WORKDIR /app

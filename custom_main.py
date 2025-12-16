@@ -26,6 +26,10 @@ from starlette.middleware.base import BaseHTTPMiddleware
 from titiler.core.factory import TilerFactory
 from titiler.core.errors import DEFAULT_STATUS_CODES, add_exception_handlers
 
+# Xarray/Zarr support for multidimensional data
+from titiler.xarray.factory import TilerFactory as XarrayTilerFactory
+from titiler.xarray.extensions import VariablesExtension
+
 # Configure logging
 logging.basicConfig(
     level=logging.INFO,
@@ -168,10 +172,29 @@ def get_azure_storage_oauth_token() -> Optional[str]:
             raise
 
 
+def setup_fsspec_azure_credentials(account_name: str):
+    """
+    Configure fsspec/adlfs to use Azure OAuth token.
+
+    adlfs uses DefaultAzureCredential automatically when no explicit
+    credentials are provided. This works because:
+    - In dev: Azure CLI credentials (az login)
+    - In prod: Managed Identity
+
+    We just need to set the account name for fsspec to know which
+    storage account to connect to.
+    """
+    os.environ["AZURE_STORAGE_ACCOUNT_NAME"] = account_name
+    logger.debug(f"Configured fsspec/adlfs for account: {account_name}")
+
+
 class AzureAuthMiddleware(BaseHTTPMiddleware):
     """
     Middleware that ensures Azure Storage OAuth token is set before each request.
-    Sets AZURE_STORAGE_ACCESS_TOKEN which GDAL uses for /vsiaz/ authentication.
+
+    Configures authentication for:
+    - GDAL: AZURE_STORAGE_ACCOUNT + AZURE_STORAGE_ACCESS_TOKEN (for /vsiaz/ COG access)
+    - fsspec/adlfs: AZURE_STORAGE_ACCOUNT_NAME (for abfs:// Zarr access)
     """
     async def dispatch(self, request: Request, call_next):
         if USE_AZURE_AUTH and AZURE_STORAGE_ACCOUNT:
@@ -180,11 +203,15 @@ class AzureAuthMiddleware(BaseHTTPMiddleware):
                 token = get_azure_storage_oauth_token()
 
                 if token:
-                    # Set environment variables that GDAL will use
+                    # Set environment variables for GDAL (COG access via /vsiaz/)
                     os.environ["AZURE_STORAGE_ACCOUNT"] = AZURE_STORAGE_ACCOUNT
                     os.environ["AZURE_STORAGE_ACCESS_TOKEN"] = token
                     logger.debug(f"Set OAuth token for storage account: {AZURE_STORAGE_ACCOUNT}")
                     logger.debug("GDAL will use: AZURE_STORAGE_ACCOUNT + AZURE_STORAGE_ACCESS_TOKEN")
+
+                    # Configure fsspec/adlfs for Zarr access (uses DefaultAzureCredential)
+                    setup_fsspec_azure_credentials(AZURE_STORAGE_ACCOUNT)
+                    logger.debug("fsspec/adlfs will use: DefaultAzureCredential")
 
             except Exception as e:
                 logger.error(f"Error in Azure auth middleware: {e}", exc_info=True)
@@ -196,9 +223,17 @@ class AzureAuthMiddleware(BaseHTTPMiddleware):
 
 # Create FastAPI application
 app = FastAPI(
-    title="TiTiler with Azure OAuth Auth",
-    description="Cloud Optimized GeoTIFF tile server with Azure Managed Identity (OAuth) authentication",
-    version="2.0.0"
+    title="TiTiler with Azure OAuth Auth + Multidimensional Support",
+    description="""
+    Cloud Optimized GeoTIFF and Zarr/NetCDF tile server with Azure Managed Identity authentication.
+
+    Endpoints:
+    - /cog/* - Cloud Optimized GeoTIFFs
+    - /xarray/* - Zarr and NetCDF multidimensional arrays
+
+    Both use Azure Managed Identity for authentication.
+    """,
+    version="0.1.3"
 )
 
 # Add CORS middleware
@@ -220,6 +255,15 @@ add_exception_handlers(app, DEFAULT_STATUS_CODES)
 cog = TilerFactory(router_prefix="/cog")
 app.include_router(cog.router, prefix="/cog", tags=["Cloud Optimized GeoTIFF"])
 
+# Register TiTiler xarray endpoints for Zarr/NetCDF support
+xarray_tiler = XarrayTilerFactory(
+    router_prefix="/xarray",
+    extensions=[
+        VariablesExtension(),  # Adds /variables endpoint to list dataset variables
+    ],
+)
+app.include_router(xarray_tiler.router, prefix="/xarray", tags=["Multidimensional (Zarr/NetCDF)"])
+
 
 @app.get("/healthz", tags=["Health"])
 async def health():
@@ -228,7 +272,12 @@ async def health():
         "status": "healthy",
         "azure_auth_enabled": USE_AZURE_AUTH,
         "local_mode": LOCAL_MODE,
-        "auth_type": "OAuth Bearer Token"
+        "auth_type": "OAuth Bearer Token",
+        "supported_formats": {
+            "cog": "/cog/* endpoints",
+            "zarr": "/xarray/* endpoints",
+            "netcdf": "/xarray/* endpoints"
+        }
     }
 
     if USE_AZURE_AUTH:
@@ -250,23 +299,34 @@ async def health():
 async def root():
     """Root endpoint with API information"""
     return {
-        "title": "TiTiler with Azure OAuth Auth",
-        "description": "Cloud Optimized GeoTIFF tile server with OAuth token support",
-        "version": "2.0.0",
+        "title": "TiTiler with Multidimensional Support",
+        "description": "Cloud Optimized GeoTIFF and Zarr/NetCDF tile server with OAuth token support",
+        "version": "0.1.3",
         "auth_type": "OAuth Bearer Token (Managed Identity)",
         "endpoints": {
             "health": "/healthz",
             "docs": "/docs",
             "redoc": "/redoc",
+            # COG endpoints
             "cog_info": "/cog/info?url=<path>",
             "cog_tiles": "/cog/tiles/{tileMatrixSetId}/{z}/{x}/{y}?url=<path>",
-            "cog_viewer": "/cog/{tileMatrixSetId}/map.html?url=<path>"
+            "cog_viewer": "/cog/{tileMatrixSetId}/map.html?url=<path>",
+            # Xarray/Zarr endpoints
+            "xarray_info": "/xarray/info?url=<zarr_url>&variable=<var>",
+            "xarray_variables": "/xarray/variables?url=<zarr_url>",
+            "xarray_tiles": "/xarray/tiles/{tileMatrixSetId}/{z}/{x}/{y}?url=<zarr_url>&variable=<var>",
+        },
+        "url_formats": {
+            "cog_local": "/vsiaz/container/path/to/file.tif",
+            "zarr_azure": "abfs://container/path/to/store.zarr",
+            "zarr_https": "https://account.blob.core.windows.net/container/store.zarr",
         },
         "local_mode": LOCAL_MODE,
         "azure_auth": USE_AZURE_AUTH,
         "examples": {
-            "local_file": "/cog/info?url=/data/example.tif" if LOCAL_MODE else None,
-            "azure_blob": f"/cog/info?url=/vsiaz/container/path/to/file.tif" if USE_AZURE_AUTH else None
+            "local_cog": "/cog/info?url=/data/example.tif" if LOCAL_MODE else None,
+            "azure_cog": "/cog/info?url=/vsiaz/container/path/to/file.tif" if USE_AZURE_AUTH else None,
+            "azure_zarr": "/xarray/variables?url=abfs://container/store.zarr" if USE_AZURE_AUTH else None,
         },
         "multi_container_support": True,
         "note": "OAuth token grants access to ALL containers based on RBAC role assignments"
@@ -277,9 +337,10 @@ async def root():
 async def startup_event():
     """Initialize Azure OAuth authentication on startup"""
     logger.info("=" * 60)
-    logger.info("TiTiler with Azure OAuth Auth - Starting up")
+    logger.info("TiTiler with Multidimensional Support - Starting up")
     logger.info("=" * 60)
-    logger.info(f"Version: 2.0.0")
+    logger.info(f"Version: 0.1.3")
+    logger.info(f"Supported formats: COG, Zarr, NetCDF")
     logger.info(f"Local mode: {LOCAL_MODE}")
     logger.info(f"Azure auth enabled: {USE_AZURE_AUTH}")
     logger.info(f"Auth type: OAuth Bearer Token")
@@ -298,6 +359,8 @@ async def startup_event():
                     logger.info("✓ OAuth authentication initialized successfully")
                     logger.info(f"✓ Token expires at: {oauth_token_cache['expires_at']}")
                     logger.info(f"✓ Access scope: ALL containers per RBAC role")
+                    logger.info("✓ GDAL (/vsiaz/) ready for COG access")
+                    logger.info("✓ fsspec (abfs://) ready for Zarr access")
                     if LOCAL_MODE:
                         logger.info("✓ Using Azure CLI credentials (az login)")
                     else:
@@ -321,4 +384,4 @@ async def startup_event():
 @app.on_event("shutdown")
 async def shutdown_event():
     """Cleanup on shutdown"""
-    logger.info("TiTiler with Azure OAuth Auth - Shutting down")
+    logger.info("TiTiler with Multidimensional Support - Shutting down")

@@ -1,14 +1,20 @@
 # TiTiler with Azure Managed Identity
 
-A production-ready TiTiler deployment that uses Azure Managed Identity to securely access Cloud-Optimized GeoTIFFs (COGs) in Azure Blob Storage.
+**Version: 0.1.3**
+
+A production-ready TiTiler deployment that uses Azure Managed Identity to securely access Cloud-Optimized GeoTIFFs (COGs) and multidimensional data (Zarr/NetCDF) in Azure Blob Storage.
 
 ## Features
 
 - **Secure Authentication**: Uses Azure Managed Identity - no credentials in code
+- **COG Support**: Cloud-Optimized GeoTIFFs via `/cog/*` endpoints
+- **Multidimensional Support**: Zarr and NetCDF via `/xarray/*` endpoints (NEW in 0.1.3)
+- **Planetary Computer Ready**: Works with Microsoft Planetary Computer datasets
 - **Local Development**: Full Docker Compose setup for local testing
 - **Production Ready**: Optimized for Azure App Service deployment
 - **Automatic Token Refresh**: Handles token expiration automatically
 - **GDAL Integration**: Leverages GDAL's `/vsiaz/` virtual file system
+- **fsspec Integration**: Uses `adlfs` for Zarr access via `abfs://` protocol
 - **Performance Optimized**: Multi-worker setup with GDAL caching
 
 ## Quick Start
@@ -123,7 +129,32 @@ https://your-app.azurewebsites.net/cog/WebMercatorQuad/map.html?url=/vsiaz/conta
 
 **Note:** There is NO `/cog/viewer` endpoint - the viewer is at `/cog/{tileMatrixSetId}/map.html`
 
-### Additional Endpoints
+### Xarray/Zarr Endpoints (NEW in 0.1.3)
+
+```bash
+# List variables in a Zarr store
+GET /xarray/variables?url=<zarr_url>
+
+# Get info for a specific variable
+GET /xarray/info?url=<zarr_url>&variable=<var>
+
+# Get tiles
+GET /xarray/tiles/{tileMatrixSetId}/{z}/{x}/{y}.{format}?url=<zarr_url>&variable=<var>
+```
+
+**Examples with Planetary Computer (public data):**
+```bash
+# gridMET meteorological data (Contiguous US, 1979-2020)
+curl "http://localhost:8001/xarray/variables?url=https://ai4edataeuwest.blob.core.windows.net/gridmet/gridmet.zarr"
+
+# Daymet daily Hawaii climate data
+curl "http://localhost:8001/xarray/variables?url=https://daymeteuwest.blob.core.windows.net/daymet-zarr/daily/hi.zarr"
+
+# Get info for a specific variable
+curl "http://localhost:8001/xarray/info?url=https://ai4edataeuwest.blob.core.windows.net/gridmet/gridmet.zarr&variable=air_temperature"
+```
+
+### Additional COG Endpoints
 
 - **TileJSON**: `/cog/{tileMatrixSetId}/tilejson.json?url=<path>` - Get TileJSON spec
 - **Preview**: `/cog/preview.png?url=<path>` - Get static preview image

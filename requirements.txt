@@ -4,3 +4,10 @@
 # Azure authentication - OAuth tokens via Managed Identity
 # Note: azure-storage-blob is NOT needed for OAuth approach
 azure-identity>=1.15.0
+
+# Xarray/Zarr support for multidimensional data
+# [full] extra includes: fsspec, zarr, h5netcdf, s3fs, aiohttp
+titiler.xarray[full]>=0.18.0
+
+# Azure Data Lake filesystem for fsspec (Zarr access)
+adlfs>=2024.4.1
