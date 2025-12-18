@@ -1,6 +1,6 @@
 # TiTiler-xarray Implementation Guide
 
-**Version: 0.1.3** | **Status: Phase 1 Complete** ✅
+**Version: 0.3.0** | **Status: Phase 1 Complete + Planetary Computer Support + Production Verified** ✅
 
 ## Overview
 
@@ -36,6 +36,245 @@ adlfs                 - Azure Data Lake filesystem for fsspec (NEW)
 zarr                  - Zarr array library (NEW)
 h5netcdf              - NetCDF reader (NEW, optional)
 fsspec                - Filesystem abstraction (NEW)
+obstore               - Rust-based object storage with PC support (NEW)
+```
+
+---
+
+## Planetary Computer Integration (v0.2.0) ✅
+
+### What is the Planetary Computer Credential Provider?
+
+Microsoft's **Planetary Computer** hosts petabytes of free environmental data, including CMIP6 climate projections in Zarr format. While this data is publicly accessible, it requires authentication via their SAS (Shared Access Signature) token service.
+
+The **`PlanetaryComputerCredentialProvider`** is a specialized authentication mechanism from the `obstore` library that handles this automatically:
+
+```
+┌─────────────────────────────────────────────────────────────────────────────┐
+│                    Two Authentication Mechanisms                             │
+├─────────────────────────────────────────────────────────────────────────────┤
+│                                                                             │
+│  1. AZURE MANAGED IDENTITY (Your Storage)                                   │
+│     ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━                                 │
+│     • Uses OAuth bearer tokens                                              │
+│     • Your app's identity has RBAC permissions on YOUR storage              │
+│     • Works with any container your identity can access                     │
+│     • Endpoints: /cog/* and /xarray/*                                       │
+│                                                                             │
+│  2. PLANETARY COMPUTER CREDENTIAL PROVIDER (External Climate Data)          │
+│     ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━          │
+│     • Gets temporary SAS tokens from PC's API                               │
+│     • Grants read access to THEIR public storage accounts                   │
+│     • Tokens are cached and auto-refreshed                                  │
+│     • Endpoints: /pc/*                                                      │
+│                                                                             │
+└─────────────────────────────────────────────────────────────────────────────┘
+```
+
+### How It Works
+
+```
+┌──────────────────┐     ┌─────────────────────────────────────┐     ┌──────────────────┐
+│   Your TiTiler   │ ──▶ │  Planetary Computer Token API       │ ──▶ │   SAS Token      │
+│   Application    │     │  /api/sas/v1/token/{collection}     │     │   (cached ~1hr)  │
+└──────────────────┘     └─────────────────────────────────────┘     └──────────────────┘
+        │                                                                    │
+        │                                                                    ▼
+        │                                                        ┌──────────────────────┐
+        └───────────────────────────────────────────────────────▶│  Azure Blob Storage  │
+                         Read Zarr with SAS token                │  (PC data accounts)  │
+                                                                 └──────────────────────┘
+```
+
+1. **URL Detection**: When a URL matches a known PC storage account (e.g., `rhgeuwest.blob.core.windows.net`), the system uses the PC credential provider
+2. **Token Fetch**: The provider requests a SAS token from `https://planetarycomputer.microsoft.com/api/sas/v1/token/{collection_id}`
+3. **Token Caching**: Tokens are cached per collection and automatically refreshed before expiry
+4. **Transparent Access**: All requests to the Zarr store include the SAS token automatically
+
+### Planetary Computer Endpoints
+
+Three dedicated endpoints provide access to PC data:
+
+| Endpoint | Purpose | Example |
+|----------|---------|---------|
+| `/pc/collections` | List known PC storage accounts and collections | `/pc/collections` |
+| `/pc/variables` | List variables in a PC Zarr dataset | `/pc/variables?url=https://rhgeuwest.blob.core.windows.net/cil-gdpcir/...` |
+| `/pc/info` | Get metadata for a specific variable | `/pc/info?url=...&variable=tasmax` |
+
+### Known Planetary Computer Storage Accounts
+
+| Storage Account | Default Collection | Data Description |
+|-----------------|-------------------|------------------|
+| `rhgeuwest` | `cil-gdpcir-cc0` | Climate Impact Lab CMIP6 downscaled projections |
+| `ai4edataeuwest` | `daymet-daily-na` | gridMET and Daymet meteorological data |
+
+### Available CMIP6 Variables (Climate Impact Lab)
+
+| Variable | Description | Units | Scenarios |
+|----------|-------------|-------|-----------|
+| `tasmax` | Daily maximum near-surface air temperature | K | ssp126, ssp245, ssp370, ssp585 |
+| `tasmin` | Daily minimum near-surface air temperature | K | ssp126, ssp245, ssp370, ssp585 |
+| `pr` | Precipitation | kg m-2 s-1 | ssp126, ssp245, ssp370, ssp585 |
+
+### Example Zarr URLs
+
+```bash
+# Climate Impact Lab CMIP6 - Maximum Temperature (SSP585 scenario)
+https://rhgeuwest.blob.core.windows.net/cil-gdpcir/ScenarioMIP/NUIST/NESM3/ssp585/r1i1p1f1/day/tasmax/v1.1.zarr
+
+# Climate Impact Lab CMIP6 - Minimum Temperature
+https://rhgeuwest.blob.core.windows.net/cil-gdpcir/ScenarioMIP/NUIST/NESM3/ssp585/r1i1p1f1/day/tasmin/v1.1.zarr
+
+# Climate Impact Lab CMIP6 - Precipitation
+https://rhgeuwest.blob.core.windows.net/cil-gdpcir/ScenarioMIP/NUIST/NESM3/ssp585/r1i1p1f1/day/pr/v1.1.zarr
+```
+
+### Testing Planetary Computer Endpoints
+
+```bash
+# List known collections
+curl "http://localhost:8001/pc/collections"
+
+# List variables in a CMIP6 dataset
+curl "http://localhost:8001/pc/variables?url=https://rhgeuwest.blob.core.windows.net/cil-gdpcir/ScenarioMIP/NUIST/NESM3/ssp585/r1i1p1f1/day/tasmax/v1.1.zarr"
+
+# Get info for the tasmax variable
+curl "http://localhost:8001/pc/info?url=https://rhgeuwest.blob.core.windows.net/cil-gdpcir/ScenarioMIP/NUIST/NESM3/ssp585/r1i1p1f1/day/tasmax/v1.1.zarr&variable=tasmax"
+```
+
+### Dependencies for Planetary Computer Support
+
+```txt
+# requirements.txt
+obstore[planetary-computer]>=0.3.0
+```
+
+This installs:
+- `obstore`: High-performance Rust-based object storage library
+- `PlanetaryComputerCredentialProvider`: SAS token management for PC data
+
+### Why Separate /pc/* Endpoints?
+
+The standard `/xarray/*` endpoints use `fsspec/adlfs` for Azure storage access, which works well with OAuth tokens for your own storage. However, Planetary Computer data requires SAS tokens fetched from their API.
+
+The `obstore` library used by `titiler-xarray` strips query parameters from URLs, making it impossible to pass SAS tokens via URL query strings. The `/pc/*` endpoints solve this by:
+
+1. Using the `PlanetaryComputerCredentialProvider` to fetch SAS tokens automatically
+2. Creating an `AzureStore` with the credential provider injected
+3. Wrapping the store for Zarr access
+
+This approach keeps the authentication transparent while enabling access to PC's climate datasets.
+
+---
+
+## Production-Verified URL Patterns (December 2024) ✅
+
+This section documents the **verified working URL patterns** for xarray/Zarr endpoints in production.
+
+### Base URL
+
+```
+https://rmhtitiler-ghcyd7g0bxdvc2hc.eastus-01.azurewebsites.net
+```
+
+### Zarr URL Formats
+
+| Format | Pattern | Use Case |
+|--------|---------|----------|
+| **HTTPS** (recommended) | `https://{account}.blob.core.windows.net/{container}/{path}.zarr` | Works with OAuth |
+| **ABFS with account** | `abfs://{container}@{account}.dfs.core.windows.net/{path}.zarr` | Works with OAuth |
+| **ABFS simple** | `abfs://{container}/{path}.zarr` | Requires `AZURE_STORAGE_ACCOUNT_NAME` env var |
+
+### Required Parameters for CMIP6 Data
+
+CMIP6 climate data uses a "noleap" calendar that requires special handling:
+
+| Parameter | Required | Purpose |
+|-----------|----------|---------|
+| `variable` | Yes | Which variable to render (e.g., `tasmax`, `pr`) |
+| `decode_times=false` | Yes (for CMIP6) | Bypass cftime calendar decoding |
+| `bidx` | Yes (for temporal data) | Select time step / band index |
+
+### Working Endpoint Examples
+
+#### 1. List Variables
+
+```bash
+# List variables in a Zarr store
+curl "https://rmhtitiler-ghcyd7g0bxdvc2hc.eastus-01.azurewebsites.net/xarray/variables?url=https://rmhazuregeo.blob.core.windows.net/silver-cogs/test-zarr/cmip6-tasmax-sample.zarr&decode_times=false"
+```
+
+**Response:**
+```json
+["tasmax"]
+```
+
+#### 2. Get Variable Info
+
+```bash
+curl "https://rmhtitiler-ghcyd7g0bxdvc2hc.eastus-01.azurewebsites.net/xarray/info?url=https://rmhazuregeo.blob.core.windows.net/silver-cogs/test-zarr/cmip6-tasmax-sample.zarr&variable=tasmax&decode_times=false"
+```
+
+**Response includes:**
+- `bounds`: Geographic extent `[-180, -90, 180, 90]`
+- `crs`: Coordinate reference system
+- `band_metadata`: Time step metadata for each band
+
+#### 3. Get Tiles (Critical: Use `bidx` for temporal data!)
+
+```bash
+# ❌ WRONG - Will fail with "Maximum array limit reached"
+curl ".../xarray/tiles/WebMercatorQuad/0/0/0.png?url=...&variable=tasmax&decode_times=false"
+
+# ✅ CORRECT - Specify band index for time selection
+curl "https://rmhtitiler-ghcyd7g0bxdvc2hc.eastus-01.azurewebsites.net/xarray/tiles/WebMercatorQuad/0/0/0@1x.png?url=https://rmhazuregeo.blob.core.windows.net/silver-cogs/test-zarr/cmip6-tasmax-sample.zarr&variable=tasmax&decode_times=false&bidx=1"
+```
+
+#### 4. Tiles with Colormap and Rescaling
+
+```bash
+# Temperature data with turbo colormap, rescaled for Kelvin (250-320K)
+curl "https://rmhtitiler-ghcyd7g0bxdvc2hc.eastus-01.azurewebsites.net/xarray/tiles/WebMercatorQuad/0/0/0@1x.png?url=https://rmhazuregeo.blob.core.windows.net/silver-cogs/test-zarr/cmip6-tasmax-sample.zarr&variable=tasmax&decode_times=false&bidx=1&colormap_name=turbo&rescale=250,320"
+```
+
+#### 5. Interactive Map Viewer
+
+```
+https://rmhtitiler-ghcyd7g0bxdvc2hc.eastus-01.azurewebsites.net/xarray/WebMercatorQuad/map.html?url=https://rmhazuregeo.blob.core.windows.net/silver-cogs/test-zarr/cmip6-tasmax-sample.zarr&variable=tasmax&decode_times=false&bidx=1&colormap_name=turbo&rescale=250,320
+```
+
+### Query Parameters Reference
+
+| Parameter | Type | Description | Example |
+|-----------|------|-------------|---------|
+| `url` | string | **Required.** Zarr store URL | `https://account.blob.../store.zarr` |
+| `variable` | string | **Required.** Variable name to render | `tasmax`, `pr`, `temperature` |
+| `decode_times` | bool | Disable time decoding for noleap calendars | `false` |
+| `bidx` | int | **Required for temporal data.** Band/time index (1-based) | `1`, `365`, `730` |
+| `colormap_name` | string | Named colormap | `viridis`, `turbo`, `plasma`, `inferno` |
+| `rescale` | string | Min,max values for scaling | `250,320` (Kelvin) |
+| `nodata` | float | NoData value | `-9999` |
+
+### Common Errors and Solutions
+
+| Error | Cause | Solution |
+|-------|-------|----------|
+| `Maximum array limit reached` | Missing `bidx` for temporal data | Add `&bidx=1` to select a time step |
+| `unable to decode time units` | CMIP6 noleap calendar | Add `&decode_times=false` |
+| `Internal Server Error` (abfs://) | Missing account in URL | Use full URL: `abfs://container@account.dfs.core.windows.net/path` |
+| `403 Forbidden` | OAuth token issue | Check `/healthz` endpoint |
+
+### Test Data Location
+
+A sample CMIP6 Zarr store is available for testing:
+
+```
+Storage Account: rmhazuregeo
+Container: silver-cogs
+Path: test-zarr/cmip6-tasmax-sample.zarr
+Variable: tasmax (Daily Maximum Temperature in Kelvin)
+Time Steps: 730 (2 years of daily data)
+Coverage: Global (0.25° resolution)
 ```
 
 ---
@@ -1030,9 +1269,29 @@ uvicorn[standard]>=0.27.0
 - [x] Add `titiler.xarray[full]` and `adlfs` to requirements
 - [x] Add `XarrayTilerFactory` router to existing app
 - [x] Add `setup_fsspec_azure_credentials()` to middleware
-- [ ] Test with public Planetary Computer Zarr ⏳ **READY TO TEST**
-- [ ] Test with Azure Blob Zarr store
 - [x] Update Dockerfile
+
+### Phase 1.5: Planetary Computer Integration ✅ COMPLETE (v0.2.0)
+- [x] Add `obstore[planetary-computer]` to requirements
+- [x] Implement `PlanetaryComputerCredentialProvider` integration
+- [x] Add `/pc/collections` endpoint - list known PC storage accounts
+- [x] Add `/pc/variables` endpoint - list variables in PC Zarr datasets
+- [x] Add `/pc/info` endpoint - get variable metadata
+- [x] Add `is_planetary_computer_url()` detection function
+- [x] Add `get_planetary_computer_credential_provider()` with caching
+- [x] Update Dockerfile with `ENABLE_PLANETARY_COMPUTER=true`
+- [x] Document PC authentication mechanism
+- [x] Test with deployed app ✅ **VERIFIED DECEMBER 2024**
+
+### Phase 1.6: Production Testing ✅ COMPLETE (v0.3.0)
+- [x] Verify `/xarray/variables` endpoint with Azure OAuth
+- [x] Verify `/xarray/info` endpoint returns correct metadata
+- [x] Verify `/xarray/tiles` endpoint generates valid PNG tiles
+- [x] Test colormap and rescaling parameters
+- [x] Document required `bidx` parameter for temporal data
+- [x] Document `decode_times=false` for CMIP6 noleap calendar
+- [x] Upload test Zarr dataset to Azure (`silver-cogs/test-zarr/cmip6-tasmax-sample.zarr`)
+- [x] Document verified URL patterns in xarray.md
 
 ### Phase 2: Unified pgSTAC (Production)
 - [ ] Add `titiler.pgstac` dependency
@@ -1053,4 +1312,6 @@ uvicorn[standard]>=0.27.0
 3. **Zarr chunking**: For best tile performance, Zarr stores should have spatial chunks ~256x256 or 512x512
 4. **Consolidated metadata**: Ensure Zarr stores have consolidated metadata (`zarr.consolidate_metadata()`) for faster opens
 5. **Variable parameter**: Unlike COGs, Zarr requires specifying which variable to render via `?variable=` query param
-6. **Time slicing**: For temporal data, use `?time=2050-01-01` or similar to select time slice
+6. **Time slicing**: For temporal data, use `?bidx=1` (1-based band index) to select time step - **NOT** `?time=`
+7. **CMIP6 calendars**: Climate data often uses `noleap` calendar - add `?decode_times=false` to bypass cftime errors
+8. **URL format**: Use HTTPS URLs (`https://account.blob.core.windows.net/...`) or full ABFS (`abfs://container@account.dfs.core.windows.net/...`)

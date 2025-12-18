@@ -1,25 +1,35 @@
-# Production Dockerfile for TiTiler with Azure OAuth authentication
-FROM ghcr.io/developmentseed/titiler:latest
+# Production Dockerfile for TiTiler-pgSTAC with Azure OAuth authentication,
+# Xarray/Zarr support, and Planetary Computer integration
+FROM ghcr.io/stac-utils/titiler-pgstac:latest
 
-# Install Azure authentication and xarray support
+# Install dependencies:
+# - azure-identity: OAuth tokens via Managed Identity for storage and PostgreSQL
+# - azure-keyvault-secrets: Key Vault access for password retrieval
+# - titiler.xarray: Zarr/NetCDF support for multidimensional data
+# - adlfs: Azure Data Lake filesystem for fsspec
+# - obstore: High-performance storage with Planetary Computer credential provider
+# - requests: Required by PlanetaryComputerCredentialProvider
 RUN pip install --no-cache-dir \
     azure-identity>=1.15.0 \
-    "titiler.xarray[full]>=0.18.0" \
-    adlfs>=2024.4.1
+    azure-keyvault-secrets>=4.7.0 \
+    "titiler.xarray>=0.18.0" \
+    adlfs>=2024.4.1 \
+    obstore>=0.6.0 \
+    requests>=2.28.0
 
 # Set working directory
 WORKDIR /app
 
-# Copy custom application to working directory where uvicorn can find it
-COPY custom_main.py /app/custom_main.py
+# Copy custom application to working directory
+COPY custom_pgstac_main.py /app/custom_pgstac_main.py
 
 # Production settings
 ENV LOCAL_MODE=false
 ENV USE_AZURE_AUTH=true
+ENV ENABLE_PLANETARY_COMPUTER=true
 
 # Expose port
 EXPOSE 8000
 
 # Production command - using 1 worker for initial deployment
-# Scale up to 2-4 workers after successful deployment
-CMD ["uvicorn", "custom_main:app", "--host", "0.0.0.0", "--port", "8000", "--workers", "1"]
+CMD ["uvicorn", "custom_pgstac_main:app", "--host", "0.0.0.0", "--port", "8000", "--workers", "1"]

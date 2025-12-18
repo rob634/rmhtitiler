@@ -1,16 +1,58 @@
 version: '3.8'
 
 services:
+  # ============================================================================
+  # PostgreSQL with pgSTAC extension
+  # ============================================================================
+  database:
+    image: ghcr.io/stac-utils/pgstac:v0.8.5
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: postgis
+      PGUSER: postgres
+      PGPASSWORD: postgres
+      PGDATABASE: postgis
+    ports:
+      - "5439:5432"
+    volumes:
+      - pgstac_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d postgis"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+
+  # ============================================================================
+  # TiTiler-pgSTAC with Xarray and Planetary Computer support
+  # ============================================================================
   titiler:
     build:
       context: .
       dockerfile: Dockerfile.local
     ports:
       - "8001:8000"
+    depends_on:
+      database:
+        condition: service_healthy
 
-    # Load environment variables from .env.local
-    env_file:
-      - .env.local
+    environment:
+      # PostgreSQL connection (uses password mode for local dev)
+      POSTGRES_HOST: database
+      POSTGRES_PORT: 5432
+      POSTGRES_DB: postgis
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_AUTH_MODE: password
+
+      # Azure Storage authentication (uses Azure CLI credentials)
+      USE_AZURE_AUTH: "true"
+      LOCAL_MODE: "true"
+      AZURE_STORAGE_ACCOUNT: ${AZURE_STORAGE_ACCOUNT:-rmhgeopipelines}
+
+      # Planetary Computer integration
+      ENABLE_PLANETARY_COMPUTER: "true"
 
     volumes:
       # Mount local data directory for testing
@@ -20,8 +62,11 @@ services:
       # This allows DefaultAzureCredential to use your 'az login' credentials
       - ~/.azure:/root/.azure:ro
 
+      # Mount source code for hot reload during development
+      - ./custom_pgstac_main.py:/app/custom_pgstac_main.py:ro
+
     command: >
-      uvicorn custom_main:app
+      uvicorn custom_pgstac_main:app
       --host 0.0.0.0
       --port 8000
       --reload
@@ -29,12 +74,12 @@ services:
 
     # Health check
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:8000/healthz"]
+      test: ["CMD", "curl", "-f", "http://localhost:8000/livez"]
       interval: 30s
       timeout: 10s
       retries: 3
-      start_period: 40s
+      start_period: 60s
 
-# Optional: Add a sample data volume for testing
+# Persistent volume for PostgreSQL data
 volumes:
-  data:
+  pgstac_data:

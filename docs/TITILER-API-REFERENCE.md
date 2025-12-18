@@ -685,6 +685,167 @@ https://rmhtitiler-ghcyd7g0bxdvc2hc.eastus-01.azurewebsites.net/openapi.json
 
 ---
 
+---
+
+## Xarray/Zarr Endpoints (Multidimensional Data)
+
+TiTiler also supports multidimensional data (Zarr, NetCDF) via the `/xarray/*` endpoints. These endpoints use Azure OAuth authentication just like COG endpoints.
+
+### Zarr URL Formats
+
+| Format | Pattern | Recommended |
+|--------|---------|-------------|
+| **HTTPS** | `https://{account}.blob.core.windows.net/{container}/{path}.zarr` | ✅ Yes |
+| **ABFS (full)** | `abfs://{container}@{account}.dfs.core.windows.net/{path}.zarr` | ✅ Yes |
+| **ABFS (simple)** | `abfs://{container}/{path}.zarr` | ⚠️ Requires env var |
+
+### Critical Parameters for Temporal Data
+
+| Parameter | Required | Purpose |
+|-----------|----------|---------|
+| `variable` | **Yes** | Which variable to render |
+| `bidx` | **Yes** (temporal) | Band/time index (1-based) |
+| `decode_times` | **Yes** (CMIP6) | Set to `false` for noleap calendars |
+
+### 1. List Variables
+
+**Endpoint:** `/xarray/variables`
+
+**Purpose:** List all variables in a Zarr store.
+
+**URL Pattern:**
+```
+/xarray/variables?url={zarr_url}&decode_times=false
+```
+
+**Example:**
+```bash
+curl "https://rmhtitiler-ghcyd7g0bxdvc2hc.eastus-01.azurewebsites.net/xarray/variables?url=https://rmhazuregeo.blob.core.windows.net/silver-cogs/test-zarr/cmip6-tasmax-sample.zarr&decode_times=false"
+```
+
+**Response:**
+```json
+["tasmax"]
+```
+
+---
+
+### 2. Variable Info
+
+**Endpoint:** `/xarray/info`
+
+**Purpose:** Get metadata for a specific variable.
+
+**URL Pattern:**
+```
+/xarray/info?url={zarr_url}&variable={var}&decode_times=false
+```
+
+**Example:**
+```bash
+curl "https://rmhtitiler-ghcyd7g0bxdvc2hc.eastus-01.azurewebsites.net/xarray/info?url=https://rmhazuregeo.blob.core.windows.net/silver-cogs/test-zarr/cmip6-tasmax-sample.zarr&variable=tasmax&decode_times=false"
+```
+
+**Response includes:**
+- `bounds`: Geographic extent
+- `crs`: Coordinate reference system
+- `band_metadata`: Metadata for each time step
+
+---
+
+### 3. Tiles (XYZ)
+
+**Endpoint:** `/xarray/tiles/{tileMatrixSetId}/{z}/{x}/{y}@{scale}x.{format}`
+
+**Purpose:** Get raster tiles from Zarr data.
+
+**⚠️ CRITICAL:** For temporal data, you **MUST** include `bidx` parameter or you will get "Maximum array limit reached" error.
+
+**URL Pattern:**
+```
+/xarray/tiles/WebMercatorQuad/{z}/{x}/{y}@1x.png?url={zarr_url}&variable={var}&decode_times=false&bidx=1
+```
+
+**Example (basic):**
+```bash
+curl "https://rmhtitiler-ghcyd7g0bxdvc2hc.eastus-01.azurewebsites.net/xarray/tiles/WebMercatorQuad/0/0/0@1x.png?url=https://rmhazuregeo.blob.core.windows.net/silver-cogs/test-zarr/cmip6-tasmax-sample.zarr&variable=tasmax&decode_times=false&bidx=1" --output tile.png
+```
+
+**Example (with colormap and rescaling):**
+```bash
+curl "https://rmhtitiler-ghcyd7g0bxdvc2hc.eastus-01.azurewebsites.net/xarray/tiles/WebMercatorQuad/0/0/0@1x.png?url=https://rmhazuregeo.blob.core.windows.net/silver-cogs/test-zarr/cmip6-tasmax-sample.zarr&variable=tasmax&decode_times=false&bidx=1&colormap_name=turbo&rescale=250,320" --output tile_colored.png
+```
+
+---
+
+### 4. Interactive Map Viewer
+
+**Endpoint:** `/xarray/{tileMatrixSetId}/map.html`
+
+**Purpose:** Interactive HTML map viewer for Zarr data.
+
+**URL Pattern:**
+```
+/xarray/WebMercatorQuad/map.html?url={zarr_url}&variable={var}&decode_times=false&bidx=1&colormap_name=turbo&rescale=250,320
+```
+
+**Example:**
+```
+https://rmhtitiler-ghcyd7g0bxdvc2hc.eastus-01.azurewebsites.net/xarray/WebMercatorQuad/map.html?url=https://rmhazuregeo.blob.core.windows.net/silver-cogs/test-zarr/cmip6-tasmax-sample.zarr&variable=tasmax&decode_times=false&bidx=1&colormap_name=turbo&rescale=250,320
+```
+
+---
+
+### Query Parameters Reference
+
+| Parameter | Type | Description | Example |
+|-----------|------|-------------|---------|
+| `url` | string | **Required.** Zarr store URL | `https://account.blob.../store.zarr` |
+| `variable` | string | **Required.** Variable name | `tasmax`, `pr` |
+| `bidx` | int | **Required for temporal.** Time step (1-based) | `1`, `365` |
+| `decode_times` | bool | Disable time decoding | `false` |
+| `colormap_name` | string | Named colormap | `viridis`, `turbo`, `plasma` |
+| `rescale` | string | Min,max scaling | `250,320` |
+| `nodata` | float | NoData value | `-9999` |
+
+---
+
+### Common Errors
+
+| Error | Cause | Solution |
+|-------|-------|----------|
+| `Maximum array limit reached` | Missing `bidx` | Add `&bidx=1` |
+| `unable to decode time units` | CMIP6 noleap calendar | Add `&decode_times=false` |
+| `Internal Server Error` | Wrong URL format | Use HTTPS or full ABFS URL |
+
+---
+
+### Test Data
+
+A sample CMIP6 Zarr is available for testing:
+
+| Property | Value |
+|----------|-------|
+| Storage Account | `rmhazuregeo` |
+| Container | `silver-cogs` |
+| Path | `test-zarr/cmip6-tasmax-sample.zarr` |
+| Variable | `tasmax` (Daily Max Temperature, Kelvin) |
+| Time Steps | 730 (2 years) |
+| Coverage | Global (0.25° resolution) |
+
+---
+
+## Quick Reference: Xarray URLs
+
+| Purpose | URL |
+|---------|-----|
+| **Variables** | `/xarray/variables?url={zarr}&decode_times=false` |
+| **Info** | `/xarray/info?url={zarr}&variable={var}&decode_times=false` |
+| **Tile** | `/xarray/tiles/WebMercatorQuad/{z}/{x}/{y}@1x.png?url={zarr}&variable={var}&decode_times=false&bidx=1` |
+| **Viewer** | `/xarray/WebMercatorQuad/map.html?url={zarr}&variable={var}&decode_times=false&bidx=1&colormap_name=turbo&rescale=250,320` |
+
+---
+
 **Status:** ✅ Production Ready
-**Last Updated:** November 7, 2025
-**Version:** 1.0.2
+**Last Updated:** December 17, 2025
+**Version:** 1.1.0 (Added Xarray/Zarr endpoints)
