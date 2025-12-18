@@ -4,58 +4,31 @@ __pycache__/
 *$py.class
 *.so
 .Python
-build/
-develop-eggs/
-dist/
-downloads/
-eggs/
-.eggs/
-lib/
-lib64/
-parts/
-sdist/
-var/
-wheels/
-*.egg-info/
-.installed.cfg
-*.egg
-
-# Virtual environments
-venv/
 env/
-ENV/
-.venv
+venv/
+*.egg-info/
 
-# IDEs
+# IDE
 .vscode/
 .idea/
 *.swp
 *.swo
-*~
-
-# OS
-.DS_Store
-Thumbs.db
-
-# Environment variables
-.env
-.env.local
-*.env
 
 # Docker
-*.log
+.dockerignore
 
-# Local data files (test COGs)
-data/
-*.tif
-*.tiff
-
-# Azure
+# Azure credentials (sensitive!)
 .azure/
+*.pem
+*.key
+
+# Environment (contains credentials)
+.env
+.env.local
+.env.test
+
+# Docker Compose with credentials (use docker-compose.yml.template)
+docker-compose.yml
 
 # Logs
-logs/
 *.log
-
-# Documentation archives (historical development artifacts)
-docs/archive/

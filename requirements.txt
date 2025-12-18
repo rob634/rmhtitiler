@@ -7,11 +7,22 @@ azure-identity>=1.15.0
 # Azure Key Vault - for password retrieval (key_vault auth mode)
 azure-keyvault-secrets>=4.7.0
 
+# TiTiler-pgSTAC and dependencies
+titiler.pgstac>=1.0.0
+
 # Xarray/Zarr support for multidimensional data
 titiler.xarray>=0.18.0
 
 # Azure Data Lake filesystem for fsspec (Zarr access)
 adlfs>=2024.4.1
+
+# Database
+asyncpg>=0.29.0
+psycopg2-binary>=2.9.9
+
+# Additional dependencies
+pydantic>=2.0.0
+pydantic-settings>=2.0.0
 
 # ============================================================================
 # PLANETARY COMPUTER SUPPORT

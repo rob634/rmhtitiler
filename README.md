@@ -1,456 +1,366 @@
-# TiTiler with Azure Managed Identity
+# TiTiler-pgSTAC with Azure OAuth Authentication
 
-**Version: 0.1.3**
+A production-ready TiTiler-pgSTAC deployment with Azure Managed Identity OAuth authentication for secure, multi-container access to Azure Blob Storage.
 
-A production-ready TiTiler deployment that uses Azure Managed Identity to securely access Cloud-Optimized GeoTIFFs (COGs) and multidimensional data (Zarr/NetCDF) in Azure Blob Storage.
-
-## Features
-
-- **Secure Authentication**: Uses Azure Managed Identity - no credentials in code
-- **COG Support**: Cloud-Optimized GeoTIFFs via `/cog/*` endpoints
-- **Multidimensional Support**: Zarr and NetCDF via `/xarray/*` endpoints (NEW in 0.1.3)
-- **Planetary Computer Ready**: Works with Microsoft Planetary Computer datasets
-- **Local Development**: Full Docker Compose setup for local testing
-- **Production Ready**: Optimized for Azure App Service deployment
-- **Automatic Token Refresh**: Handles token expiration automatically
-- **GDAL Integration**: Leverages GDAL's `/vsiaz/` virtual file system
-- **fsspec Integration**: Uses `adlfs` for Zarr access via `abfs://` protocol
-- **Performance Optimized**: Multi-worker setup with GDAL caching
-
-## Quick Start
-
-### Local Development
-
-See [README-LOCAL.md](README-LOCAL.md) for detailed local development instructions.
-
-```bash
-# Start local server
-docker-compose up --build
-
-# Test with local file
-curl "http://localhost:8000/cog/info?url=/data/example.tif"
-```
+## 🚀 Quick Start
 
 ### Production Deployment
 
-See [docs/design.md](docs/design.md) for detailed architecture and deployment guide.
+**Live Instance**: Configure your deployed App Service URL
+
+**API Documentation**: `https://<your-app-name>.<ase-domain>/docs`
+
+### Local Development
 
 ```bash
-# Build and push to Azure Container Registry
-az acr build \
-  --registry yourregistry \
-  --image titiler-azure:latest \
-  --file Dockerfile \
-  .
+# Prerequisites: Docker, Docker Compose, Azure CLI
+az login
 
-# Deploy to Azure App Service (see docs/design.md for full steps)
+# Build and run
+docker-compose up --build
+
+# Test locally
+curl http://localhost:8000/healthz
 ```
 
-## Architecture
+## 📖 Features
 
-```
-┌─────────────────────────────────────────────────────────────┐
-│                     Azure Web App                            │
-│  ┌────────────────────────────────────────────────────────┐ │
-│  │              TiTiler Container                         │ │
-│  │                                                         │ │
-│  │  1. Startup: Get Azure AD token via Managed Identity  │ │
-│  │  2. Middleware: Refresh token before each request     │ │
-│  │  3. Set AZURE_STORAGE_ACCESS_TOKEN env var           │ │
-│  │  4. GDAL reads from /vsiaz/container/file.tif        │ │
-│  │  5. TiTiler serves tiles normally                     │ │
-│  └────────────────────────────────────────────────────────┘ │
-└─────────────────────────────────────────────────────────────┘
-                              │
-                              ▼
-                    ┌──────────────────────┐
-                    │  Azure Blob Storage  │
-                    │  (with RBAC access)  │
-                    └──────────────────────┘
-```
+- ✅ **Azure Managed Identity OAuth** - No secrets in code, RBAC-based access
+- ✅ **Multi-Container Support** - Single OAuth token for ALL containers
+- ✅ **Three Access Patterns** - Direct COG, pgSTAC Search, MosaicJSON
+- ✅ **Production Ready** - 4 Uvicorn workers, GDAL optimizations
+- ✅ **PostgreSQL pgSTAC** - Full STAC catalog integration
+- ✅ **Interactive Viewers** - Built-in map viewers for all endpoints
 
-## API Endpoints
+## 🎯 Usage Examples
 
-### Health Check
+### 1. Direct COG Access
+
+**Get COG Info:**
 ```bash
-GET /healthz
+curl "https://<your-app-url>/cog/info?url=/vsiaz/<container>/<path-to-cog>.tif"
 ```
 
-Returns server health and authentication status.
-
-### Root Information
+**Get Tile:**
 ```bash
-GET /
+curl "https://<your-app-url>/cog/tiles/WebMercatorQuad/14/11454/6143.png?url=/vsiaz/<container>/<path-to-cog>.tif" -o tile.png
 ```
 
-Returns API information and example endpoints.
+**Interactive Viewer:**
+```
+https://<your-app-url>/cog/WebMercatorQuad/map.html?url=/vsiaz/<container>/<path-to-cog>.tif
+```
 
-### COG Info
+### 2. pgSTAC Search
+
+**Register Search:**
 ```bash
-GET /cog/info?url=<path>
+curl -X POST "https://<your-app-url>/searches/register" \
+  -H "Content-Type: application/json" \
+  -d '{"collections":["<collection-name>"],"limit":10}'
 ```
 
-Get metadata about a Cloud-Optimized GeoTIFF.
+**Response:**
+```json
+{
+  "id": "<search-hash-id>",
+  "links": [
+    {
+      "href": "https://<your-app-url>/searches/<search-hash-id>/WebMercatorQuad/tilejson.json",
+      "rel": "tilejson"
+    }
+  ]
+}
+```
 
-**Examples:**
+**Get Tile from Search:**
 ```bash
-# Local file
-curl "http://localhost:8000/cog/info?url=/data/example.tif"
-
-# Azure Blob Storage
-curl "http://your-app.azurewebsites.net/cog/info?url=/vsiaz/container/path/to/file.tif"
+curl "https://<your-app-url>/searches/<search-hash-id>/tiles/WebMercatorQuad/14/11454/6143.png?assets=data" -o search_tile.png
 ```
 
-### COG Tiles
+**Search Viewer:**
+```
+https://<your-app-url>/searches/{search_id}/WebMercatorQuad/map.html?assets=data
+```
+
+### 3. MosaicJSON
+
+**Create Mosaic:**
 ```bash
-GET /cog/tiles/{tileMatrixSetId}/{z}/{x}/{y}.{format}?url=<path>
+curl -X POST "https://<your-app-url>/mosaicjson/" \
+  -H "Content-Type: application/json" \
+  -d @mosaic.json
 ```
 
-Get a tile from a COG.
-
-**Examples:**
-```bash
-# Get tile from Azure Storage
-curl "http://your-app.azurewebsites.net/cog/tiles/WebMercatorQuad/14/3876/6325.png?url=/vsiaz/container/path/to/file.tif"
+**Mosaic Tiles:**
+```
+https://<your-app-url>/mosaicjson/tiles/WebMercatorQuad/{z}/{x}/{y}.png
 ```
 
-### Interactive Map Viewer
-```bash
-GET /cog/{tileMatrixSetId}/map.html?url=<path>
-```
-
-View COG in an interactive web map with pan/zoom.
-
-**Examples:**
-```bash
-# View in browser
-https://your-app.azurewebsites.net/cog/WebMercatorQuad/map.html?url=/vsiaz/container/path/to/file.tif
-```
-
-**Note:** There is NO `/cog/viewer` endpoint - the viewer is at `/cog/{tileMatrixSetId}/map.html`
-
-### Xarray/Zarr Endpoints (NEW in 0.1.3)
-
-```bash
-# List variables in a Zarr store
-GET /xarray/variables?url=<zarr_url>
-
-# Get info for a specific variable
-GET /xarray/info?url=<zarr_url>&variable=<var>
-
-# Get tiles
-GET /xarray/tiles/{tileMatrixSetId}/{z}/{x}/{y}.{format}?url=<zarr_url>&variable=<var>
-```
-
-**Examples with Planetary Computer (public data):**
-```bash
-# gridMET meteorological data (Contiguous US, 1979-2020)
-curl "http://localhost:8001/xarray/variables?url=https://ai4edataeuwest.blob.core.windows.net/gridmet/gridmet.zarr"
-
-# Daymet daily Hawaii climate data
-curl "http://localhost:8001/xarray/variables?url=https://daymeteuwest.blob.core.windows.net/daymet-zarr/daily/hi.zarr"
-
-# Get info for a specific variable
-curl "http://localhost:8001/xarray/info?url=https://ai4edataeuwest.blob.core.windows.net/gridmet/gridmet.zarr&variable=air_temperature"
-```
-
-### Additional COG Endpoints
-
-- **TileJSON**: `/cog/{tileMatrixSetId}/tilejson.json?url=<path>` - Get TileJSON spec
-- **Preview**: `/cog/preview.png?url=<path>` - Get static preview image
-- **Statistics**: `/cog/statistics?url=<path>` - Get band statistics
-- **GeoJSON**: `/cog/info.geojson?url=<path>` - Get bounds as GeoJSON
-- **WMTS**: `/cog/{tileMatrixSetId}/WMTSCapabilities.xml?url=<path>` - Get WMTS capabilities
-
-For complete API reference, see [docs/TITILER-API-REFERENCE.md](docs/TITILER-API-REFERENCE.md)
-
-### Interactive Documentation
-
-FastAPI provides automatic interactive documentation:
-
-- **Swagger UI**: http://localhost:8000/docs
-- **ReDoc**: http://localhost:8000/redoc
-
-## Environment Variables
-
-### Required (Production)
-
-- `AZURE_STORAGE_ACCOUNT` - Your Azure Storage account name
-- `USE_AZURE_AUTH` - Set to `true` to enable Azure authentication
-
-### Optional (Production)
-
-- `LOCAL_MODE` - Set to `false` for production (default in production Dockerfile)
-- `CPL_VSIL_CURL_CACHE_SIZE` - GDAL cache size (default: 128000000)
-- `GDAL_CACHEMAX` - GDAL max cache in MB (default: 512)
-- `GDAL_HTTP_MULTIPLEX` - Enable HTTP/2 (default: YES)
-
-### Local Development Only
-
-- `AZURE_CLIENT_ID` - Service principal client ID (alternative to `az login`)
-- `AZURE_CLIENT_SECRET` - Service principal secret
-- `AZURE_TENANT_ID` - Azure tenant ID
-
-## File Structure
-
-```
-rmhtitiler/
-├── custom_main.py              # TiTiler app with Azure auth middleware
-├── Dockerfile                  # Production Docker image
-├── Dockerfile.local            # Local development Docker image
-├── docker-compose.yml          # Local development orchestration
-├── requirements.txt            # Production dependencies
-├── requirements-local.txt      # Local development dependencies
-├── .env.local.example          # Example environment variables
-├── README.md                   # This file
-├── README-LOCAL.md             # Local development guide
-├── design.md                   # Detailed architecture guide
-└── data/                       # Local test files (not in git)
-```
-
-## How It Works
+## 🏗️ Architecture
 
 ### Authentication Flow
 
-1. **Startup**: App acquires Azure Storage token via Managed Identity
-2. **Request**: Middleware checks if token is still valid
-3. **Refresh**: If token expires in <5 minutes, get new token
-4. **Environment**: Set `AZURE_STORAGE_ACCESS_TOKEN` env var
-5. **GDAL**: Reads file from `/vsiaz/` using the token
-6. **Response**: TiTiler processes and returns tiles
+```
+Azure App Service (Managed Identity)
+    ↓
+DefaultAzureCredential → get_token("https://storage.azure.com/.default")
+    ↓
+OAuth Bearer Token (24hr lifetime)
+    ↓
+GDAL /vsiaz/ handler → AZURE_STORAGE_ACCESS_TOKEN env var
+    ↓
+Azure Blob Storage (RBAC: Storage Blob Data Reader)
+```
 
-### Token Caching
+### Components
 
-- Tokens are cached in memory with thread-safe locking
-- Valid for ~60 minutes from Azure
-- Refreshed automatically 5 minutes before expiry
-- Shared across all uvicorn workers
+- **Application**: `custom_pgstac_main.py` - FastAPI app with OAuth middleware
+- **Base Image**: `ghcr.io/stac-utils/titiler-pgstac:latest`
+- **Database**: Azure PostgreSQL with pgSTAC extension
+- **Storage**: Azure Blob Storage (multi-container support)
+- **Registry**: Azure Container Registry (rmhazureacr)
+- **Hosting**: Azure App Service (Linux, Docker)
 
-### Managed Identity
+## 📁 Project Structure
 
-Azure Web Apps can have a "managed identity" - like a service account:
+```
+titilerpgstac/
+├── custom_pgstac_main.py      # Main application with OAuth middleware
+├── Dockerfile                  # Production image (Managed Identity)
+├── Dockerfile.local            # Local dev image (Azure CLI)
+├── docker-compose.yml          # Local development setup
+├── QA_DEPLOYMENT.md            # 📋 COMPLETE QA/Production deployment guide
+├── README.md                   # This file
+├── docs/
+│   ├── implementation/         # Implementation details & guides
+│   ├── analysis/              # Technical analysis & comparisons
+│   └── historical/            # Planning docs & historical context
+└── .gitignore                  # Prevents .azure/ credential leaks
+```
 
-- No passwords or keys needed in code
-- Azure handles authentication automatically
-- Can be granted RBAC permissions to resources
-- Works seamlessly with `DefaultAzureCredential`
+## 🔐 Security Features
 
-## Deployment
+1. **No Secrets in Code** - All authentication via Managed Identity
+2. **RBAC Least Privilege** - Storage Blob Data Reader role only
+3. **No Account Keys** - OAuth tokens only, no storage account keys
+4. **HTTPS Only** - All production traffic encrypted
+5. **Encrypted Connection Strings** - Database credentials in App Service config
 
-### Prerequisites
+## 🛠️ Development
 
-1. **Azure Container Registry (ACR)**
-2. **Azure App Service** (Linux, container support)
-3. **Azure Storage Account** with blob container
-4. **Permissions** to assign roles
+### Local Setup
 
-### Deployment Steps
+1. **Login to Azure:**
+   ```bash
+   az login
+   ```
 
-See [design.md](design.md) for complete step-by-step instructions.
+2. **Copy Azure credentials for Docker:**
+   ```bash
+   # Credentials are copied at build time (see Dockerfile.local)
+   docker-compose up --build
+   ```
 
-1. Build and push container to ACR
-2. Create Azure Web App from container image
-3. Enable system-assigned managed identity
-4. Set `AZURE_STORAGE_ACCOUNT` environment variable
-5. Grant "Storage Blob Data Reader" role to managed identity
-6. Test endpoints
+3. **Test locally:**
+   ```bash
+   curl "http://localhost:8000/healthz"
+   curl "http://localhost:8000/cog/info?url=/vsiaz/silver-cogs/namangan14aug2019_R2C2cog_cog_analysis.tif"
+   ```
 
-### Quick Deploy Commands
+### Hot Reload
+
+Changes to `custom_pgstac_main.py` are automatically detected via volume mount:
+
+```yaml
+volumes:
+  - ./custom_pgstac_main.py:/app/custom_pgstac_main.py
+command: ["uvicorn", "custom_pgstac_main:app", "--host", "0.0.0.0", "--port", "8000", "--reload"]
+```
+
+## 🚢 Deployment
+
+**For QA/Production Deployment**: See [QA_DEPLOYMENT.md](QA_DEPLOYMENT.md) for the **complete deployment guide** including:
+- All required environment variables
+- RBAC permissions setup (system-assigned + user-assigned managed identities)
+- PostgreSQL managed identity configuration
+- Step-by-step deployment workflow
+- Troubleshooting guide
+
+**Quick Deploy:**
 
 ```bash
-# 1. Build and push
-az acr build --registry yourregistry --image titiler-azure:latest .
+# Set variables
+ACR_NAME="rmhazureacr"
+IMAGE_NAME="titiler-pgstac"
+APP_NAME="rmhtitiler"
+RESOURCE_GROUP="rmhazure_rg"
 
-# 2. Create web app
-az webapp create \
-  --resource-group your-rg \
-  --plan your-plan \
-  --name your-titiler-app \
-  --deployment-container-image-name yourregistry.azurecr.io/titiler-azure:latest
+# Build and push
+docker build --platform linux/amd64 -t $ACR_NAME.azurecr.io/$IMAGE_NAME:latest -f Dockerfile .
+docker push $ACR_NAME.azurecr.io/$IMAGE_NAME:latest
 
-# 3. Enable managed identity
-az webapp identity assign \
-  --resource-group your-rg \
-  --name your-titiler-app
-
-# 4. Set storage account
+# Update App Service
 az webapp config appsettings set \
-  --resource-group your-rg \
-  --name your-titiler-app \
-  --settings AZURE_STORAGE_ACCOUNT=yourstorageaccount
+  --name $APP_NAME \
+  --resource-group $RESOURCE_GROUP \
+  --settings DOCKER_CUSTOM_IMAGE_NAME="$ACR_NAME.azurecr.io/$IMAGE_NAME:latest"
 
-# 5. Grant access (use principalId from step 3)
-az role assignment create \
-  --role "Storage Blob Data Reader" \
-  --assignee-object-id <principalId> \
-  --scope /subscriptions/<sub>/resourceGroups/<rg>/providers/Microsoft.Storage/storageAccounts/<account>
+az webapp restart --name $APP_NAME --resource-group $RESOURCE_GROUP
 ```
 
-## Monitoring
+## 📊 Monitoring
 
-### View Logs
+### Health Endpoints
+
+The application provides two health endpoints for Kubernetes/Azure health probes:
+
+| Endpoint | Purpose | When to Use |
+|----------|---------|-------------|
+| `/livez` | Liveness probe | Azure startup probe - responds immediately |
+| `/healthz` | Readiness probe | Full health check including database status |
+
+#### Liveness Probe (`/livez`)
 
 ```bash
-# Tail logs in real-time
-az webapp log tail \
-  --resource-group your-rg \
-  --name your-titiler-app
+curl https://<your-app-url>/livez
 ```
 
-**Look for:**
-- "Azure authentication initialized successfully"
-- "Token acquired, expires at ..."
-- Token refresh messages every ~55 minutes
+**Response:**
+```json
+{
+  "status": "alive",
+  "message": "Container is running"
+}
+```
 
-### Health Endpoint
+This endpoint responds immediately after container startup, before database connections are established. Configure Azure App Service to use this for the **startup probe** to prevent container restarts during slow MI token acquisition.
+
+**Azure App Service Configuration:**
+```bash
+az webapp config set --name <app-name> --resource-group <rg> \
+  --startup-file "" \
+  --generic-configurations '{"healthCheckPath": "/livez"}'
+```
+
+#### Readiness Probe (`/healthz`)
 
 ```bash
-curl https://your-app.azurewebsites.net/healthz
+curl https://<your-app-url>/healthz
 ```
 
-Returns:
+**Response (healthy):**
 ```json
 {
   "status": "healthy",
   "azure_auth_enabled": true,
   "local_mode": false,
-  "storage_account": "yourstorageaccount",
-  "token_expires_in_seconds": 3300
+  "auth_type": "OAuth Bearer Token",
+  "storage_account": "rmhazuregeo",
+  "token_expires_in_seconds": 86197,
+  "token_scope": "ALL containers (RBAC-based)",
+  "token_status": "active",
+  "database_status": "connected"
 }
 ```
 
-## Troubleshooting
-
-### Local Development Issues
-
-See [README-LOCAL.md](README-LOCAL.md) for local troubleshooting.
-
-### Production Issues
-
-#### "DefaultAzureCredential failed to retrieve a token"
-
-**Causes:**
-- Managed identity not enabled
-- App restarted before identity propagated
-
-**Solutions:**
-```bash
-# Verify identity is enabled
-az webapp identity show --resource-group your-rg --name your-app
-
-# Restart app
-az webapp restart --resource-group your-rg --name your-app
+**Response (degraded - database not connected):**
+```json
+{
+  "status": "degraded",
+  "azure_auth_enabled": true,
+  "database_status": "not_connected"
+}
 ```
 
-#### "403 Forbidden" accessing storage
-
-**Causes:**
-- No role assignment
-- Permissions not propagated yet
-- Storage firewall blocking traffic
-
-**Solutions:**
-```bash
-# Verify role assignment
-az role assignment list \
-  --assignee <principalId> \
-  --scope <storage-account-resource-id>
-
-# Wait 5-10 minutes for propagation
-
-# Check storage firewall
-az storage account show \
-  --name youraccount \
-  --query networkRuleSet
-```
-
-#### Slow Performance
-
-**Solutions:**
-
-1. **Increase workers:**
-```dockerfile
-CMD ["uvicorn", "custom_main:app", "--host", "0.0.0.0", "--port", "8000", "--workers", "8"]
-```
-
-2. **Tune GDAL cache:**
-```bash
-az webapp config appsettings set \
-  --settings CPL_VSIL_CURL_CACHE_SIZE=256000000 GDAL_CACHEMAX=1024
-```
-
-3. **Scale up App Service Plan:**
-```bash
-az appservice plan update \
-  --name your-plan \
-  --resource-group your-rg \
-  --sku P2V2
-```
-
-## Security Best Practices
-
-1. **Least Privilege**: Use "Storage Blob Data Reader" role, not broader roles
-2. **Network Security**: Configure storage account firewall to only allow App Service
-3. **Monitoring**: Enable Application Insights for tracking and alerts
-4. **Updates**: Regularly rebuild container with latest base image
-5. **Audit**: Enable Azure Monitor logs on storage account
-
-## Performance Optimization
-
-### GDAL Configuration
-
-The following environment variables optimize performance:
+### Logs
 
 ```bash
-CPL_VSIL_CURL_CACHE_SIZE=128000000  # 128MB cache for remote files
-GDAL_CACHEMAX=512                    # 512MB GDAL cache
-GDAL_HTTP_MULTIPLEX=YES              # HTTP/2 multiplexing
-GDAL_DISABLE_READDIR_ON_OPEN=EMPTY_DIR  # Don't list directories
+# Stream logs
+az webapp log tail --name rmhtitiler --resource-group rmhazure_rg
+
+# Download logs
+az webapp log download --name rmhtitiler --resource-group rmhazure_rg --log-file logs.zip
 ```
 
-### Uvicorn Workers
+## 🔧 Configuration
 
-- Default: 4 workers
-- Recommendation: 2-4x number of CPU cores
-- Modify in Dockerfile CMD line
+### Environment Variables
 
-### Scaling
+| Variable | Description | Local | Production |
+|----------|-------------|-------|------------|
+| `LOCAL_MODE` | Use Azure CLI credentials | `true` | `false` |
+| `USE_AZURE_AUTH` | Enable OAuth authentication | `true` | `true` |
+| `AZURE_STORAGE_ACCOUNT` | Storage account name | `rmhazuregeo` | `rmhazuregeo` |
+| `DATABASE_URL` | PostgreSQL connection string | Set in docker-compose.yml | Set in App Service |
+| `GDAL_*` | GDAL optimizations | Auto | Auto |
 
-- **Vertical**: Increase App Service Plan size (more CPU/RAM)
-- **Horizontal**: Enable auto-scale rules based on CPU/memory
-- Each instance gets its own managed identity token
+### GDAL Optimizations
 
-## Advanced Topics
+```bash
+CPL_VSIL_CURL_ALLOWED_EXTENSIONS=".tif,.tiff"
+GDAL_DISABLE_READDIR_ON_OPEN="EMPTY_DIR"
+GDAL_HTTP_MERGE_CONSECUTIVE_RANGES="YES"
+GDAL_HTTP_MULTIPLEX="YES"
+GDAL_HTTP_VERSION="2"
+VSI_CACHE="TRUE"
+VSI_CACHE_SIZE="536870912"  # 512MB
+```
 
-### Multiple Storage Accounts
+## 🐛 Troubleshooting
 
-See [docs/design.md](docs/design.md#multiple-storage-accounts) for supporting multiple accounts.
+### OAuth Token Issues
 
-### User-Assigned Managed Identity
+**Check Managed Identity:**
+```bash
+az webapp identity show --name rmhtitiler --resource-group rmhazure_rg
+```
 
-See [docs/design.md](docs/design.md#user-assigned-managed-identity) for using specific identities.
+**Check RBAC Assignments:**
+```bash
+PRINCIPAL_ID=$(az webapp identity show --name rmhtitiler --resource-group rmhazure_rg --query principalId -o tsv)
+az role assignment list --assignee $PRINCIPAL_ID
+```
 
-### Application Insights Integration
+### Container Won't Start
 
-See [docs/design.md](docs/design.md#integration-with-application-insights) for telemetry.
+**Check logs:**
+```bash
+az webapp log tail --name rmhtitiler --resource-group rmhazure_rg
+```
 
-## Resources
+**Common issues:**
+- Missing DATABASE_URL environment variable
+- RBAC permissions not propagated (wait 5-10 minutes)
+- ACR credentials not set
+
+### HTTP 403 Errors
+
+1. Verify RBAC role assignment exists
+2. Wait 5-10 minutes for propagation
+3. Check storage account firewall rules
+4. Verify OAuth token is being acquired (check logs)
+
+## 📚 Resources
 
 - [TiTiler Documentation](https://developmentseed.org/titiler/)
-- [GDAL Virtual File Systems](https://gdal.org/user/virtual_file_systems.html#vsiaz-microsoft-azure-blob-files)
-- [Azure Managed Identities](https://learn.microsoft.com/en-us/entra/identity/managed-identities-azure-resources/overview)
-- [DefaultAzureCredential](https://learn.microsoft.com/en-us/python/api/azure-identity/azure.identity.defaultazurecredential)
-- [Azure App Service Containers](https://learn.microsoft.com/en-us/azure/app-service/configure-custom-container)
+- [TiTiler-pgSTAC](https://stac-utils.github.io/titiler-pgstac/)
+- [pgSTAC](https://github.com/stac-utils/pgstac)
+- [GDAL /vsiaz/](https://gdal.org/user/virtual_file_systems.html#vsiaz-microsoft-azure-blob-files)
+- [Azure Managed Identity](https://learn.microsoft.com/en-us/azure/active-directory/managed-identities-azure-resources/)
+- [Azure DefaultAzureCredential](https://learn.microsoft.com/en-us/python/api/azure-identity/azure.identity.defaultazurecredential)
 
-## Support
+## 📝 License
 
-For issues specific to this implementation, please refer to:
-- [docs/design.md](docs/design.md) - Architecture and implementation details
-- [README-LOCAL.md](README-LOCAL.md) - Local development troubleshooting
-- [docs/DOCUMENTATION-INDEX.md](docs/DOCUMENTATION-INDEX.md) - Complete documentation index
+This project uses:
+- TiTiler (MIT License)
+- TiTiler-pgSTAC (MIT License)
+- GDAL (MIT/X License)
 
-For TiTiler issues, see the [TiTiler GitHub repository](https://github.com/developmentseed/titiler).
+## 🙏 Acknowledgments
 
-## License
-
-This implementation builds on TiTiler, which is licensed under the MIT License.
+Built with:
+- [TiTiler](https://github.com/developmentseed/titiler) by Development Seed
+- [TiTiler-pgSTAC](https://github.com/stac-utils/titiler-pgstac) by STAC Utils
+- [pgSTAC](https://github.com/stac-utils/pgstac) by STAC Utils
+- [Azure SDK for Python](https://github.com/Azure/azure-sdk-for-python) by Microsoft

@@ -1,0 +1,47 @@
+# =============================================================================
+# Docker Compose Template for TiTiler-pgSTAC Local Development
+# =============================================================================
+#
+# SETUP INSTRUCTIONS:
+# 1. Copy this file to docker-compose.yml
+# 2. Copy .env.template to .env and fill in your values
+# 3. Run: docker-compose up --build
+#
+# For new tenant deployments, see: QA_DEPLOYMENT.md
+# =============================================================================
+
+version: '3.8'
+
+services:
+  titiler-pgstac:
+    build:
+      context: .
+      dockerfile: Dockerfile.local
+    environment:
+      # Development mode settings
+      LOCAL_MODE: "true"
+      USE_AZURE_AUTH: "true"
+
+      # Azure Storage (from .env file)
+      AZURE_STORAGE_ACCOUNT: "${AZURE_STORAGE_ACCOUNT}"
+
+      # PostgreSQL Connection (from .env file)
+      # For local dev, use DATABASE_URL directly or individual vars
+      DATABASE_URL: "postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@${POSTGRES_HOST}:${POSTGRES_PORT}/${POSTGRES_DB}?sslmode=require"
+
+      # GDAL Optimizations
+      CPL_VSIL_CURL_ALLOWED_EXTENSIONS: ".tif,.tiff"
+      GDAL_DISABLE_READDIR_ON_OPEN: "EMPTY_DIR"
+      GDAL_HTTP_MERGE_CONSECUTIVE_RANGES: "YES"
+      GDAL_HTTP_MULTIPLEX: "YES"
+      GDAL_HTTP_VERSION: "2"
+      VSI_CACHE: "TRUE"
+      VSI_CACHE_SIZE: "536870912"
+
+      # Azure CLI credentials directory (for local OAuth)
+      AZURE_CONFIG_DIR: "/root/.azure"
+    ports:
+      - "8000:8000"
+    volumes:
+      - ./custom_pgstac_main.py:/app/custom_pgstac_main.py
+    command: ["uvicorn", "custom_pgstac_main:app", "--host", "0.0.0.0", "--port", "8000", "--reload"]
