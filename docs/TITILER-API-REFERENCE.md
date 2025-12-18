@@ -846,6 +846,201 @@ A sample CMIP6 Zarr is available for testing:
 
 ---
 
+## Data Extraction Endpoints
+
+TiTiler provides several endpoints for extracting raster data as files or values. These work for both COG (`/cog/*`) and Zarr (`/xarray/*`) data.
+
+### Output Formats
+
+| Format | Extension | Description | Use Case |
+|--------|-----------|-------------|----------|
+| **GeoTIFF** | `.tif` | Georeferenced raster | GIS analysis, further processing |
+| **PNG** | `.png` | Rendered image with colormap | Visualization, reports |
+| **JPEG** | `.jpg` | Compressed image | Web display |
+| **WebP** | `.webp` | Modern compressed format | Web applications |
+| **NumPy** | `.npy` | Raw array data | Python/scientific analysis |
+
+---
+
+### 1. Bounding Box Extraction
+
+**Endpoint:** `GET /cog/bbox/{minx},{miny},{maxx},{maxy}.{format}`
+
+**Purpose:** Extract raster data within a geographic bounding box.
+
+**Parameters:**
+| Parameter | Required | Description |
+|-----------|----------|-------------|
+| `minx, miny, maxx, maxy` | Yes | Bounding box coordinates (path) |
+| `format` | Yes | Output format: `tif`, `png`, `jpg`, `webp`, `npy` |
+| `url` | Yes | Dataset URL |
+| `bidx` | For Zarr | Band index (1-based) for temporal data |
+| `width`, `height` | No | Output dimensions (alternative path format) |
+| `colormap_name` | No | Named colormap for PNG/JPG |
+| `rescale` | No | Min,max for scaling |
+| `nodata` | No | NoData value override |
+
+**URL Patterns:**
+```bash
+# Auto-sized output (native resolution within limits)
+/cog/bbox/{minx},{miny},{maxx},{maxy}.tif?url={cog_url}
+
+# Specific output dimensions
+/cog/bbox/{minx},{miny},{maxx},{maxy}/{width}x{height}.tif?url={cog_url}
+```
+
+**Example - Extract US region as GeoTIFF:**
+```bash
+curl "https://rmhtitiler.../xarray/bbox/-125,25,-65,50.tif?url=https://rmhazuregeo.blob.core.windows.net/silver-cogs/test-zarr/cmip6-tasmax-sample.zarr&variable=tasmax&decode_times=false&bidx=1" -o us_extract.tif
+```
+
+**Example - Extract with specific dimensions and colormap:**
+```bash
+curl "https://rmhtitiler.../xarray/bbox/-125,25,-65,50/512x256.png?url=...&variable=tasmax&decode_times=false&bidx=1&colormap_name=turbo&rescale=250,320" -o us_temp.png
+```
+
+**Response:**
+- Binary file in requested format
+- GeoTIFF includes full georeference metadata
+
+---
+
+### 2. Point Query
+
+**Endpoint:** `GET /cog/point/{lon},{lat}`
+
+**Purpose:** Get raster value(s) at a specific coordinate.
+
+**Parameters:**
+| Parameter | Required | Description |
+|-----------|----------|-------------|
+| `lon, lat` | Yes | Coordinates (path) |
+| `url` | Yes | Dataset URL |
+| `bidx` | For Zarr | Band index for temporal data |
+| `coord_crs` | No | Input coordinate CRS (default: EPSG:4326) |
+
+**Example:**
+```bash
+curl "https://rmhtitiler.../xarray/point/-77.0,38.9?url=...&variable=tasmax&decode_times=false&bidx=1"
+```
+
+**Response:**
+```json
+{
+  "coordinates": [-77.0, 38.9],
+  "values": [279.81634521484375],
+  "band_names": ["b1"]
+}
+```
+
+---
+
+### 3. GeoJSON Feature Extraction (Clip to Polygon)
+
+**Endpoint:** `POST /cog/feature.{format}`
+
+**Purpose:** Clip raster data to an arbitrary GeoJSON polygon.
+
+**Parameters:**
+| Parameter | Required | Description |
+|-----------|----------|-------------|
+| `format` | Yes | Output format: `tif`, `png`, `jpg`, `npy` |
+| `url` | Yes | Dataset URL |
+| `bidx` | For Zarr | Band index |
+| `max_size` | No | Maximum output dimension |
+| **Body** | Yes | GeoJSON Feature with geometry |
+
+**Request Body:**
+```json
+{
+  "type": "Feature",
+  "properties": {},
+  "geometry": {
+    "type": "Polygon",
+    "coordinates": [[
+      [-80, 35], [-75, 35], [-75, 40], [-80, 40], [-80, 35]
+    ]]
+  }
+}
+```
+
+**Example:**
+```bash
+curl -X POST "https://rmhtitiler.../xarray/feature.tif?url=...&variable=tasmax&decode_times=false&bidx=1&max_size=512" \
+  -H "Content-Type: application/json" \
+  -d '{"type":"Feature","properties":{},"geometry":{"type":"Polygon","coordinates":[[[-80,35],[-75,35],[-75,40],[-80,40],[-80,35]]]}}' \
+  -o clipped.tif
+```
+
+**Response:**
+- Raster clipped to polygon bounds
+- Pixels outside polygon are masked/nodata
+
+---
+
+### 4. Statistics for Region
+
+**Endpoint:** `POST /cog/statistics`
+
+**Purpose:** Calculate statistics for a GeoJSON polygon region.
+
+**Parameters:**
+| Parameter | Required | Description |
+|-----------|----------|-------------|
+| `url` | Yes | Dataset URL |
+| `bidx` | For Zarr | Band index |
+| **Body** | Yes | GeoJSON Feature with geometry |
+
+**Example:**
+```bash
+curl -X POST "https://rmhtitiler.../xarray/statistics?url=...&variable=tasmax&decode_times=false&bidx=1" \
+  -H "Content-Type: application/json" \
+  -d '{"type":"Feature","properties":{},"geometry":{"type":"Polygon","coordinates":[[[-80,35],[-75,35],[-75,40],[-80,40],[-80,35]]]}}'
+```
+
+**Response:**
+```json
+{
+  "type": "Feature",
+  "geometry": {...},
+  "properties": {
+    "statistics": {
+      "b1": {
+        "min": 271.48,
+        "max": 293.18,
+        "mean": 282.13,
+        "std": 5.35,
+        "count": 400,
+        "median": 282.16,
+        "percentile_2": 271.89,
+        "percentile_98": 290.92,
+        "histogram": [[27, 26, 42, ...], [271.48, 273.65, ...]],
+        "valid_percent": 100.0,
+        "valid_pixels": 400,
+        "masked_pixels": 0
+      }
+    }
+  }
+}
+```
+
+---
+
+### Quick Reference: Extraction Endpoints
+
+| Purpose | Method | Endpoint |
+|---------|--------|----------|
+| **Bbox → GeoTIFF** | GET | `/cog/bbox/{minx},{miny},{maxx},{maxy}.tif?url=...` |
+| **Bbox → PNG** | GET | `/cog/bbox/{minx},{miny},{maxx},{maxy}.png?url=...&colormap_name=viridis` |
+| **Bbox sized** | GET | `/cog/bbox/{minx},{miny},{maxx},{maxy}/{w}x{h}.tif?url=...` |
+| **Point value** | GET | `/cog/point/{lon},{lat}?url=...` |
+| **Clip to polygon** | POST | `/cog/feature.tif?url=...` + GeoJSON body |
+| **Region statistics** | POST | `/cog/statistics?url=...` + GeoJSON body |
+
+**Note:** Replace `/cog/` with `/xarray/` for Zarr data, adding `&variable=...&decode_times=false&bidx=1`.
+
+---
+
 **Status:** ✅ Production Ready
-**Last Updated:** December 17, 2025
-**Version:** 1.1.0 (Added Xarray/Zarr endpoints)
+**Last Updated:** December 18, 2025
+**Version:** 1.2.0 (Added Data Extraction endpoints)
