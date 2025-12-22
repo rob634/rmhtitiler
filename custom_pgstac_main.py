@@ -30,6 +30,7 @@ import os
 import re
 import asyncio
 import logging
+import time
 from datetime import datetime, timezone
 from threading import Lock
 from typing import Optional, Any, Dict
@@ -83,6 +84,14 @@ oauth_token_cache = {
 postgres_token_cache = {
     "token": None,
     "expires_at": None,
+    "lock": Lock()
+}
+
+# Database connection error cache (for health check reporting)
+db_error_cache = {
+    "last_error": None,
+    "last_error_time": None,
+    "last_success_time": None,
     "lock": Lock()
 }
 
@@ -1148,33 +1157,87 @@ async def liveness():
 async def health(response: Response):
     """
     Readiness probe - full health check with diagnostic details.
-    
+
     Returns HTTP 200 for healthy, HTTP 503 for degraded/unhealthy.
     Response body always includes detailed status for debugging.
-    
+
     Status levels:
         - healthy: All systems operational (HTTP 200)
         - degraded: App running but some features unavailable (HTTP 503)
         - unhealthy: Critical failure (HTTP 503)
-    
+
     Checks performed:
-        1. Database connection (required for pgSTAC searches)
+        1. Database connection with active ping (required for pgSTAC searches)
         2. Storage OAuth token (required for Azure blob access)
     """
     checks = {}
     issues = []
-    
-    # Check 1: Database connection
+
+    # Check 1: Database connection with ACTIVE PING
     # titiler-pgstac uses "dbpool" attribute, not "pool"
-    db_connected = hasattr(app.state, "dbpool") and app.state.dbpool is not None
+    db_pool_exists = hasattr(app.state, "dbpool") and app.state.dbpool is not None
+    db_connected = False
+    db_ping_error = None
+    db_ping_time_ms = None
+
+    if db_pool_exists:
+        # Perform actual database ping to verify connection works
+        ping_start = time.monotonic()
+        try:
+            async with app.state.dbpool.acquire() as conn:
+                await conn.fetchval("SELECT 1")
+            db_connected = True
+            db_ping_time_ms = round((time.monotonic() - ping_start) * 1000, 2)
+            # Record successful ping
+            with db_error_cache["lock"]:
+                db_error_cache["last_error"] = None
+                db_error_cache["last_success_time"] = datetime.now(timezone.utc)
+        except Exception as e:
+            db_ping_error = f"{type(e).__name__}: {str(e)}"
+            db_ping_time_ms = round((time.monotonic() - ping_start) * 1000, 2)
+            # Record ping failure
+            with db_error_cache["lock"]:
+                db_error_cache["last_error"] = db_ping_error
+                db_error_cache["last_error_time"] = datetime.now(timezone.utc)
+
+    # Build database check response
     checks["database"] = {
         "status": "ok" if db_connected else "fail",
+        "pool_exists": db_pool_exists,
+        "ping_success": db_connected,
         "required_for": ["pgSTAC searches", "mosaic endpoints"]
     }
-    if db_connected and DATABASE_URL:
-        checks["database"]["host"] = DATABASE_URL.split("@")[1].split("/")[0] if "@" in DATABASE_URL else "unknown"
-    if not db_connected:
-        issues.append("Database not connected - pgSTAC search endpoints will fail")
+
+    if db_ping_time_ms is not None:
+        checks["database"]["ping_time_ms"] = db_ping_time_ms
+
+    if DATABASE_URL:
+        try:
+            checks["database"]["host"] = DATABASE_URL.split("@")[1].split("/")[0] if "@" in DATABASE_URL else "unknown"
+        except (IndexError, AttributeError):
+            checks["database"]["host"] = "parse_error"
+
+    # Include error details
+    if db_ping_error:
+        checks["database"]["error"] = db_ping_error
+        issues.append(f"Database ping failed: {db_ping_error}")
+    elif not db_pool_exists:
+        # Check cached error from startup
+        with db_error_cache["lock"]:
+            cached_error = db_error_cache["last_error"]
+            cached_error_time = db_error_cache["last_error_time"]
+        if cached_error:
+            checks["database"]["error"] = cached_error
+            if cached_error_time:
+                checks["database"]["error_time"] = cached_error_time.isoformat()
+            issues.append(f"Database connection failed: {cached_error}")
+        else:
+            issues.append("Database pool not initialized - pgSTAC search endpoints will fail")
+
+    # Include last success time if available
+    with db_error_cache["lock"]:
+        if db_error_cache["last_success_time"]:
+            checks["database"]["last_success"] = db_error_cache["last_success_time"].isoformat()
     
     # Check 2: Storage OAuth token
     if USE_AZURE_AUTH:
@@ -1383,8 +1446,13 @@ async def startup_event():
             await connect_to_db(app, settings=db_settings)
             logger.info("✓ Database connection established")
             logger.info("  Connection pool created and ready")
+            # Record successful connection
+            with db_error_cache["lock"]:
+                db_error_cache["last_error"] = None
+                db_error_cache["last_success_time"] = datetime.now(timezone.utc)
         except Exception as e:
-            logger.error(f"✗ Failed to connect to database: {e}")
+            error_msg = f"{type(e).__name__}: {str(e)}"
+            logger.error(f"✗ Failed to connect to database: {error_msg}")
             logger.error("")
             logger.error("Troubleshooting:")
             logger.error("  - Verify PostgreSQL server is running")
@@ -1393,9 +1461,16 @@ async def startup_event():
             logger.error("  - Check firewall rules allow App Service")
             logger.error("")
             logger.warning("⚠️  App will start in degraded mode - database features unavailable")
+            # Store error for health check reporting
+            with db_error_cache["lock"]:
+                db_error_cache["last_error"] = error_msg
+                db_error_cache["last_error_time"] = datetime.now(timezone.utc)
             # Don't raise - let the app start for health checks
     else:
         logger.warning("DATABASE_URL not configured - running in degraded mode")
+        with db_error_cache["lock"]:
+            db_error_cache["last_error"] = "DATABASE_URL not configured"
+            db_error_cache["last_error_time"] = datetime.now(timezone.utc)
 
     # ============================================
     # STEP 3: INITIALIZE STORAGE OAUTH
