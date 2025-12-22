@@ -182,11 +182,16 @@ TiTiler works with **both** Azure storage account types:
 | `USE_AZURE_AUTH` | Enable Azure OAuth | `true` |
 | `AZURE_STORAGE_ACCOUNT` | **Silver Storage Account** name | `{silver-storage-account}` |
 | `LOCAL_MODE` | Use Azure CLI (dev) vs MI (prod) | `true` / `false` |
+| `ENABLE_PLANETARY_COMPUTER` | Enable Planetary Computer integration | `true` |
 | `POSTGRES_AUTH_MODE` | DB auth: `managed_identity`, `key_vault`, `password` | `managed_identity` |
 | `POSTGRES_HOST` | **Business Database** server FQDN | `{db-server}.postgres.database.azure.com` |
 | `POSTGRES_DB` | Database name | `geoapp` |
 | `POSTGRES_USER` | DB username (**App Reader Identity** name) | `{reader-identity-name}` |
-| `POSTGRES_MI_CLIENT_ID` | User-assigned MI client ID | `{client-id-guid}` |
+| `POSTGRES_PORT` | PostgreSQL port | `5432` |
+| `POSTGRES_MI_CLIENT_ID` | User-assigned MI client ID (for `managed_identity` mode) | `{client-id-guid}` |
+| `POSTGRES_PASSWORD` | DB password (for `password` mode only) | `{password}` |
+| `KEY_VAULT_NAME` | Key Vault name (for `key_vault` mode only) | `{keyvault-name}` |
+| `KEY_VAULT_SECRET_NAME` | Secret name in Key Vault (for `key_vault` mode) | `postgres-password` |
 
 ---
 
