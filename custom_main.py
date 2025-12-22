@@ -61,7 +61,7 @@ ENVIRONMENT VARIABLES
 - LOCAL_MODE: Use Azure CLI credentials instead of Managed Identity (true/false)
 - ENABLE_PLANETARY_COMPUTER: Enable Planetary Computer support (true/false, default: true)
 
-VERSION: 0.2.0
+VERSION: 0.4.0
 """
 import os
 import re
@@ -426,7 +426,7 @@ app = FastAPI(
 
     Both use Azure Managed Identity for authentication.
     """,
-    version="0.2.0"
+    version="0.4.0"
 )
 
 # Add CORS middleware
@@ -699,7 +699,7 @@ async def root():
     return {
         "title": "TiTiler with Multidimensional Support",
         "description": "Cloud Optimized GeoTIFF and Zarr/NetCDF tile server with OAuth token support",
-        "version": "0.2.0",
+        "version": "0.4.0",
         "auth_type": "OAuth Bearer Token (Managed Identity)",
         "endpoints": {
             "health": "/healthz",
@@ -737,7 +737,7 @@ async def startup_event():
     logger.info("=" * 60)
     logger.info("TiTiler with Multidimensional Support - Starting up")
     logger.info("=" * 60)
-    logger.info(f"Version: 0.2.0")
+    logger.info(f"Version: 0.4.0")
     logger.info(f"Supported formats: COG, Zarr, NetCDF")
     logger.info(f"Local mode: {LOCAL_MODE}")
     logger.info(f"Azure auth enabled: {USE_AZURE_AUTH}")

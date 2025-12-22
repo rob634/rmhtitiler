@@ -24,7 +24,7 @@ AUTHENTICATION MECHANISMS
    - Grants read access to their public storage accounts
    - Endpoints: /pc/*
 
-VERSION: 0.3.0
+VERSION: 0.4.0
 """
 import os
 import re
@@ -658,7 +658,7 @@ class AzureAuthMiddleware(BaseHTTPMiddleware):
 app = FastAPI(
     title="TiTiler-pgSTAC with Azure OAuth + Xarray + Planetary Computer",
     description="STAC catalog tile server with Managed Identity authentication, Zarr/NetCDF support, and Planetary Computer integration",
-    version="0.3.0"
+    version="0.4.0"
 )
 
 # Add CORS middleware
