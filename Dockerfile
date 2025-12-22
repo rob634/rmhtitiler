@@ -17,7 +17,8 @@ RUN pip install --no-cache-dir \
     "titiler.xarray>=0.18.0" \
     adlfs>=2024.4.1 \
     obstore>=0.6.0 \
-    requests>=2.28.0
+    requests>=2.28.0 \
+    psutil>=5.9.0
 
 # Set working directory
 WORKDIR /app

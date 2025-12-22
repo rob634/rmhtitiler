@@ -31,6 +31,7 @@ __version__ = "0.4.1"
 
 import os
 import re
+import sys
 import asyncio
 import logging
 import time
@@ -38,6 +39,8 @@ from datetime import datetime, timezone
 from threading import Lock
 from typing import Optional, Any, Dict
 from urllib.parse import urlparse
+
+import psutil
 
 from fastapi import FastAPI, Request, Response, Query
 from fastapi.middleware.cors import CORSMiddleware
@@ -1306,10 +1309,33 @@ async def health(response: Response):
         overall_status = "healthy"  # Warnings but functional
         response.status_code = 200
     
+    # Get hardware/runtime environment info
+    try:
+        mem = psutil.virtual_memory()
+        process = psutil.Process()
+        hardware = {
+            "cpu_count": psutil.cpu_count() or 0,
+            "total_ram_gb": round(mem.total / (1024**3), 2),
+            "available_ram_mb": round(mem.available / (1024**2), 1),
+            "ram_utilization_percent": round(mem.percent, 1),
+            "cpu_utilization_percent": round(psutil.cpu_percent(interval=None), 1),
+            "process_rss_mb": round(process.memory_info().rss / (1024**2), 1),
+            "python_version": sys.version.split()[0],
+            "platform": sys.platform,
+            # Azure App Service environment variables
+            "azure_site_name": os.environ.get("WEBSITE_SITE_NAME", "local"),
+            "azure_sku": os.environ.get("WEBSITE_SKU", "unknown"),
+            "azure_instance_id": os.environ.get("WEBSITE_INSTANCE_ID", "")[:16] if os.environ.get("WEBSITE_INSTANCE_ID") else None,
+            "azure_region": os.environ.get("REGION_NAME", "unknown"),
+        }
+    except Exception as hw_err:
+        hardware = {"error": str(hw_err)}
+
     return {
         "status": overall_status,
         "version": __version__,
         "checks": checks,
+        "hardware": hardware,
         "issues": issues if issues else None,
         "config": {
             "postgres_auth_mode": POSTGRES_AUTH_MODE,
