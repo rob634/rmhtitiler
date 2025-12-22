@@ -708,6 +708,9 @@ app.include_router(xarray_tiler.router, prefix="/xarray", tags=["Multidimensiona
 # ============================================================================
 # TiTiler MosaicJSON Endpoint - For MosaicJSON files
 # ============================================================================
+# NOTE: After titiler-pgstac 1.9.0, BaseMosaicTilerFactory requires a 'backend'
+# parameter (e.g., backend=cogeo_mosaic.backends.MosaicBackend). Pin to 1.9.0
+# in Dockerfile or add backend parameter when upgrading.
 mosaic_json = BaseMosaicTilerFactory(
     router_prefix="/mosaicjson",
     add_viewer=True,

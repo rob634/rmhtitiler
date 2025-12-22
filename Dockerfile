@@ -1,6 +1,6 @@
 # Production Dockerfile for TiTiler-pgSTAC with Azure OAuth authentication,
 # Xarray/Zarr support, and Planetary Computer integration
-FROM ghcr.io/stac-utils/titiler-pgstac:latest
+FROM ghcr.io/stac-utils/titiler-pgstac:1.9.0
 #Use the JFROG Artifactory image for production deployments
 #FROM artifactory.worldbank.org/itsdt-docker-virtual/titiler-pgstac:1.9.0
 
