@@ -1,6 +1,8 @@
 # Production Dockerfile for TiTiler-pgSTAC with Azure OAuth authentication,
 # Xarray/Zarr support, and Planetary Computer integration
 FROM ghcr.io/stac-utils/titiler-pgstac:latest
+#Use the JFROG Artifactory image for production deployments
+#FROM artifactory.worldbank.org/itsdt-docker-virtual/titiler-pgstac:1.9.0
 
 # Install dependencies:
 # - azure-identity: OAuth tokens via Managed Identity for storage and PostgreSQL
