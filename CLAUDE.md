@@ -1,574 +1,347 @@
-# Claude's Contributions to rmhtitiler
+# TiTiler-pgSTAC QA Deployment - Resume Guide
 
-**Project**: TiTiler with Azure Managed Identity
-**Collaboration Period**: November 2025
-**Claude Model**: Claude Sonnet 4.5
-
----
-
-## Overview
-
-This document chronicles Claude's contributions to the development, deployment, and documentation of a production-ready TiTiler deployment that uses Azure Managed Identity for secure access to Cloud-Optimized GeoTIFFs (COGs) in Azure Blob Storage.
+**Created**: December 2, 2025
+**Updated**: December 2, 2025
+**Status**: ✅ Docker image pushed to ACR successfully
+**Next Step**: Request App Service creation from Azure admin
 
 ---
 
-## Key Architectural Decisions
+## 📋 Project Overview
 
-### 1. Authentication Strategy Evolution
+This is a custom TiTiler-pgSTAC tile server with Azure Managed Identity OAuth authentication. It serves map tiles from Cloud Optimized GeoTIFF (COG) files stored in Azure Blob Storage, with metadata stored in a PostgreSQL pgSTAC database.
 
-**Initial Challenge**: How to securely authenticate TiTiler with Azure Blob Storage without embedding credentials.
+---
 
-**Claude's Contribution**:
-- Recommended Azure Managed Identity as the most secure, credential-free approach
-- Designed a dual-mode authentication system:
-  - **Production Mode**: User Delegation SAS tokens via Managed Identity
-  - **Development Mode**: Account SAS tokens via storage key for local testing
-- Implemented automatic token refresh with 5-minute buffer before expiry
-- Added thread-safe token caching to minimize Azure API calls
+## ✅ Verified Azure Resources
 
-**Result**: Zero credentials in code, automatic token management, seamless local-to-production workflow.
+| Resource Type | Name | Details |
+|---------------|------|---------|
+| **Resource Group** | `itses-gddatahub-qa-rg` | Location: **eastus** |
+| **Container Registry** | `itsesgddatahubacrqa` | Login: `itsesgddatahubacrqa.azurecr.io` |
+| **Storage Account** | `itsesgddataintqastrg` | StorageV2, eastus |
+| **PostgreSQL Server** | `itses-gddatahub-pgsqlsvr-qa` | FQDN: `itses-gddatahub-pgsqlsvr-qa.postgres.database.azure.com`, State: Ready |
+| **Database** | `geoapp` | **TO BE CREATED** with pgSTAC schema |
+| **User-Assigned MI** | `migeoetldbreaderqa` | ClientId: `7704971b-b7fb-4951-9120-8471281a66fc`, PrincipalId: `3e2851b3-0215-442a-986f-18d4ba768cfa` |
+| **ACR Images** | `titiler-pgstac` | Tags: `v1.0.0`, `latest` ✅ |
+| **App Service** | *(to be created)* | Request from Azure admin |
 
-### 2. Container-Level SAS Scope
+---
 
-**Initial Challenge**: Original implementation used wildcard container name (`*`), which Azure doesn't support.
+## ✅ Completed: Docker Image Push to ACR
 
-**Claude's Analysis**:
-- Investigated production 403 errors (v1.0.2)
-- Discovered Azure limitation: User Delegation SAS requires specific container name
-- Traced error through logs: "Signed identifier not supported for user delegation SAS"
+The image was successfully built and pushed on December 2, 2025.
 
-**Solution**:
-- Redesigned to use container-level SAS tokens scoped to `silver-cogs`
-- Updated documentation to clarify this limitation
-- Provided architecture for multi-container support if needed in future
-
-**Result**: Production authentication working, clear documentation of Azure SAS limitations.
-
-### 3. Verbose Error Handling Pattern
-
-**User Need**: "If there is an azure identity failure I want it to be loud and visible"
-
-**Claude's Implementation**:
-```python
-# Production mode: 4-step process with granular error handling
-logger.info("=" * 80)
-logger.info("🚀 PRODUCTION MODE: Generating User Delegation SAS token via Managed Identity")
-logger.info("=" * 80)
-
-# Step 1: Get credential
-try:
-    credential = DefaultAzureCredential()
-    logger.info("✓ DefaultAzureCredential created successfully")
-except Exception as cred_error:
-    logger.error("=" * 80)
-    logger.error("❌ FAILED TO CREATE AZURE CREDENTIAL")
-    logger.error(f"Error Type: {type(cred_error).__name__}")
-    logger.error(f"Error Message: {str(cred_error)}")
-    logger.error("Troubleshooting:")
-    logger.error("  - Verify Managed Identity: az webapp identity show")
-    logger.error("=" * 80)
-    raise
+### Verified in ACR:
+```
+az acr repository show-tags --name itsesgddatahubacrqa --repository titiler-pgstac --output table
+Result
+--------
+latest
+v1.0.0
 ```
 
-**Features**:
-- Visual indicators (✓, ⚠, ❌) for immediate status recognition
-- 80-character bordered error messages for visibility in logs
-- Specific troubleshooting commands embedded in error output
-- Separate try-except blocks for each Azure API operation
-- Step-by-step progress logging (Step 1/4, Step 2/4, etc.)
-
-**Result**: Production errors are immediately visible in Azure logs with actionable troubleshooting steps.
-
 ---
 
-## Problem Solving and Debugging
+## 🐳 Docker Build & Push Instructions (What Worked)
 
-### Issue 1: Module Import Error (v1.0.1)
+Due to corporate proxy issues, `az acr build` (cloud build) fails with permission errors. The working approach uses local Docker build + push from WSL.
 
-**Symptom**: Production deployment failing with `ModuleNotFoundError: No module named 'main'`
+### Prerequisites
 
-**Claude's Investigation**:
+1. **Use WSL** (corporate proxy issues with native Windows Azure CLI)
+2. **Configure Docker daemon for insecure registry** (corporate proxy intercepts TLS):
+   
+   Edit `/etc/docker/daemon.json`:
+   ```json
+   {
+     "insecure-registries": ["itsesgddatahubacrqa.azurecr.io"]
+   }
+   ```
+   
+   Then restart Docker:
+   ```bash
+   sudo systemctl restart docker
+   ```
+
+3. **Set Azure CLI SSL bypass**:
+   ```bash
+   export AZURE_CLI_DISABLE_CONNECTION_VERIFICATION=1
+   ```
+
+### Step 1: Login to ACR
+
 ```bash
-# Analyzed Dockerfile CMD
-CMD ["uvicorn", "main:app", ...]
+# Login to Azure (if needed)
+az login
 
-# Identified mismatch
-# File: custom_main.py
-# Import: main:app (wrong)
+# Login to ACR using Azure CLI token
+az acr login --name itsesgddatahubacrqa
 ```
 
-**Solution**: Changed CMD to `uvicorn custom_main:app`
+Expected output: `Login Succeeded`
 
-**Lesson**: Always verify module import paths match actual filenames.
+### Step 2: Build Docker Image Locally
 
-### Issue 2: Wrong SAS Permission Type (v1.0.2)
-
-**Symptom**: 403 errors accessing blobs despite correct role assignments
-
-**Claude's Investigation**:
-1. Reviewed logs: "Signed identifier not supported for user delegation SAS"
-2. Researched Azure documentation on User Delegation SAS
-3. Discovered: `account_sas != user_delegation_sas`
-
-**Root Cause**: Using `generate_account_sas()` instead of `generate_container_sas()` with user delegation key
-
-**Solution**: Complete rewrite of SAS generation using proper User Delegation pattern
-
-**Result**: Production authentication working correctly
-
-### Issue 3: TiTiler Viewer Endpoint Mystery
-
-**Symptom**: User reported `/cog/viewer` returning 404 while other endpoints worked
-
-**Claude's Investigation**:
 ```bash
-# Analyzed OpenAPI spec
-curl https://rmhtitiler.../openapi.json | jq '.paths | keys'
+# Navigate to project directory
+cd /mnt/c/Users/WB489446/'OneDrive - WBG'/python_builds/rmhtitiler
 
-# Found actual endpoint pattern
-/cog/{tileMatrixSetId}/map.html
+# Build for linux/amd64 platform with ACR tags
+docker build \
+  --platform linux/amd64 \
+  -t itsesgddatahubacrqa.azurecr.io/titiler-pgstac:v1.0.0 \
+  -t itsesgddatahubacrqa.azurecr.io/titiler-pgstac:latest \
+  -f Dockerfile .
 ```
 
-**Solution**:
-- Corrected documentation to show proper viewer URL
-- Added note: "The viewer is at `/cog/{tileMatrixSetId}/map.html`, NOT `/cog/viewer`"
+### Step 3: Push to ACR
 
-**Result**: User successfully viewing maps in browser
-
----
-
-## Code Enhancements
-
-### 1. Dynamic SAS Token Generation (custom_main.py:77-291)
-
-**Contribution**: Complete implementation of production-grade SAS token management
-
-**Features**:
-- Dual-mode operation (development vs production)
-- Token caching with expiry tracking
-- Thread-safe operations
-- Automatic refresh before expiry
-- Comprehensive error handling
-- Step-by-step logging
-
-**Code Quality**:
-- Type hints throughout
-- Docstrings explaining complex logic
-- Clear variable naming
-- Separation of concerns (dev vs prod logic)
-
-### 2. Health Check Endpoint (custom_main.py)
-
-**Contribution**: Added `/healthz` endpoint for monitoring
-
-**Returns**:
-```json
-{
-  "status": "healthy",
-  "azure_auth_enabled": true,
-  "local_mode": false,
-  "storage_account": "rmhgeopipelines",
-  "token_expires_in_seconds": 3300
-}
-```
-
-**Use Cases**:
-- Azure App Service health probes
-- Monitoring token expiry
-- Verifying configuration
-
-### 3. Middleware Pattern (custom_main.py)
-
-**Contribution**: Implemented FastAPI middleware for automatic token refresh
-
-```python
-@app.middleware("http")
-async def azure_auth_middleware(request: Request, call_next):
-    if USE_AZURE_AUTH and not LOCAL_MODE and USE_SAS_TOKEN:
-        token = generate_user_delegation_sas()
-        if token:
-            os.environ["AZURE_SAS_TOKEN"] = token
-    response = await call_next(request)
-    return response
-```
-
-**Benefits**:
-- Transparent to TiTiler code
-- Runs before every request
-- No code changes needed in TiTiler library
-
----
-
-## Documentation Architecture
-
-### Strategic Organization
-
-**Challenge**: 12 markdown files in root directory, unclear structure, historical artifacts mixed with current docs
-
-**Claude's Analysis**:
-- Reviewed all 12 files by size, line count, and purpose
-- Categorized into: active production docs vs historical development artifacts
-- Designed 3-tier documentation structure
-
-**Implemented Structure**:
-```
-rmhtitiler/
-├── README.md                           # Main project overview
-├── README-LOCAL.md                     # Local development guide
-├── CLAUDE.md                           # This file
-├── docs/
-│   ├── DOCUMENTATION-INDEX.md          # Master index (central hub)
-│   ├── design.md                       # Architecture deep-dive
-│   ├── TITILER-API-REFERENCE.md        # Complete API reference
-│   ├── DEPLOYMENT-TROUBLESHOOTING.md   # Production issue resolution
-│   ├── AZURE-CONFIGURATION-REFERENCE.md # Azure setup details
-│   ├── STAC-INTEGRATION-GUIDE.md       # STAC catalog integration
-│   └── archive/
-│       ├── README.md                   # Archive explanation
-│       ├── AUTHENTICATION-VERIFICATION.md
-│       ├── SAS-TOKEN-TESTING.md
-│       ├── SECURITY-VERIFICATION.md
-│       ├── TESTING-COMPLETE.md
-│       └── AZURE-DEPLOYMENT-PREP.md
-```
-
-**Documentation Philosophy**:
-- **Root**: Essential files users see first
-- **docs/**: Active production documentation
-- **docs/archive/**: Historical development artifacts (excluded from git)
-
-### Key Documentation Files Created
-
-#### 1. DOCUMENTATION-INDEX.md
-- Master index for all documentation
-- Quick-start paths for different user types
-- Cross-referenced navigation
-- Update date tracking
-
-#### 2. DEPLOYMENT-TROUBLESHOOTING.md
-- Real production errors encountered
-- Step-by-step resolution for each issue
-- Azure CLI commands for diagnosis
-- Verification commands for each fix
-
-#### 3. TITILER-API-REFERENCE.md
-- Complete endpoint documentation
-- Request/response examples
-- Query parameter explanations
-- Integration examples (curl, JavaScript, Python)
-
-#### 4. docs/archive/README.md
-- Explains what's archived and why
-- Original purposes of each document
-- When to reference archived docs
-- Statistics on archived content
-
----
-
-## Git and Version Control
-
-### Repository Initialization
-
-**Claude's Contribution**:
 ```bash
-# Added archives to .gitignore
-docs/archive/
-
-# Created comprehensive initial commit
-git init
-git add .
-git commit -m "Initial commit: Production-ready TiTiler with Azure Managed Identity
-
-Features implemented:
-- Azure Managed Identity authentication via DefaultAzureCredential
-- Dynamic User Delegation SAS token generation
-- Container-scoped SAS tokens (silver-cogs container)
-- Dual-mode operation (development with account SAS, production with user delegation SAS)
-- Token caching with automatic refresh (5-minute buffer before expiry)
-- Thread-safe token management
-- Comprehensive error handling with verbose logging
-- Health check endpoint (/healthz)
-- FastAPI middleware for automatic token refresh
-
-Production deployment:
-- Deployed to Azure App Service (rmhtitiler-ghcyd7g0bxdvc2hc.eastus-01.azurewebsites.net)
-- System-assigned Managed Identity enabled
-- Storage Blob Data Reader role assigned
-- All endpoints verified working (info, statistics, tiles, viewer, preview)
-
-Documentation:
-- Comprehensive README with quick start and deployment guide
-- Local development guide (README-LOCAL.md)
-- API reference documentation (docs/TITILER-API-REFERENCE.md)
-- Deployment troubleshooting guide (docs/DEPLOYMENT-TROUBLESHOOTING.md)
-- Architecture and design documentation (docs/design.md)
-- Azure configuration reference (docs/AZURE-CONFIGURATION-REFERENCE.md)
-- STAC integration guide (docs/STAC-INTEGRATION-GUIDE.md)
-- Documentation index (docs/DOCUMENTATION-INDEX.md)
-- Historical artifacts archived to docs/archive/
-
-Versions:
-- v1.0.0: Initial deployment with wildcard container
-- v1.0.1: Fixed module import path (custom_main:app)
-- v1.0.2: Fixed SAS token generation (User Delegation SAS with container scope)
-
-Files: 21 files, 4,773 lines"
+# Push both tags
+docker push itsesgddatahubacrqa.azurecr.io/titiler-pgstac:v1.0.0
+docker push itsesgddatahubacrqa.azurecr.io/titiler-pgstac:latest
 ```
 
-**Commit Details**:
-- Hash: 8913822
-- Files: 21
-- Lines: 4,773
-- Comprehensive message documenting features, deployment, and versioning
+### Step 4: Verify
 
----
-
-## Testing and Verification
-
-### Endpoint Verification Strategy
-
-**Claude's Approach**:
 ```bash
-# 1. Health check
-curl https://rmhtitiler.../healthz
-
-# 2. Info endpoint
-curl "https://rmhtitiler.../cog/info?url=/vsiaz/silver-cogs/file.tif"
-
-# 3. Statistics
-curl "https://rmhtitiler.../cog/statistics?url=/vsiaz/silver-cogs/file.tif"
-
-# 4. Sample tile
-curl "https://rmhtitiler.../cog/tiles/WebMercatorQuad/14/3876/6325.png?url=/vsiaz/silver-cogs/file.tif"
-
-# 5. Interactive viewer
-curl "https://rmhtitiler.../cog/WebMercatorQuad/map.html?url=/vsiaz/silver-cogs/file.tif"
+az acr repository show-tags --name itsesgddatahubacrqa --repository titiler-pgstac --output table
 ```
 
-**Results**: All endpoints verified working in production
+---
 
-### Log Analysis Pattern
+## ⚠️ Why `az acr build` Failed
 
-**Claude's Method**:
+The `az acr build` command requires `Microsoft.ContainerRegistry/registries/listBuildSourceUploadUrl/action` permission, which is NOT included in the `AcrPush` role. This requires `Contributor` or custom role with that action.
+
+**Workaround**: Use local Docker build + push (documented above), which only requires `AcrPush` role.
+
+---
+
+## 🛡️ Request for Azure Admin
+
+The following App Service resources need to be created by an Azure admin since the current user doesn't have permission to create web apps.
+
+### Step 1: Create App Service Plan
+
 ```bash
-# Tail logs in real-time
-az webapp log tail --resource-group rmhgeography --name rmhtitiler-ghcyd7g0bxdvc2hc
-
-# Look for specific patterns
-# ✓ Success indicators
-# ⚠ Warning indicators
-# ❌ Error indicators
-# Bordered messages (80 characters)
+az appservice plan create \
+  --name titiler-pgstac-plan \
+  --resource-group itses-gddatahub-qa-rg \
+  --is-linux \
+  --sku B2 \
+  --location eastus
 ```
 
----
+### Step 2: Create Web App
 
-## Technical Writing and Communication
-
-### Documentation Style
-
-**Claude's Approach**:
-- **Clarity**: Technical accuracy without jargon
-- **Actionability**: Every error has a solution
-- **Examples**: Real commands, not placeholders
-- **Context**: Explain the "why" not just the "what"
-- **Navigation**: Cross-references between related docs
-
-### Code Comments Style
-
-**Pattern**:
-```python
-# Step 1/4: Acquiring Azure credential via DefaultAzureCredential
-# This uses the Managed Identity of the Azure App Service
-# Troubleshooting: az webapp identity show --resource-group ... --name ...
-try:
-    credential = DefaultAzureCredential()
-    logger.info("✓ DefaultAzureCredential created successfully")
-except Exception as cred_error:
-    # Provide specific error context
-    logger.error(f"Error Type: {type(cred_error).__name__}")
-    logger.error(f"Error Message: {str(cred_error)}")
-    logger.error("Troubleshooting:")
-    logger.error("  - Verify Managed Identity: az webapp identity show")
-    raise
-```
-
----
-
-## Lessons Learned and Best Practices
-
-### 1. Azure Managed Identity
-
-**Key Insight**: Always verify identity propagation
 ```bash
-# Enable identity
-az webapp identity assign ...
-
-# WAIT 2-3 minutes
-
-# Verify before proceeding
-az webapp identity show ...
+az webapp create \
+  --name titiler-pgstac-qa \
+  --resource-group itses-gddatahub-qa-rg \
+  --plan titiler-pgstac-plan \
+  --deployment-container-image-name itsesgddatahubacrqa.azurecr.io/titiler-pgstac:latest
 ```
 
-### 2. User Delegation SAS Limitations
+### Step 3: Enable System-Assigned Managed Identity (for Storage)
 
-**Key Insight**: User Delegation SAS requires specific container name, cannot use wildcards
-
-**Implication**: Each container needs its own SAS token for multi-container deployments
-
-### 3. GDAL /vsiaz/ Virtual File System
-
-**Key Insight**: GDAL requires SAS token in environment variable `AZURE_SAS_TOKEN`, not `AZURE_STORAGE_SAS_TOKEN`
-
-**Discovery**: Found through GDAL documentation and experimentation
-
-### 4. Container-Level vs Account-Level SAS
-
-**Key Insight**:
-- Account SAS: Works with storage account key (development)
-- User Delegation SAS: Works with managed identity (production)
-- They are NOT interchangeable
-
-### 5. Error Visibility in Production
-
-**Key Insight**: Production errors need to be:
-- **Loud**: Bordered, visually distinct
-- **Specific**: Error type, message, context
-- **Actionable**: Include troubleshooting commands
-- **Discoverable**: Show up in log streams immediately
-
----
-
-## Code Quality Contributions
-
-### Type Hints
-```python
-def generate_user_delegation_sas() -> Optional[str]:
-    """Generate container-scoped User Delegation SAS token.
-
-    Returns:
-        Optional[str]: SAS token or None if generation failed
-    """
-```
-
-### Error Context
-```python
-except Exception as e:
-    logger.error(f"Failed to generate SAS token: {e}")
-    logger.error(f"Error Type: {type(e).__name__}")
-    logger.error(f"Storage Account: {AZURE_STORAGE_ACCOUNT}")
-    logger.error(f"Container: {AZURE_CONTAINER}")
-    logger.error("Full traceback:", exc_info=True)
-    raise
-```
-
-### Configuration Validation
-```python
-# Validate required environment variables
-if USE_AZURE_AUTH and not AZURE_STORAGE_ACCOUNT:
-    raise ValueError("AZURE_STORAGE_ACCOUNT must be set when USE_AZURE_AUTH=true")
-
-if USE_SAS_TOKEN and not AZURE_CONTAINER:
-    raise ValueError("AZURE_CONTAINER must be set when USE_SAS_TOKEN=true")
-```
-
----
-
-## Production Deployment Success
-
-### Final Working Configuration
-
-**Azure App Service**: `rmhtitiler-ghcyd7g0bxdvc2hc.eastus-01.azurewebsites.net`
-
-**Environment Variables**:
 ```bash
-AZURE_STORAGE_ACCOUNT=rmhgeopipelines
-AZURE_CONTAINER=silver-cogs
-USE_AZURE_AUTH=true
-USE_SAS_TOKEN=true
-LOCAL_MODE=false
+az webapp identity assign \
+  --name titiler-pgstac-qa \
+  --resource-group itses-gddatahub-qa-rg
 ```
 
-**Role Assignments**:
-- Storage Blob Data Reader (for managed identity)
+### Step 4: Assign User-Assigned Managed Identity (for PostgreSQL)
 
-**Verified Endpoints**:
-- ✅ Health: `/healthz`
-- ✅ Info: `/cog/info?url=/vsiaz/silver-cogs/file.tif`
-- ✅ Statistics: `/cog/statistics?url=...`
-- ✅ Tiles: `/cog/tiles/WebMercatorQuad/14/3876/6325.png?url=...`
-- ✅ Viewer: `/cog/WebMercatorQuad/map.html?url=...`
-- ✅ Preview: `/cog/preview.png?url=...`
+```bash
+az webapp identity assign \
+  --name titiler-pgstac-qa \
+  --resource-group itses-gddatahub-qa-rg \
+  --identities /subscriptions/f2bde2ed-4d2d-416d-be06-bb76bb62dc85/resourcegroups/itses-gddatahub-qa-rg/providers/Microsoft.ManagedIdentity/userAssignedIdentities/migeoetldbreaderqa
+```
+
+### Step 5: Grant Storage RBAC to System-Assigned MI
+
+```bash
+# Get system-assigned MI principal ID
+SYSTEM_MI_PRINCIPAL=$(az webapp identity show \
+  --name titiler-pgstac-qa \
+  --resource-group itses-gddatahub-qa-rg \
+  --query principalId -o tsv)
+
+# Grant Storage Blob Data Reader
+az role assignment create \
+  --assignee $SYSTEM_MI_PRINCIPAL \
+  --role "Storage Blob Data Reader" \
+  --scope /subscriptions/f2bde2ed-4d2d-416d-be06-bb76bb62dc85/resourceGroups/itses-gddatahub-qa-rg/providers/Microsoft.Storage/storageAccounts/itsesgddataintqastrg
+
+echo "⏳ Wait 3-5 minutes for RBAC propagation..."
+```
+
+### Step 6: Configure Environment Variables
+
+```bash
+az webapp config appsettings set \
+  --name titiler-pgstac-qa \
+  --resource-group itses-gddatahub-qa-rg \
+  --settings \
+    POSTGRES_AUTH_MODE="managed_identity" \
+    POSTGRES_HOST="itses-gddatahub-pgsqlsvr-qa.postgres.database.azure.com" \
+    POSTGRES_DB="geoapp" \
+    POSTGRES_USER="migeoetldbreaderqa" \
+    POSTGRES_PORT="5432" \
+    USE_AZURE_AUTH="true" \
+    AZURE_STORAGE_ACCOUNT="itsesgddataintqastrg" \
+    LOCAL_MODE="false" \
+    CPL_VSIL_CURL_ALLOWED_EXTENSIONS=".tif,.tiff" \
+    GDAL_DISABLE_READDIR_ON_OPEN="EMPTY_DIR" \
+    GDAL_HTTP_MERGE_CONSECUTIVE_RANGES="YES" \
+    GDAL_HTTP_MULTIPLEX="YES" \
+    GDAL_HTTP_VERSION="2" \
+    VSI_CACHE="TRUE" \
+    VSI_CACHE_SIZE="536870912"
+```
+
+### Step 7: Configure ACR Access for App Service
+
+```bash
+# Enable ACR admin (if not already)
+az acr update --name itsesgddatahubacrqa --admin-enabled true
+
+# Get ACR credentials
+ACR_USERNAME=$(az acr credential show --name itsesgddatahubacrqa --query username -o tsv)
+ACR_PASSWORD=$(az acr credential show --name itsesgddatahubacrqa --query passwords[0].value -o tsv)
+
+# Configure App Service to pull from ACR
+az webapp config container set \
+  --name titiler-pgstac-qa \
+  --resource-group itses-gddatahub-qa-rg \
+  --docker-custom-image-name itsesgddatahubacrqa.azurecr.io/titiler-pgstac:latest \
+  --docker-registry-server-url https://itsesgddatahubacrqa.azurecr.io \
+  --docker-registry-server-user $ACR_USERNAME \
+  --docker-registry-server-password $ACR_PASSWORD
+```
+
+### Step 8: Restart and Verify
+
+```bash
+# Restart
+az webapp restart --name titiler-pgstac-qa --resource-group itses-gddatahub-qa-rg
+
+# Wait for startup
+sleep 30
+
+# Get URL
+APP_URL=$(az webapp show \
+  --name titiler-pgstac-qa \
+  --resource-group itses-gddatahub-qa-rg \
+  --query defaultHostName -o tsv)
+
+echo "App URL: https://$APP_URL"
+
+# Health check
+curl https://$APP_URL/healthz
+
+# Stream logs
+az webapp log tail --name titiler-pgstac-qa --resource-group itses-gddatahub-qa-rg
+```
 
 ---
 
-## Future Recommendations
+## 🗄️ PostgreSQL Setup (Separate Task)
 
-### Multi-Container Support
+The `geoapp` database with pgSTAC schema needs to be created. Once created:
 
-**Challenge**: Current implementation scoped to single container (`silver-cogs`)
+### Create PostgreSQL User for Managed Identity
 
-**Proposed Solution**:
-1. Parse container name from URL path
-2. Generate container-specific SAS token
-3. Cache tokens per container
-4. Include container in cache key
+Connect as admin and run:
 
-**Complexity**: Medium - requires URL parsing and cache restructuring
+```sql
+-- Enable Entra ID authentication
+SET aad_validate_oids_in_tenant = off;
 
-### Token Refresh Optimization
+-- Create user matching managed identity name
+SELECT * FROM pgaadauth_create_principal('migeoetldbreaderqa', false, false);
 
-**Current**: Token refreshed via middleware on every request (with cache)
+-- Grant permissions (read-write for search registration)
+GRANT USAGE ON SCHEMA pgstac TO "migeoetldbreaderqa";
+GRANT SELECT ON ALL TABLES IN SCHEMA pgstac TO "migeoetldbreaderqa";
+GRANT INSERT, UPDATE, DELETE ON pgstac.searches TO "migeoetldbreaderqa";
+GRANT USAGE ON ALL SEQUENCES IN SCHEMA pgstac TO "migeoetldbreaderqa";
 
-**Proposed Enhancement**: Background thread refreshes token proactively
-
-**Benefits**:
-- No refresh during request handling
-- More predictable response times
-- Better for high-traffic scenarios
-
-### Monitoring and Alerts
-
-**Recommendation**: Azure Application Insights integration
-
-**Metrics to Track**:
-- SAS token generation success/failure rate
-- Token refresh frequency
-- Azure authentication errors
-- Request latency by endpoint
-- GDAL error rates
+-- Verify
+SELECT rolname, rolcanlogin FROM pg_roles WHERE rolname = 'migeoetldbreaderqa';
+```
 
 ---
 
-## Acknowledgments
+## 📁 Key Files in This Project
 
-This project demonstrates the power of human-AI collaboration:
-
-- **User**: Provided domain expertise, Azure infrastructure, testing, and production requirements
-- **Claude**: Contributed architecture design, implementation, debugging, documentation, and best practices
-
-Together, we built a production-ready, secure, well-documented TiTiler deployment that serves as a reference implementation for Azure Managed Identity integration.
-
----
-
-**Document Version**: 1.0
-**Last Updated**: November 7, 2025
-**Claude Model**: Sonnet 4.5
+| File | Purpose |
+|------|---------|
+| `custom_pgstac_main.py` | Main FastAPI application with OAuth middleware |
+| `Dockerfile` | Production Docker image (Managed Identity) |
+| `Dockerfile.local` | Local development image (Azure CLI) |
+| `docker-compose.yml` | Local development setup |
+| `QA_DEPLOYMENT.md` | Detailed deployment guide |
+| `ONBOARDING.md` | Project overview for new developers |
 
 ---
 
-## Co-Authorship Attribution
+## 🔧 Troubleshooting
 
-This project was developed through an iterative collaboration between Robert Harrison and Claude (Anthropic). Claude's contributions span architecture design, code implementation, debugging, testing strategy, and comprehensive documentation.
+### Check Permissions
+```bash
+az role assignment list \
+  --assignee edff3959-ed21-4975-8b8a-013d8319c569 \
+  --scope /subscriptions/f2bde2ed-4d2d-416d-be06-bb76bb62dc85/resourceGroups/itses-gddatahub-qa-rg/providers/Microsoft.ContainerRegistry/registries/itsesgddatahubacrqa \
+  -o table
+```
 
-**Key Areas of Claude Contribution**:
-- Azure Managed Identity authentication architecture
-- User Delegation SAS token implementation
-- Verbose error handling and logging patterns
-- Complete documentation suite (12 files, ~5,000 lines)
-- Production deployment debugging (3 version iterations)
-- Git repository initialization and commit structure
-- Testing and verification methodology
+### Verify ACR Image
+```bash
+az acr repository list --name itsesgddatahubacrqa -o table
+az acr repository show-tags --name itsesgddatahubacrqa --repository titiler-pgstac -o table
+```
 
-**Development Methodology**: Pair programming style with Claude providing implementation and user providing validation, testing, and domain expertise.
+### Check App Service Logs
+```bash
+az webapp log tail --name titiler-pgstac-qa --resource-group itses-gddatahub-qa-rg
+```
 
+---
+
+## 📞 Resume Instructions for Claude
+
+When resuming this deployment, tell Claude:
+
+> "Please read claude.md and continue the TiTiler-pgSTAC QA deployment. The App Service has been created."
+
+Claude will then:
+1. Verify the App Service exists
+2. Verify managed identities are assigned
+3. Verify environment variables are set
+4. Test the health endpoint
+5. Help troubleshoot any issues
+
+---
+
+## 📝 Deployment Status Summary
+
+| Step | Status | Notes |
+|------|--------|-------|
+| Azure Resources Verified | ✅ Complete | RG, ACR, Storage, PostgreSQL, MI confirmed |
+| Docker Image Built | ✅ Complete | Built locally in WSL |
+| Image Pushed to ACR | ✅ Complete | `v1.0.0` and `latest` tags |
+| App Service Created | ⏳ Pending | Requires Azure admin |
+| Managed Identities Assigned | ⏳ Pending | After App Service created |
+| Environment Variables Set | ⏳ Pending | After App Service created |
+| Database Created | ⏳ Pending | `geoapp` with pgSTAC schema |
+| PostgreSQL User Created | ⏳ Pending | `migeoetldbreaderqa` Entra user |
+| Deployment Verified | ⏳ Pending | Health check after all above complete |
+
+---
+
+**Last Updated**: December 2, 2025
+**Subscription**: WBG AZ ITSOC QA PDMZ (`f2bde2ed-4d2d-416d-be06-bb76bb62dc85`)
