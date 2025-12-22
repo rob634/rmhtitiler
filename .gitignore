@@ -32,3 +32,6 @@ docker-compose.yml
 
 # Logs
 *.log
+
+# Test data
+data/

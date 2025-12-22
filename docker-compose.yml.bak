@@ -1,0 +1,40 @@
+version: '3.8'
+
+services:
+  titiler:
+    build:
+      context: .
+      dockerfile: Dockerfile.local
+    ports:
+      - "8000:8000"
+
+    # Load environment variables from .env.local
+    env_file:
+      - .env.local
+
+    volumes:
+      # Mount local data directory for testing
+      - ./data:/data:ro
+
+      # Mount Azure CLI credentials for local development
+      # This allows DefaultAzureCredential to use your 'az login' credentials
+      - ~/.azure:/root/.azure:ro
+
+    command: >
+      uvicorn custom_main:app
+      --host 0.0.0.0
+      --port 8000
+      --reload
+      --log-level info
+
+    # Health check
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/healthz"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+
+# Optional: Add a sample data volume for testing
+volumes:
+  data:
