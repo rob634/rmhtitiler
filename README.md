@@ -119,7 +119,7 @@ Azure Blob Storage (RBAC: Storage Blob Data Reader)
 - **Base Image**: `ghcr.io/stac-utils/titiler-pgstac:latest`
 - **Database**: Azure PostgreSQL with pgSTAC extension
 - **Storage**: Azure Blob Storage (multi-container support)
-- **Registry**: Azure Container Registry (rmhazureacr)
+- **Registry**: Azure Container Registry
 - **Hosting**: Azure App Service (Linux, Docker)
 
 ## 📁 Project Structure
@@ -165,7 +165,7 @@ titilerpgstac/
 3. **Test locally:**
    ```bash
    curl "http://localhost:8000/healthz"
-   curl "http://localhost:8000/cog/info?url=/vsiaz/silver-cogs/namangan14aug2019_R2C2cog_cog_analysis.tif"
+   curl "http://localhost:8000/cog/info?url=/vsiaz/<container>/<path-to-cog>.tif"
    ```
 
 ### Hot Reload
@@ -190,11 +190,11 @@ command: ["uvicorn", "custom_pgstac_main:app", "--host", "0.0.0.0", "--port", "8
 **Quick Deploy:**
 
 ```bash
-# Set variables
-ACR_NAME="rmhazureacr"
+# Set variables (replace with your values)
+ACR_NAME="<your-acr-name>"
 IMAGE_NAME="titiler-pgstac"
-APP_NAME="rmhtitiler"
-RESOURCE_GROUP="rmhazure_rg"
+APP_NAME="<your-app-name>"
+RESOURCE_GROUP="<your-resource-group>"
 
 # Build and push
 docker build --platform linux/amd64 -t $ACR_NAME.azurecr.io/$IMAGE_NAME:latest -f Dockerfile .
@@ -256,7 +256,7 @@ curl https://<your-app-url>/healthz
   "azure_auth_enabled": true,
   "local_mode": false,
   "auth_type": "OAuth Bearer Token",
-  "storage_account": "rmhazuregeo",
+  "storage_account": "<your-storage-account>",
   "token_expires_in_seconds": 86197,
   "token_scope": "ALL containers (RBAC-based)",
   "token_status": "active",
@@ -277,10 +277,10 @@ curl https://<your-app-url>/healthz
 
 ```bash
 # Stream logs
-az webapp log tail --name rmhtitiler --resource-group rmhazure_rg
+az webapp log tail --name <your-app-name> --resource-group <your-resource-group>
 
 # Download logs
-az webapp log download --name rmhtitiler --resource-group rmhazure_rg --log-file logs.zip
+az webapp log download --name <your-app-name> --resource-group <your-resource-group> --log-file logs.zip
 ```
 
 ## 🔧 Configuration
@@ -291,7 +291,7 @@ az webapp log download --name rmhtitiler --resource-group rmhazure_rg --log-file
 |----------|-------------|-------|------------|
 | `LOCAL_MODE` | Use Azure CLI credentials | `true` | `false` |
 | `USE_AZURE_AUTH` | Enable OAuth authentication | `true` | `true` |
-| `AZURE_STORAGE_ACCOUNT` | Storage account name | `rmhazuregeo` | `rmhazuregeo` |
+| `AZURE_STORAGE_ACCOUNT` | Storage account name | `<your-storage-account>` | `<your-storage-account>` |
 | `DATABASE_URL` | PostgreSQL connection string | Set in docker-compose.yml | Set in App Service |
 | `GDAL_*` | GDAL optimizations | Auto | Auto |
 
@@ -313,12 +313,12 @@ VSI_CACHE_SIZE="536870912"  # 512MB
 
 **Check Managed Identity:**
 ```bash
-az webapp identity show --name rmhtitiler --resource-group rmhazure_rg
+az webapp identity show --name <your-app-name> --resource-group <your-resource-group>
 ```
 
 **Check RBAC Assignments:**
 ```bash
-PRINCIPAL_ID=$(az webapp identity show --name rmhtitiler --resource-group rmhazure_rg --query principalId -o tsv)
+PRINCIPAL_ID=$(az webapp identity show --name <your-app-name> --resource-group <your-resource-group> --query principalId -o tsv)
 az role assignment list --assignee $PRINCIPAL_ID
 ```
 
@@ -326,7 +326,7 @@ az role assignment list --assignee $PRINCIPAL_ID
 
 **Check logs:**
 ```bash
-az webapp log tail --name rmhtitiler --resource-group rmhazure_rg
+az webapp log tail --name <your-app-name> --resource-group <your-resource-group>
 ```
 
 **Common issues:**
