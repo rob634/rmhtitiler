@@ -24,10 +24,10 @@ AUTHENTICATION MECHANISMS
    - Grants read access to their public storage accounts
    - Endpoints: /pc/*
 
-VERSION: 0.4.0
+VERSION: 0.4.1
 """
 # Single source of truth for version
-__version__ = "0.4.0"
+__version__ = "0.4.1"
 
 import os
 import re
