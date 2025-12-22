@@ -1185,10 +1185,11 @@ async def health(response: Response):
 
     if db_pool_exists:
         # Perform actual database ping to verify connection works
+        # titiler-pgstac 1.9.0 uses psycopg_pool.ConnectionPool (sync) not asyncpg
         ping_start = time.monotonic()
         try:
-            async with app.state.dbpool.acquire() as conn:
-                await conn.fetchval("SELECT 1")
+            with app.state.dbpool.connection() as conn:
+                conn.execute("SELECT 1")
             db_connected = True
             db_ping_time_ms = round((time.monotonic() - ping_start) * 1000, 2)
             # Record successful ping
