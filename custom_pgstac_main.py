@@ -26,6 +26,9 @@ AUTHENTICATION MECHANISMS
 
 VERSION: 0.4.0
 """
+# Single source of truth for version
+__version__ = "0.4.0"
+
 import os
 import re
 import asyncio
@@ -667,7 +670,7 @@ class AzureAuthMiddleware(BaseHTTPMiddleware):
 app = FastAPI(
     title="TiTiler-pgSTAC with Azure OAuth + Xarray + Planetary Computer",
     description="STAC catalog tile server with Managed Identity authentication, Zarr/NetCDF support, and Planetary Computer integration",
-    version="0.4.0"
+    version=__version__
 )
 
 # Add CORS middleware
@@ -1305,6 +1308,7 @@ async def health(response: Response):
     
     return {
         "status": overall_status,
+        "version": __version__,
         "checks": checks,
         "issues": issues if issues else None,
         "config": {
