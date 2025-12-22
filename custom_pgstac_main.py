@@ -1318,6 +1318,8 @@ async def health(response: Response):
         },
         "available_features": {
             "cog_tiles": USE_AZURE_AUTH and bool(oauth_token_cache["token"]),
+            "xarray_zarr": USE_AZURE_AUTH and bool(oauth_token_cache["token"]),
+            "planetary_computer": PLANETARY_COMPUTER_AVAILABLE,
             "pgstac_searches": db_connected,
             "mosaic_json": db_connected
         }
