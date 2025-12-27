@@ -1562,3 +1562,23 @@ async def shutdown_event():
     await close_db_connection(app)
 
     logger.info("Shutdown complete")
+
+
+# ============================================================================
+# NICEGUI DASHBOARD INTEGRATION
+# ============================================================================
+# Mount the NiceGUI dashboard onto the FastAPI app.
+# Dashboard is available at /dashboard/* endpoints.
+# This must be called after all FastAPI routers are configured.
+
+# Environment variable to enable/disable dashboard
+ENABLE_DASHBOARD = os.environ.get("ENABLE_DASHBOARD", "true").lower() == "true"
+
+if ENABLE_DASHBOARD:
+    try:
+        from dashboard.main import mount_dashboard
+        mount_dashboard(app)
+        logger.info("📊 NiceGUI Dashboard mounted at /dashboard")
+    except ImportError as e:
+        logger.warning(f"Dashboard not available: {e}")
+        logger.info("Install nicegui>=2.0.0 and httpx>=0.27.0 to enable the dashboard")

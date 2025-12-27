@@ -18,13 +18,16 @@ RUN pip install --no-cache-dir \
     adlfs>=2024.4.1 \
     obstore>=0.6.0 \
     requests>=2.28.0 \
-    psutil>=5.9.0
+    psutil>=5.9.0 \
+    nicegui>=2.0.0 \
+    httpx>=0.27.0
 
 # Set working directory
 WORKDIR /app
 
-# Copy custom application to working directory
+# Copy custom application and dashboard to working directory
 COPY custom_pgstac_main.py /app/custom_pgstac_main.py
+COPY dashboard /app/dashboard
 
 # Production settings
 ENV LOCAL_MODE=false
