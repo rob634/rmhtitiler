@@ -1149,12 +1149,12 @@ async def pc_map(
 async def liveness():
     """
     Liveness probe - responds immediately to indicate container is running.
-    
-    This endpoint is for Azure App Service startup probes. It responds
+
+    This endpoint is for Kubernetes/Azure App Service liveness probes. It responds
     before database connection is established, preventing the container
     from being killed during slow database connections or MI token acquisition.
-    
-    Use /healthz for full readiness checks.
+
+    Use /readyz for readiness checks, /healthz for full diagnostics.
     """
     return {
         "status": "alive",
@@ -1162,10 +1162,85 @@ async def liveness():
     }
 
 
+@app.get("/readyz", tags=["Health"])
+async def readiness(response: Response):
+    """
+    Kubernetes-style readiness probe.
+
+    Checks critical dependencies to determine if the service can handle traffic.
+    Returns minimal response for efficiency - use /healthz for full diagnostics.
+
+    Returns:
+        HTTP 200: Ready to receive traffic
+        HTTP 503: Not ready (dependency failure)
+
+    Checks performed:
+        1. Database connection with active ping (required for pgSTAC)
+        2. Storage OAuth token validity (required for Azure blob access)
+    """
+    ready = True
+    issues = []
+
+    # Check 1: Database connection (required for pgSTAC searches)
+    db_pool_exists = hasattr(app.state, "dbpool") and app.state.dbpool is not None
+    if db_pool_exists:
+        try:
+            with app.state.dbpool.connection() as conn:
+                conn.execute("SELECT 1")
+            # Record successful ping
+            with db_error_cache["lock"]:
+                db_error_cache["last_error"] = None
+                db_error_cache["last_success_time"] = datetime.now(timezone.utc)
+        except Exception as e:
+            ready = False
+            issues.append(f"database: {type(e).__name__}")
+            # Record ping failure
+            with db_error_cache["lock"]:
+                db_error_cache["last_error"] = f"{type(e).__name__}: {str(e)}"
+                db_error_cache["last_error_time"] = datetime.now(timezone.utc)
+    else:
+        ready = False
+        issues.append("database: pool not initialized")
+
+    # Check 2: Storage OAuth token (if Azure auth enabled)
+    if USE_AZURE_AUTH:
+        if not oauth_token_cache["token"]:
+            ready = False
+            issues.append("storage_oauth: no token")
+        elif oauth_token_cache["expires_at"]:
+            now = datetime.now(timezone.utc)
+            ttl = (oauth_token_cache["expires_at"] - now).total_seconds()
+            if ttl < 60:  # Less than 1 minute until expiry
+                ready = False
+                issues.append(f"storage_oauth: expires in {int(ttl)}s")
+
+    # Check 3: PostgreSQL OAuth token (if using managed identity)
+    if POSTGRES_AUTH_MODE == "managed_identity":
+        if not postgres_token_cache["token"]:
+            ready = False
+            issues.append("postgres_oauth: no token")
+        elif postgres_token_cache["expires_at"]:
+            now = datetime.now(timezone.utc)
+            ttl = (postgres_token_cache["expires_at"] - now).total_seconds()
+            if ttl < 60:  # Less than 1 minute until expiry
+                ready = False
+                issues.append(f"postgres_oauth: expires in {int(ttl)}s")
+
+    response.status_code = 200 if ready else 503
+    return {
+        "ready": ready,
+        "version": __version__,
+        "issues": issues if issues else None
+    }
+
+
 @app.get("/healthz", tags=["Health"])
 async def health(response: Response):
     """
-    Readiness probe - full health check with diagnostic details.
+    Full health check with diagnostic details for monitoring and debugging.
+
+    Use /readyz for Kubernetes readiness probes (faster, minimal response).
+    Use this endpoint for dashboards, monitoring systems, and troubleshooting.
 
     Returns HTTP 200 for healthy, HTTP 503 for degraded/unhealthy.
     Response body always includes detailed status for debugging.
@@ -1178,6 +1253,8 @@ async def health(response: Response):
     Checks performed:
         1. Database connection with active ping (required for pgSTAC searches)
         2. Storage OAuth token (required for Azure blob access)
+        3. PostgreSQL OAuth token (if using managed identity)
+        4. Hardware/runtime info (CPU, RAM, Azure SKU)
     """
     checks = {}
     issues = []
@@ -1362,7 +1439,8 @@ async def root():
         "auth_type": "OAuth Bearer Token (Managed Identity)",
         "endpoints": {
             "liveness": "/livez",
-            "readiness": "/healthz",
+            "readiness": "/readyz",
+            "health": "/healthz",
             "docs": "/docs",
             "redoc": "/redoc",
             "search_list": "/searches",
