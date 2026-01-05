@@ -1,0 +1,62 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>{{ variable }} - Planetary Computer Viewer</title>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+    <style>
+        body { margin: 0; padding: 0; }
+        #map { position: absolute; top: 0; bottom: 0; width: 100%; }
+        .info-box {
+            position: absolute;
+            top: 10px;
+            right: 10px;
+            background: white;
+            padding: 10px 15px;
+            border-radius: 5px;
+            box-shadow: 0 2px 5px rgba(0,0,0,0.3);
+            z-index: 1000;
+            font-family: Arial, sans-serif;
+            font-size: 12px;
+            max-width: 300px;
+        }
+        .info-box h3 { margin: 0 0 5px 0; font-size: 14px; }
+        .info-box p { margin: 2px 0; color: #666; }
+    </style>
+</head>
+<body>
+    <div id="map"></div>
+    <div class="info-box">
+        <h3>Planetary Computer Data</h3>
+        <p><strong>Variable:</strong> {{ variable }}</p>
+        <p><strong>Time Index:</strong> {{ time_idx }}</p>
+        <p><strong>Colormap:</strong> {{ colormap }}</p>
+        <p><strong>Source:</strong> CMIP6 Climate Projections</p>
+    </div>
+    <script>
+        var map = L.map('map').setView([20, 0], 2);
+
+        // Base layer
+        L.tileLayer('https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png', {
+            attribution: '&copy; OpenStreetMap contributors &copy; CARTO',
+            subdomains: 'abcd',
+            maxZoom: 19
+        }).addTo(map);
+
+        // Fetch TileJSON and add data layer
+        fetch('{{ tilejson_url }}')
+            .then(response => response.json())
+            .then(tilejson => {
+                L.tileLayer(tilejson.tiles[0], {
+                    attribution: tilejson.attribution,
+                    maxZoom: tilejson.maxzoom,
+                    minZoom: tilejson.minzoom,
+                    opacity: 0.7
+                }).addTo(map);
+            })
+            .catch(err => console.error('Failed to load TileJSON:', err));
+    </script>
+</body>
+</html>
