@@ -63,13 +63,15 @@ services:
       - ~/.azure:/root/.azure:ro
 
       # Mount source code for hot reload during development
-      - ./custom_pgstac_main.py:/app/custom_pgstac_main.py:ro
+      - ./rmhtitiler:/app/rmhtitiler:ro
+      - ./dashboard:/app/dashboard:ro
 
     command: >
-      uvicorn custom_pgstac_main:app
+      uvicorn rmhtitiler.app:app
       --host 0.0.0.0
       --port 8000
       --reload
+      --reload-dir /app/rmhtitiler
       --log-level info
 
     # Health check
