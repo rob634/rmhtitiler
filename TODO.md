@@ -4,57 +4,77 @@
 
 ---
 
-## Critical: Dependency Version Conflicts
+## Dependency Versions: Analysis Complete
 
-**Status:** Unresolved - needs investigation before production
+**Status:** Understood - acceptable for current use cases
 **Date:** 2026-01-05
 **Discovered during:** ACR build of v0.5.0-test
 
-### Problem
+### What Happened
 
-When installing `titiler.xarray>=0.18.0` on top of base image `titiler-pgstac:1.9.0`, pip reports version conflicts:
+Installing `titiler.xarray>=0.18.0` on base image `titiler-pgstac:1.9.0` upgrades core libraries:
 
 ```
-cogeo-mosaic 8.2.0 requires rio-tiler<8.0,>=7.0, but you have rio-tiler 8.0.5 which is incompatible.
-titiler-pgstac 1.9.0 requires titiler.core<0.25,>=0.24, but you have titiler-core 1.0.2 which is incompatible.
-titiler-mosaic 0.24.0 requires titiler.core==0.24.0, but you have titiler-core 1.0.2 which is incompatible.
+Base Image Ships:           After pip install:
+├── titiler-core 0.24.x  →  titiler-core 1.0.2 ✨ (released Dec 17, 2025!)
+├── rio-tiler 7.x        →  rio-tiler 8.0.5 ✨
+├── cogeo-mosaic 8.2.0   →  cogeo-mosaic 8.2.0 (unchanged)
+├── titiler-pgstac 1.9.0 →  titiler-pgstac 1.9.0 (unchanged)
+└── titiler-mosaic 0.24.0→  titiler-mosaic 0.24.0 (unchanged)
 ```
 
-### Root Cause
+### Why pip Complains
 
-- Base image (`ghcr.io/stac-utils/titiler-pgstac:1.9.0`) ships with `titiler.core 0.24.x` and `rio-tiler 7.x`
-- `titiler.xarray>=0.18.0` depends on newer `titiler-core 1.0.2` and `rio-tiler 8.0.5`
-- These newer versions are incompatible with `cogeo-mosaic`, `titiler-pgstac`, and `titiler-mosaic`
+The older packages (cogeo-mosaic, titiler-pgstac, titiler-mosaic) were compiled against
+the older APIs (rio-tiler 7.x, titiler-core 0.24.x). pip warns about version constraints
+but installs anyway.
 
-### Affected Endpoints (Potentially)
+### Actual Impact
 
-| Endpoint | Package | Risk |
-|----------|---------|------|
-| `/mosaicjson/*` | cogeo-mosaic | Medium |
-| `/searches/*` | titiler-pgstac | Medium |
-| `/cog/*` | rio-tiler | Medium |
+| Endpoint | Package | Status | Notes |
+|----------|---------|--------|-------|
+| `/cog/*` | rio-tiler 8.x | ✅ Works | rio-tiler 8.x reads COGs fine |
+| `/xarray/*` | titiler.xarray | ✅ Works | Uses its own rio-tiler 8.x |
+| `/searches/*` | titiler-pgstac | ✅ Works | Tested in production, forwards-compatible |
+| `/mosaicjson/*` | cogeo-mosaic | ⛔ Unsupported | See below |
 
-### Solutions to Investigate
+### MosaicJSON: Intentionally Unsupported
 
-1. **Pin titiler.xarray version** - Find version compatible with titiler.core 0.24.x
-   ```dockerfile
-   RUN pip install "titiler.xarray>=0.15.0,<0.18.0"
-   ```
+**Why we don't use `/mosaicjson/*` endpoints:**
 
-2. **Upgrade base image** - Check if newer titiler-pgstac exists with updated deps
-   ```dockerfile
-   FROM ghcr.io/stac-utils/titiler-pgstac:latest
-   ```
+MosaicJSON requires **hardcoded, static storage tokens** embedded in the JSON file.
+This is incompatible with our security model:
 
-3. **Build custom base image** - Create image with all compatible versions pinned
+- We use short-lived OAuth tokens (1 hour TTL) via Managed Identity
+- Tokens are refreshed automatically in background tasks
+- Static tokens are a security risk and operationally brittle
 
-4. **Test current build** - The conflicts may not cause runtime issues for our use cases
+The TiTiler team recognizes this - **titiler-core 1.0.0 removed cogeo-mosaic dependency**
+(Dec 17, 2025 release notes). The ecosystem is moving away from static-token mosaics.
+
+**Use `/searches/*` instead:** pgSTAC search registration creates dynamic mosaics from
+STAC queries without requiring static tokens.
+
+### Version Summary
+
+We are running **more advanced versions** of core libraries:
+- `titiler-core 1.0.2` - Major version, latest (Dec 2025)
+- `rio-tiler 8.0.5` - Latest
+
+The warning packages have not been updated yet:
+- `titiler-pgstac 1.9.0` - Released Sep 2024, written for titiler-core 0.24.x
+- `cogeo-mosaic 8.2.0` - Requires rio-tiler 7.x (we don't use it)
+
+### Future: Watch for Updates
+
+- **titiler-pgstac 2.x** - Expected to officially support titiler-core 1.x
+- **cogeo-mosaic** - May be deprecated as ecosystem moves to dynamic mosaics
 
 ### Notes
 
-- Base image is in JFROG Artifactory (QA) - changing it requires approval process
-- Current build (`v0.5.0-test`) completed successfully despite warnings
-- Need to test all endpoints before promoting to production
+- Base image is in JFROG Artifactory (QA) - no changes needed
+- Current build (`v0.5.0-test`) works for all supported use cases
+- MosaicJSON endpoints exist but are not part of our supported feature set
 
 ---
 

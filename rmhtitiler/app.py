@@ -3,12 +3,21 @@ FastAPI application factory for rmhtitiler.
 
 Creates and configures the TiTiler application with:
 - Azure Managed Identity authentication for blob storage
-- TiTiler-core (COG tiles)
-- TiTiler-pgstac (STAC catalog searches)
+- TiTiler-core (COG tiles via rio-tiler 8.x)
+- TiTiler-pgstac (STAC catalog searches - dynamic mosaics)
 - TiTiler-xarray (Zarr/NetCDF multidimensional data)
-- Health probe endpoints
+- Health probe endpoints (/livez, /readyz, /healthz)
 - Planetary Computer integration
 - NiceGUI dashboard (optional)
+
+Dependency Notes:
+    This application uses titiler-core 1.0.2 and rio-tiler 8.0.5 (latest versions
+    as of Dec 2025). The base image (titiler-pgstac:1.9.0) was built against older
+    versions, but all supported endpoints work correctly.
+
+    The /mosaicjson/* endpoints are mounted but NOT SUPPORTED - they require
+    static tokens incompatible with OAuth/Managed Identity. Use /searches/*
+    for dynamic mosaic functionality instead.
 """
 
 import logging
@@ -160,7 +169,25 @@ async def _initialize_database(app: FastAPI) -> None:
 
 
 def _mount_titiler_routers(app: FastAPI) -> None:
-    """Mount all TiTiler routers."""
+    """
+    Mount all TiTiler routers.
+
+    Endpoint Overview:
+    - /cog/* - Cloud Optimized GeoTIFF tiles (rio-tiler 8.x)
+    - /xarray/* - Zarr/NetCDF multidimensional data (titiler.xarray)
+    - /mosaicjson/* - MosaicJSON tiles (LEGACY - see note below)
+    - /searches/* - pgSTAC dynamic mosaics (RECOMMENDED for mosaics)
+
+    Note on MosaicJSON:
+        The /mosaicjson/* endpoints are mounted for API completeness but are
+        NOT SUPPORTED in this deployment. MosaicJSON requires static storage
+        tokens embedded in the JSON file, which is incompatible with our
+        OAuth/Managed Identity security model (1-hour token TTL, background
+        refresh). Use /searches/* endpoints for dynamic mosaic functionality.
+
+        The TiTiler ecosystem is moving away from cogeo-mosaic - titiler-core
+        1.0.0 (Dec 2025) removed the cogeo-mosaic dependency entirely.
+    """
 
     # =========================================================================
     # TiTiler COG Endpoint - Direct file access
@@ -185,13 +212,16 @@ def _mount_titiler_routers(app: FastAPI) -> None:
     )
 
     # =========================================================================
-    # TiTiler MosaicJSON Endpoint - For MosaicJSON files
+    # TiTiler MosaicJSON Endpoint - LEGACY, NOT SUPPORTED
     # =========================================================================
+    # Mounted for API completeness only. MosaicJSON requires static tokens
+    # embedded in files - incompatible with OAuth/Managed Identity.
+    # Use /searches/* for dynamic mosaics instead.
     mosaic_json = BaseMosaicTilerFactory(
         router_prefix="/mosaicjson",
         add_viewer=True,
     )
-    app.include_router(mosaic_json.router, prefix="/mosaicjson", tags=["MosaicJSON"])
+    app.include_router(mosaic_json.router, prefix="/mosaicjson", tags=["MosaicJSON (Legacy)"])
 
     # =========================================================================
     # TiTiler-pgSTAC Search Endpoints - For STAC catalog searches

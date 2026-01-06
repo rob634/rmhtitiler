@@ -3,6 +3,11 @@ Configuration management for rmhtitiler.
 
 Uses Pydantic Settings for type-safe configuration with environment variable support.
 All magic numbers are extracted as named constants.
+
+Key Configuration Notes:
+    - Token TTL constants are tuned for Azure's 1-hour OAuth token lifetime
+    - Storage tokens are refreshed in background to ensure GDAL always has valid credentials
+    - MosaicJSON is intentionally unsupported (requires static tokens)
 """
 
 import os

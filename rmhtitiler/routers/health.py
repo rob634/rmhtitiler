@@ -5,6 +5,14 @@ Provides three endpoints following Kubernetes probe conventions:
 - /livez  - Liveness probe (is the container alive?)
 - /readyz - Readiness probe (is the service ready for traffic?)
 - /healthz - Full health check (detailed diagnostics)
+
+The /healthz endpoint reports available_features which reflects the supported
+endpoints in this deployment:
+- cog_tiles: /cog/* endpoints (requires Azure OAuth)
+- xarray_zarr: /xarray/* endpoints (requires Azure OAuth)
+- pgstac_searches: /searches/* endpoints (requires database)
+- planetary_computer: /pc/* endpoints (optional)
+- mosaic_json: Always False - legacy endpoint, incompatible with OAuth/MI
 """
 
 import sys
@@ -244,7 +252,8 @@ async def health(response: Response):
             "xarray_zarr": settings.use_azure_auth and storage_token_cache.is_valid,
             "planetary_computer": settings.enable_planetary_computer,
             "pgstac_searches": db_ok,
-            "mosaic_json": db_ok,
+            # MosaicJSON requires static tokens - incompatible with OAuth/MI
+            "mosaic_json": False,  # Legacy endpoint, use pgstac_searches instead
         },
     }
 
