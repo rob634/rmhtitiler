@@ -21,7 +21,7 @@ async def root():
         "endpoints": {
             "liveness": "/livez",
             "readiness": "/readyz",
-            "health": "/healthz",
+            "health": "/health",
             "docs": "/docs",
             "redoc": "/redoc",
             "search_list": "/searches",

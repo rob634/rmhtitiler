@@ -6,9 +6,8 @@ Creates and configures the TiTiler application with:
 - TiTiler-core (COG tiles via rio-tiler 8.x)
 - TiTiler-pgstac (STAC catalog searches - dynamic mosaics)
 - TiTiler-xarray (Zarr/NetCDF multidimensional data)
-- Health probe endpoints (/livez, /readyz, /healthz)
+- Health probe endpoints (/livez, /readyz, /health)
 - Planetary Computer integration
-- NiceGUI dashboard (optional)
 
 Dependency Notes:
     This application uses titiler-core 1.0.2 and rio-tiler 8.0.5 (latest versions
@@ -255,18 +254,6 @@ def _mount_titiler_routers(app: FastAPI) -> None:
     )
 
 
-def _mount_dashboard(app: FastAPI) -> None:
-    """Mount NiceGUI dashboard if available."""
-    try:
-        from dashboard.main import mount_dashboard
-
-        mount_dashboard(app)
-        logger.info("NiceGUI Dashboard mounted at /dashboard")
-    except ImportError as e:
-        logger.warning(f"Dashboard not available: {e}")
-        logger.info("Install nicegui>=2.0.0 and httpx>=0.27.0 to enable the dashboard")
-
-
 def create_app() -> FastAPI:
     """
     Create and configure the FastAPI application.
@@ -315,10 +302,6 @@ def create_app() -> FastAPI:
 
     # Root info endpoint
     app.include_router(root.router)
-
-    # Dashboard
-    if settings.enable_dashboard:
-        _mount_dashboard(app)
 
     return app
 

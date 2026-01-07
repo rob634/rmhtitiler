@@ -4,9 +4,9 @@ Health probe endpoints for Kubernetes and Azure App Service.
 Provides three endpoints following Kubernetes probe conventions:
 - /livez  - Liveness probe (is the container alive?)
 - /readyz - Readiness probe (is the service ready for traffic?)
-- /healthz - Full health check (detailed diagnostics)
+- /health - Full health check (detailed diagnostics)
 
-The /healthz endpoint reports available_features which reflects the supported
+The /health endpoint reports available_features which reflects the supported
 endpoints in this deployment:
 - cog_tiles: /cog/* endpoints (requires Azure OAuth)
 - xarray_zarr: /xarray/* endpoints (requires Azure OAuth)
@@ -46,7 +46,7 @@ async def liveness():
     before database connection is established, preventing the container from being
     killed during slow database connections or MI token acquisition.
 
-    Use /readyz for readiness checks, /healthz for full diagnostics.
+    Use /readyz for readiness checks, /health for full diagnostics.
     """
     return {
         "status": "alive",
@@ -60,7 +60,7 @@ async def readiness(response: Response):
     Kubernetes-style readiness probe.
 
     Checks critical dependencies to determine if the service can handle traffic.
-    Returns minimal response for efficiency - use /healthz for full diagnostics.
+    Returns minimal response for efficiency - use /health for full diagnostics.
 
     Returns:
         HTTP 200: Ready to receive traffic
@@ -102,7 +102,7 @@ async def readiness(response: Response):
     }
 
 
-@router.get("/healthz")
+@router.get("/health")
 async def health(response: Response):
     """
     Full health check with diagnostic details for monitoring and debugging.

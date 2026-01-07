@@ -83,9 +83,6 @@ class Settings(BaseSettings):
     enable_planetary_computer: bool = True
     """Enable Planetary Computer credential provider for climate data."""
 
-    enable_dashboard: bool = True
-    """Mount NiceGUI dashboard at /dashboard."""
-
     # =========================================================================
     # Computed Properties
     # =========================================================================
