@@ -12,6 +12,7 @@ FROM ghcr.io/stac-utils/titiler-pgstac:1.9.0
 # - obstore: High-performance storage with Planetary Computer credential provider
 # - requests: Required by PlanetaryComputerCredentialProvider
 # - pydantic-settings: Type-safe configuration management
+# - azure-monitor-opentelemetry: Application Insights integration
 RUN pip install --no-cache-dir \
     azure-identity>=1.15.0 \
     azure-keyvault-secrets>=4.7.0 \
@@ -20,7 +21,8 @@ RUN pip install --no-cache-dir \
     obstore>=0.6.0 \
     requests>=2.28.0 \
     psutil>=5.9.0 \
-    pydantic-settings>=2.0.0
+    pydantic-settings>=2.0.0 \
+    azure-monitor-opentelemetry>=1.6.0
 
 # Set working directory
 WORKDIR /app
@@ -33,8 +35,15 @@ ENV LOCAL_MODE=false
 ENV USE_AZURE_AUTH=true
 ENV ENABLE_PLANETARY_COMPUTER=true
 
+# Observability settings (set APPLICATIONINSIGHTS_CONNECTION_STRING to enable telemetry)
+# OBSERVABILITY_MODE enables detailed request/latency logging
+# SLOW_REQUEST_THRESHOLD_MS sets the slow request threshold (default: 2000ms)
+ENV OBSERVABILITY_MODE=false
+ENV SLOW_REQUEST_THRESHOLD_MS=2000
+
 # Expose port
 EXPOSE 8000
 
-# Production command - using 1 worker for initial deployment
-CMD ["uvicorn", "rmhtitiler.app:app", "--host", "0.0.0.0", "--port", "8000", "--workers", "1"]
+# Production command - uses main.py for proper telemetry initialization
+# IMPORTANT: main.py configures Azure Monitor BEFORE FastAPI import
+CMD ["uvicorn", "rmhtitiler.main:app", "--host", "0.0.0.0", "--port", "8000", "--workers", "1"]

@@ -193,6 +193,16 @@ TiTiler works with **both** Azure storage account types:
 | `KEY_VAULT_NAME` | Key Vault name (for `key_vault` mode only) | `{keyvault-name}` |
 | `KEY_VAULT_SECRET_NAME` | Secret name in Key Vault (for `key_vault` mode) | `postgres-password` |
 
+#### Observability Settings
+
+| Variable | Purpose | Default |
+|----------|---------|---------|
+| `APPLICATIONINSIGHTS_CONNECTION_STRING` | App Insights connection string (enables telemetry) | *(none)* |
+| `OBSERVABILITY_MODE` | Enable detailed request/latency logging | `false` |
+| `SLOW_REQUEST_THRESHOLD_MS` | Slow request threshold in milliseconds | `2000` |
+| `APP_NAME` | Service name for log correlation | `rmhtitiler` |
+| `ENVIRONMENT` | Deployment environment (dev/qa/prod) | `dev` |
+
 ---
 
 ## API Endpoints

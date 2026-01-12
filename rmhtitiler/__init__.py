@@ -33,7 +33,7 @@ Unsupported Endpoints:
   Use /searches/* for dynamic mosaics instead.
 """
 
-__version__ = "0.5.2"
+__version__ = "0.6.0"
 __author__ = "Rob Harrison"
 
 __all__ = ["__version__"]

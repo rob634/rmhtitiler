@@ -8,6 +8,13 @@ Key Configuration Notes:
     - Token TTL constants are tuned for Azure's 1-hour OAuth token lifetime
     - Storage tokens are refreshed in background to ensure GDAL always has valid credentials
     - MosaicJSON is intentionally unsupported (requires static tokens)
+
+Observability Configuration:
+    See infrastructure/telemetry.py for Azure Monitor OpenTelemetry setup.
+    Key environment variables:
+    - APPLICATIONINSIGHTS_CONNECTION_STRING: Enable App Insights telemetry
+    - OBSERVABILITY_MODE: Enable detailed request/latency logging
+    - SLOW_REQUEST_THRESHOLD_MS: Slow request threshold (default: 2000ms)
 """
 
 import os
@@ -82,6 +89,27 @@ class Settings(BaseSettings):
     # =========================================================================
     enable_planetary_computer: bool = True
     """Enable Planetary Computer credential provider for climate data."""
+
+    # =========================================================================
+    # Observability (see also: infrastructure/telemetry.py)
+    # =========================================================================
+    # Note: These are read directly via os.environ in infrastructure modules
+    # for zero-import-overhead when disabled. Listed here for documentation.
+    #
+    # APPLICATIONINSIGHTS_CONNECTION_STRING: App Insights connection string
+    #   - When set, enables Azure Monitor OpenTelemetry integration
+    #   - Logs, traces, and HTTP requests flow to App Insights
+    #
+    # OBSERVABILITY_MODE: Enable detailed request/latency logging
+    #   - Default: false (zero overhead)
+    #   - When true: Logs request timing, status codes, response sizes
+    #
+    # SLOW_REQUEST_THRESHOLD_MS: Slow request threshold in milliseconds
+    #   - Default: 2000
+    #   - Requests exceeding this are logged as warnings with [SLOW] tag
+    #
+    # APP_NAME: Service name for correlation (default: rmhtitiler)
+    # ENVIRONMENT: Deployment environment (default: dev)
 
     # =========================================================================
     # Computed Properties

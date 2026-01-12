@@ -54,6 +54,12 @@ services:
       # Planetary Computer integration
       ENABLE_PLANETARY_COMPUTER: "true"
 
+      # Observability - enable request timing logs
+      OBSERVABILITY_MODE: "true"
+      SLOW_REQUEST_THRESHOLD_MS: "2000"
+      APP_NAME: "rmhtitiler-local"
+      ENVIRONMENT: "dev"
+
     volumes:
       # Mount local data directory for testing
       - ./data:/data:ro
@@ -67,7 +73,7 @@ services:
       - ./dashboard:/app/dashboard:ro
 
     command: >
-      uvicorn rmhtitiler.app:app
+      uvicorn rmhtitiler.main:app
       --host 0.0.0.0
       --port 8000
       --reload

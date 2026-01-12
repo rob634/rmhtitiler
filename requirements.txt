@@ -37,7 +37,12 @@ obstore>=0.6.0
 requests>=2.28.0
 
 # ============================================================================
-# MONITORING
+# MONITORING & OBSERVABILITY
 # ============================================================================
 # psutil for hardware metrics in health endpoint
 psutil>=5.9.0
+
+# Azure Monitor OpenTelemetry for Application Insights integration
+# Provides automatic HTTP request tracing, structured logging, and metrics
+# Set APPLICATIONINSIGHTS_CONNECTION_STRING to enable
+azure-monitor-opentelemetry>=1.6.0

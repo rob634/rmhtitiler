@@ -8,6 +8,7 @@ Creates and configures the TiTiler application with:
 - TiTiler-xarray (Zarr/NetCDF multidimensional data)
 - Health probe endpoints (/livez, /readyz, /health)
 - Planetary Computer integration
+- Request timing and observability (when OBSERVABILITY_MODE=true)
 
 Dependency Notes:
     This application uses titiler-core 1.0.2 and rio-tiler 8.0.5 (latest versions
@@ -17,6 +18,11 @@ Dependency Notes:
     The /mosaicjson/* endpoints are mounted but NOT SUPPORTED - they require
     static tokens incompatible with OAuth/Managed Identity. Use /searches/*
     for dynamic mosaic functionality instead.
+
+Entry Point:
+    For production, use rmhtitiler.main:app which configures Azure Monitor
+    telemetry before FastAPI is imported. For development without telemetry,
+    rmhtitiler.app:app can be used directly.
 """
 
 import logging
@@ -28,6 +34,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from rmhtitiler import __version__
 from rmhtitiler.config import settings
 from rmhtitiler.middleware.azure_auth import AzureAuthMiddleware
+from rmhtitiler.infrastructure.middleware import RequestTimingMiddleware
 from rmhtitiler.routers import health, planetary_computer, root
 from rmhtitiler.services.database import set_app_state
 from rmhtitiler.services.background import start_token_refresh
@@ -270,8 +277,10 @@ def create_app() -> FastAPI:
     )
 
     # =========================================================================
-    # Middleware
+    # Middleware (order matters - first added = outermost = runs first)
     # =========================================================================
+
+    # CORS - Allow cross-origin requests
     app.add_middleware(
         CORSMiddleware,
         allow_origins=["*"],
@@ -279,6 +288,12 @@ def create_app() -> FastAPI:
         allow_methods=["*"],
         allow_headers=["*"],
     )
+
+    # Request timing - Captures latency, status, response size for all requests
+    # Only logs when OBSERVABILITY_MODE=true (zero overhead otherwise)
+    app.add_middleware(RequestTimingMiddleware)
+
+    # Azure auth - Configures OAuth tokens for Azure Blob Storage access
     app.add_middleware(AzureAuthMiddleware)
 
     # =========================================================================
