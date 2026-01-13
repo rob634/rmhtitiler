@@ -81,9 +81,10 @@ async def initialize_tipg(app: "FastAPI") -> None:
         # Get settings using our auth system
         postgres_settings = get_tipg_postgres_settings()
         db_settings = get_tipg_database_settings()
+        schemas = settings.tipg_schema_list
 
-        # Create asyncpg connection pool
-        await tipg_connect_to_db(app, settings=postgres_settings)
+        # Create asyncpg connection pool (schemas is required keyword arg)
+        await tipg_connect_to_db(app, settings=postgres_settings, schemas=schemas)
         logger.info("TiPG asyncpg connection pool created (app.state.pool)")
 
         # Register collections from PostGIS schemas
@@ -148,9 +149,10 @@ async def refresh_tipg_pool(app: "FastAPI") -> None:
         # Get fresh credentials and settings
         postgres_settings = get_tipg_postgres_settings()
         db_settings = get_tipg_database_settings()
+        schemas = settings.tipg_schema_list
 
         # Create new pool
-        await tipg_connect_to_db(app, settings=postgres_settings)
+        await tipg_connect_to_db(app, settings=postgres_settings, schemas=schemas)
 
         # Re-register collection catalog
         await register_collection_catalog(app, db_settings=db_settings)
