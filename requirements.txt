@@ -46,3 +46,17 @@ psutil>=5.9.0
 # Provides automatic HTTP request tracing, structured logging, and metrics
 # Set APPLICATIONINSIGHTS_CONNECTION_STRING to enable
 azure-monitor-opentelemetry>=1.6.0
+
+# ============================================================================
+# OGC FEATURES + VECTOR TILES (TiPG)
+# ============================================================================
+# TiPG provides OGC API - Features and OGC API - Tiles for PostGIS tables
+# Complements TiTiler (raster) with vector data capabilities
+# https://github.com/developmentseed/tipg
+tipg>=0.12.0
+
+# TiPG dependencies (some may be satisfied by tipg, listed for clarity)
+buildpg>=0.3
+pygeofilter>=0.2.0,<0.3.0
+ciso8601~=2.3
+starlette-cramjam>=0.4,<0.6

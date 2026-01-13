@@ -31,6 +31,16 @@ def set_app_state(state: Any) -> None:
     logger.debug("Database service app state configured")
 
 
+def get_app_state() -> Optional[Any]:
+    """
+    Get the FastAPI app state.
+
+    Returns:
+        FastAPI app.state if available, None otherwise.
+    """
+    return _app_state
+
+
 def get_db_pool() -> Optional[Any]:
     """
     Get the database connection pool.

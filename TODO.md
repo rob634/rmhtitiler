@@ -114,3 +114,132 @@ rmhtitiler/
 - [ ] Add integration tests for auth flows
 - [ ] Consider adding `py.typed` marker for type checking
 - [ ] Review and update CLAUDE.md with new structure
+
+---
+
+## TiPG Integration - OGC Features + Vector Tiles
+
+**Status:** Planned
+**Date:** 2026-01-12
+**Priority:** High
+
+### Overview
+
+Integrate [TiPG](https://github.com/developmentseed/tipg) (Development Seed) to add OGC Features API and Vector Tiles alongside existing raster tile capabilities. TiPG complements TiTiler - same organization, proven integration patterns.
+
+### Why TiPG
+
+| Feature | Current (TiTiler) | With TiPG |
+|---------|-------------------|-----------|
+| Raster tiles (COG) | ✅ | ✅ |
+| STAC mosaics | ✅ | ✅ |
+| OGC Features API | ❌ | ✅ |
+| Vector tiles (MVT) | ❌ | ✅ |
+| PostGIS table access | ❌ | ✅ |
+| CQL2 filtering | ❌ | ✅ |
+
+### Architecture
+
+```
+rmhtitiler (single FastAPI app)
+├── app.state.dbpool    → titiler-pgstac (psycopg)
+├── app.state.pool      → TiPG (asyncpg)
+│
+├── /health, /cog, /xarray, /searches  → existing routes
+└── /vector/*                          → NEW TiPG routes
+    ├── /vector/collections
+    ├── /vector/collections/{id}/items
+    └── /vector/collections/{id}/tiles/{tms}/{z}/{x}/{y}
+```
+
+### Key Design Decision
+
+**Token-synchronized pool refresh:** Both connection pools use the same Managed Identity token. When token refreshes (every 45 min), both pools are recreated atomically. No passwords.
+
+### Implementation Tasks
+
+#### Phase 1: Dependencies & Configuration
+- [ ] Add `tipg>=0.12.0` to `requirements.txt`
+- [ ] Verify dependency compatibility (asyncpg, pydantic, fastapi versions)
+- [ ] Add TiPG-specific settings to `config.py`:
+  - `TIPG_SCHEMAS` - PostGIS schemas to expose (default: `["geo", "public"]`)
+  - `TIPG_ENABLE` - Feature flag to enable/disable TiPG routes
+
+#### Phase 2: Database Integration
+- [ ] Create `rmhtitiler/routers/vector.py`:
+  - Helper to build TiPG PostgresSettings from existing auth
+  - TiPG endpoint factory configuration
+- [ ] Extend `app.py` lifespan handler:
+  - Initialize TiPG connection pool (`app.state.pool`)
+  - Register collection catalog from PostGIS schemas
+  - Close TiPG pool on shutdown
+- [ ] Extend `services/background.py` `_refresh_postgres_with_pool_recreation()`:
+  - Close and recreate TiPG pool alongside titiler-pgstac pool
+  - Re-register collection catalog after pool recreation
+
+#### Phase 3: Router Integration
+- [ ] Mount TiPG endpoints in `create_app()`:
+  ```python
+  from tipg.factory import Endpoints as TiPGEndpoints
+  tipg = TiPGEndpoints(with_tiles_viewer=True)
+  app.include_router(tipg.router, prefix="/vector", tags=["OGC Vector"])
+  ```
+- [ ] Update `/health` endpoint to report TiPG pool status
+- [ ] Update root endpoint to include vector API links
+
+#### Phase 4: Testing & Documentation
+- [ ] Test OGC Features endpoints against `geo` schema tables
+- [ ] Test vector tile rendering (MVT format)
+- [ ] Test token refresh cycle (verify both pools recreate)
+- [ ] Update CLAUDE.md with new endpoints
+- [ ] Update WIKI.md with TiPG configuration
+
+### New Endpoints (after integration)
+
+| Endpoint | Method | Description |
+|----------|--------|-------------|
+| `GET /vector/` | GET | OGC landing page |
+| `GET /vector/conformance` | GET | OGC conformance classes |
+| `GET /vector/collections` | GET | List PostGIS tables |
+| `GET /vector/collections/{id}` | GET | Collection metadata + extent |
+| `GET /vector/collections/{id}/queryables` | GET | Filterable properties |
+| `GET /vector/collections/{id}/items` | GET | Query features (GeoJSON) |
+| `GET /vector/collections/{id}/items/{fid}` | GET | Single feature |
+| `GET /vector/collections/{id}/tiles/{tms}/{z}/{x}/{y}` | GET | Vector tile (MVT) |
+| `GET /vector/collections/{id}/tilejson.json` | GET | MapLibre TileJSON |
+| `GET /vector/collections/{id}/map` | GET | Interactive viewer |
+
+### Dependencies to Add
+
+```
+# requirements.txt additions
+tipg>=0.12.0
+buildpg>=0.3
+pygeofilter>=0.2.0,<0.3.0
+ciso8601~=2.3
+starlette-cramjam>=0.4,<0.6
+```
+
+### Risks & Mitigations
+
+| Risk | Mitigation |
+|------|------------|
+| Dependency conflicts | Test in isolated venv first |
+| Pool recreation downtime | ~100-500ms acceptable; could add health check grace period |
+| asyncpg vs psycopg complexity | Separate pools, separate state attributes |
+| Token refresh timing | Existing 45-min refresh well within 60-min token TTL |
+
+### Alternative Considered
+
+**rmhgeoapi/ogc_features** - Custom Azure Functions implementation already in production. Rejected because:
+- Azure Functions architecture (not FastAPI native)
+- No vector tiles support
+- Would require significant refactoring to integrate
+- TiPG provides superset of features with less code
+
+### References
+
+- [TiPG GitHub](https://github.com/developmentseed/tipg)
+- [TiPG Documentation](https://developmentseed.org/tipg/)
+- [eoAPI Architecture](https://eoapi.dev/services/) - TiTiler + TiPG + STAC
+- [OGC API - Features](https://ogcapi.ogc.org/features/)

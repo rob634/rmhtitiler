@@ -6,6 +6,7 @@ A containerized geospatial tile server integrating:
 - TiTiler-core (COG tiles via rio-tiler)
 - TiTiler-pgstac (STAC catalog searches - dynamic mosaics)
 - TiTiler-xarray (Zarr/NetCDF multidimensional data)
+- TiPG (OGC Features API + Vector Tiles for PostGIS)
 
 With Azure authentication:
 - Managed Identity for Azure Blob Storage (GDAL env vars)
@@ -26,6 +27,7 @@ Supported Endpoints:
 - /cog/* - COG tiles (works with rio-tiler 8.x)
 - /xarray/* - Zarr/NetCDF (uses titiler.xarray's own rio-tiler 8.x)
 - /searches/* - pgSTAC dynamic mosaics (forwards-compatible)
+- /vector/* - OGC Features + Vector Tiles via TiPG (v0.7.0+)
 
 Unsupported Endpoints:
 - /mosaicjson/* - Requires static tokens embedded in JSON files.
@@ -33,7 +35,7 @@ Unsupported Endpoints:
   Use /searches/* for dynamic mosaics instead.
 """
 
-__version__ = "0.6.0"
+__version__ = "0.7.0"
 __author__ = "Rob Harrison"
 
 __all__ = ["__version__"]

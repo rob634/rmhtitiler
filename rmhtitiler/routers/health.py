@@ -30,7 +30,7 @@ from rmhtitiler.auth.cache import (
     db_error_cache,
     TokenCache,
 )
-from rmhtitiler.services.database import ping_database, ping_database_with_timing, get_db_pool
+from rmhtitiler.services.database import ping_database, ping_database_with_timing, get_db_pool, get_app_state
 
 logger = logging.getLogger(__name__)
 
@@ -215,6 +215,40 @@ async def health(response: Response):
             issues.append("PostgreSQL OAuth token not initialized")
 
     # =========================================================================
+    # Check 4: TiPG pool (OGC Features + Vector Tiles)
+    # =========================================================================
+    tipg_ok = False
+    if settings.enable_tipg:
+        app_state = get_app_state()
+        tipg_pool = getattr(app_state, "pool", None) if app_state else None
+        tipg_catalog = getattr(app_state, "collection_catalog", None) if app_state else None
+
+        if tipg_pool:
+            tipg_ok = True
+            collection_count = len(tipg_catalog) if tipg_catalog else 0
+            checks["tipg"] = {
+                "status": "ok",
+                "pool_exists": True,
+                "collections_discovered": collection_count,
+                "schemas": settings.tipg_schema_list,
+                "router_prefix": settings.tipg_router_prefix,
+                "required_for": ["OGC Features API", "Vector Tiles"],
+            }
+        else:
+            checks["tipg"] = {
+                "status": "fail",
+                "pool_exists": False,
+                "schemas": settings.tipg_schema_list,
+                "required_for": ["OGC Features API", "Vector Tiles"],
+            }
+            issues.append("TiPG pool not initialized - vector endpoints will fail")
+    else:
+        checks["tipg"] = {
+            "status": "disabled",
+            "note": "TiPG disabled via ENABLE_TIPG=false",
+        }
+
+    # =========================================================================
     # Determine overall status
     # =========================================================================
     has_critical_failure = not db_ok or (
@@ -246,6 +280,8 @@ async def health(response: Response):
             "postgres_auth_mode": settings.postgres_auth_mode,
             "azure_auth_enabled": settings.use_azure_auth,
             "local_mode": settings.local_mode,
+            "tipg_enabled": settings.enable_tipg,
+            "tipg_schemas": settings.tipg_schema_list if settings.enable_tipg else None,
         },
         "available_features": {
             "cog_tiles": settings.use_azure_auth and storage_token_cache.is_valid,
@@ -254,6 +290,9 @@ async def health(response: Response):
             "pgstac_searches": db_ok,
             # MosaicJSON requires static tokens - incompatible with OAuth/MI
             "mosaic_json": False,  # Legacy endpoint, use pgstac_searches instead
+            # TiPG OGC Features + Vector Tiles
+            "ogc_features": settings.enable_tipg and tipg_ok,
+            "vector_tiles": settings.enable_tipg and tipg_ok,
         },
     }
 

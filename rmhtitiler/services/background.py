@@ -9,6 +9,7 @@ from typing import TYPE_CHECKING
 from rmhtitiler.config import settings, BACKGROUND_REFRESH_INTERVAL_SECS
 from rmhtitiler.auth.storage import refresh_storage_token
 from rmhtitiler.auth.postgres import refresh_postgres_token, build_database_url
+from rmhtitiler.routers.vector import refresh_tipg_pool
 
 if TYPE_CHECKING:
     from fastapi import FastAPI
@@ -57,11 +58,13 @@ async def token_refresh_background_task():
 
 async def _refresh_postgres_with_pool_recreation():
     """
-    Refresh PostgreSQL token and recreate connection pool.
+    Refresh PostgreSQL token and recreate ALL connection pools.
 
     When using managed identity for PostgreSQL, the OAuth token is embedded
     in the connection string. When the token is refreshed, we need to
-    recreate the connection pool with the new token.
+    recreate both connection pools with the new token:
+    - titiler-pgstac pool (psycopg, app.state.dbpool)
+    - TiPG pool (asyncpg, app.state.pool)
     """
     try:
         new_token = refresh_postgres_token()
@@ -70,28 +73,37 @@ async def _refresh_postgres_with_pool_recreation():
             return
 
         if not _app:
-            logger.warning("App reference not set, cannot recreate connection pool")
+            logger.warning("App reference not set, cannot recreate connection pools")
             return
 
         # Rebuild DATABASE_URL with new token
         new_database_url = build_database_url(new_token)
 
-        # Import here to avoid circular imports
+        # ====================================================================
+        # 1. Refresh titiler-pgstac pool (psycopg, app.state.dbpool)
+        # ====================================================================
         from titiler.pgstac.db import close_db_connection, connect_to_db
         from titiler.pgstac.settings import PostgresSettings
 
         try:
-            # Close existing pool
             await close_db_connection(_app)
-            logger.info("Closed existing database connection pool")
+            logger.info("Closed titiler-pgstac connection pool")
 
-            # Create new pool with fresh token
             db_settings = PostgresSettings(database_url=new_database_url)
             await connect_to_db(_app, settings=db_settings)
-            logger.info("PostgreSQL token refresh complete - new connection pool created")
+            logger.info("titiler-pgstac pool recreated with fresh token")
 
         except Exception as pool_err:
-            logger.error(f"Failed to recreate connection pool: {pool_err}")
+            logger.error(f"Failed to recreate titiler-pgstac pool: {pool_err}")
+
+        # ====================================================================
+        # 2. Refresh TiPG pool (asyncpg, app.state.pool)
+        # ====================================================================
+        if settings.enable_tipg:
+            try:
+                await refresh_tipg_pool(_app)
+            except Exception as tipg_err:
+                logger.error(f"Failed to refresh TiPG pool: {tipg_err}")
 
     except Exception as e:
         logger.error(f"PostgreSQL token refresh failed: {e}")

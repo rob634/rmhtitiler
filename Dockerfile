@@ -13,6 +13,7 @@ FROM ghcr.io/stac-utils/titiler-pgstac:1.9.0
 # - requests: Required by PlanetaryComputerCredentialProvider
 # - pydantic-settings: Type-safe configuration management
 # - azure-monitor-opentelemetry: Application Insights integration
+# - tipg: OGC Features API + Vector Tiles for PostGIS
 RUN pip install --no-cache-dir \
     azure-identity>=1.15.0 \
     azure-keyvault-secrets>=4.7.0 \
@@ -22,7 +23,8 @@ RUN pip install --no-cache-dir \
     requests>=2.28.0 \
     psutil>=5.9.0 \
     pydantic-settings>=2.0.0 \
-    azure-monitor-opentelemetry>=1.6.0
+    azure-monitor-opentelemetry>=1.6.0 \
+    "tipg>=0.12.0"
 
 # Set working directory
 WORKDIR /app
@@ -34,6 +36,8 @@ COPY rmhtitiler /app/rmhtitiler
 ENV LOCAL_MODE=false
 ENV USE_AZURE_AUTH=true
 ENV ENABLE_PLANETARY_COMPUTER=true
+ENV ENABLE_TIPG=true
+ENV TIPG_SCHEMAS=geo,public
 
 # Observability settings (set APPLICATIONINSIGHTS_CONNECTION_STRING to enable telemetry)
 # OBSERVABILITY_MODE enables detailed request/latency logging

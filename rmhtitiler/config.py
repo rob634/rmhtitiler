@@ -90,6 +90,23 @@ class Settings(BaseSettings):
     enable_planetary_computer: bool = True
     """Enable Planetary Computer credential provider for climate data."""
 
+    enable_tipg: bool = True
+    """Enable TiPG OGC Features + Vector Tiles API."""
+
+    # =========================================================================
+    # TiPG Configuration (OGC Features + Vector Tiles)
+    # =========================================================================
+    tipg_schemas: str = "geo,public"
+    """Comma-separated list of PostGIS schemas to expose via TiPG."""
+
+    tipg_router_prefix: str = "/vector"
+    """URL prefix for TiPG routes (e.g., /vector/collections)."""
+
+    @property
+    def tipg_schema_list(self) -> list[str]:
+        """Parse comma-separated schemas into list."""
+        return [s.strip() for s in self.tipg_schemas.split(",") if s.strip()]
+
     # =========================================================================
     # Observability (see also: infrastructure/telemetry.py)
     # =========================================================================

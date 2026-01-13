@@ -12,12 +12,13 @@ Container (Azure App Service / Docker)
 
 ### TiTiler App (`rmhtitiler/`)
 
-Dynamic tile server for Cloud Optimized GeoTIFFs (COGs) and Zarr/NetCDF arrays.
+Dynamic tile server for Cloud Optimized GeoTIFFs (COGs), Zarr/NetCDF arrays, and PostGIS vector data.
 
 **Features:**
 - COG tiles via GDAL with Azure Blob Storage OAuth
 - Zarr/NetCDF via titiler.xarray with Planetary Computer support
 - pgSTAC mosaic searches for STAC item collections
+- OGC Features API + Vector Tiles via TiPG for PostGIS tables
 - `/health` endpoint with database ping, version, hardware info
 
 **Key endpoints:**
@@ -25,6 +26,9 @@ Dynamic tile server for Cloud Optimized GeoTIFFs (COGs) and Zarr/NetCDF arrays.
 - `GET /cog/info?url=...` - COG metadata
 - `GET /cog/tiles/{z}/{x}/{y}` - Tile rendering
 - `GET /searches/register` - Create pgSTAC mosaic search
+- `GET /vector/collections` - List PostGIS collections (TiPG)
+- `GET /vector/collections/{id}/items` - Query features (GeoJSON)
+- `GET /vector/collections/{id}/tiles/{tms}/{z}/{x}/{y}` - Vector tiles (MVT)
 
 ---
 
@@ -35,6 +39,7 @@ Dynamic tile server for Cloud Optimized GeoTIFFs (COGs) and Zarr/NetCDF arrays.
 | `rmhtitiler/app.py` | Main FastAPI app with OAuth |
 | `rmhtitiler/config.py` | Environment configuration |
 | `rmhtitiler/routers/health.py` | Health probe endpoints |
+| `rmhtitiler/routers/vector.py` | TiPG integration (OGC Features + Vector Tiles) |
 | `Dockerfile` | Production image (Managed Identity) |
 | `Dockerfile.local` | Local dev image (Azure CLI credentials) |
 | `docker-compose.yml` | Local development setup |
@@ -89,6 +94,9 @@ See [WIKI.md](WIKI.md) for complete list. Key variables:
 | `LOCAL_MODE` | Use Azure CLI instead of Managed Identity |
 | `DATABASE_URL` | PostgreSQL connection string |
 | `ENABLE_PLANETARY_COMPUTER` | Enable PC credential provider for public data |
+| `ENABLE_TIPG` | Enable TiPG OGC Features + Vector Tiles (default: true) |
+| `TIPG_SCHEMAS` | Comma-separated PostGIS schemas to expose (default: "geo,public") |
+| `TIPG_ROUTER_PREFIX` | URL prefix for TiPG routes (default: "/vector") |
 
 ---
 
@@ -100,6 +108,15 @@ curl http://localhost:8000/health | jq
 
 # COG info
 curl "http://localhost:8000/cog/info?url=https://example.com/file.tif"
+
+# TiPG - List vector collections
+curl http://localhost:8000/vector/collections | jq
+
+# TiPG - Query features from a collection
+curl "http://localhost:8000/vector/collections/my_table/items?limit=10" | jq
+
+# TiPG - Get vector tile
+curl "http://localhost:8000/vector/collections/my_table/tiles/WebMercatorQuad/10/512/384"
 ```
 
 ---

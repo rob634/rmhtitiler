@@ -35,7 +35,7 @@ from rmhtitiler import __version__
 from rmhtitiler.config import settings
 from rmhtitiler.middleware.azure_auth import AzureAuthMiddleware
 from rmhtitiler.infrastructure.middleware import RequestTimingMiddleware
-from rmhtitiler.routers import health, planetary_computer, root
+from rmhtitiler.routers import health, planetary_computer, root, vector
 from rmhtitiler.services.database import set_app_state
 from rmhtitiler.services.background import start_token_refresh
 from rmhtitiler.auth.storage import initialize_storage_auth
@@ -82,8 +82,12 @@ async def lifespan(app: FastAPI):
     logger.info(f"Azure Storage auth: {settings.use_azure_auth}")
     logger.info(f"PostgreSQL auth mode: {settings.postgres_auth_mode}")
 
-    # Initialize database connection
+    # Initialize database connection (titiler-pgstac)
     await _initialize_database(app)
+
+    # Initialize TiPG (OGC Features + Vector Tiles)
+    if settings.enable_tipg and settings.has_postgres_config:
+        await vector.initialize_tipg(app)
 
     # Initialize storage OAuth
     initialize_storage_auth()
@@ -105,6 +109,12 @@ async def lifespan(app: FastAPI):
     # SHUTDOWN
     # =========================================================================
     logger.info("Shutting down rmhtitiler...")
+
+    # Close TiPG pool first
+    if settings.enable_tipg:
+        await vector.close_tipg(app)
+
+    # Close titiler-pgstac pool
     await close_db_connection(app)
     logger.info("Shutdown complete")
 
@@ -314,6 +324,16 @@ def create_app() -> FastAPI:
     # Planetary Computer endpoints
     if settings.enable_planetary_computer:
         app.include_router(planetary_computer.router)
+
+    # TiPG OGC Features + Vector Tiles
+    if settings.enable_tipg:
+        tipg_endpoints = vector.create_tipg_endpoints()
+        app.include_router(
+            tipg_endpoints.router,
+            prefix=settings.tipg_router_prefix,
+            tags=["OGC Vector (TiPG)"],
+        )
+        logger.info(f"TiPG router mounted at {settings.tipg_router_prefix}")
 
     # Root info endpoint
     app.include_router(root.router)
