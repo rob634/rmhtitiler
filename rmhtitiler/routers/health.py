@@ -288,8 +288,6 @@ async def health(response: Response):
             "xarray_zarr": settings.use_azure_auth and storage_token_cache.is_valid,
             "planetary_computer": settings.enable_planetary_computer,
             "pgstac_searches": db_ok,
-            # MosaicJSON requires static tokens - incompatible with OAuth/MI
-            "mosaic_json": False,  # Legacy endpoint, use pgstac_searches instead
             # TiPG OGC Features + Vector Tiles
             "ogc_features": settings.enable_tipg and tipg_ok,
             "vector_tiles": settings.enable_tipg and tipg_ok,

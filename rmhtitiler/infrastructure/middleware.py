@@ -81,7 +81,7 @@ SLOW_THRESHOLD_MS = int(os.environ.get("SLOW_REQUEST_THRESHOLD_MS", "2000"))
 
 # Regex to extract tile coordinates from paths like /cog/tiles/10/512/384.png
 TILE_PATH_PATTERN = re.compile(
-    r"/(cog|xarray|searches/[^/]+|mosaicjson|pc)/.*?/(\d+)/(\d+)/(\d+)"
+    r"/(cog|xarray|searches/[^/]+|vector|pc)/.*?/(\d+)/(\d+)/(\d+)"
 )
 
 

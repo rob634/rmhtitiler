@@ -36,24 +36,7 @@ but installs anyway.
 | `/cog/*` | rio-tiler 8.x | ✅ Works | rio-tiler 8.x reads COGs fine |
 | `/xarray/*` | titiler.xarray | ✅ Works | Uses its own rio-tiler 8.x |
 | `/searches/*` | titiler-pgstac | ✅ Works | Tested in production, forwards-compatible |
-| `/mosaicjson/*` | cogeo-mosaic | ⛔ Unsupported | See below |
-
-### MosaicJSON: Intentionally Unsupported
-
-**Why we don't use `/mosaicjson/*` endpoints:**
-
-MosaicJSON requires **hardcoded, static storage tokens** embedded in the JSON file.
-This is incompatible with our security model:
-
-- We use short-lived OAuth tokens (1 hour TTL) via Managed Identity
-- Tokens are refreshed automatically in background tasks
-- Static tokens are a security risk and operationally brittle
-
-The TiTiler team recognizes this - **titiler-core 1.0.0 removed cogeo-mosaic dependency**
-(Dec 17, 2025 release notes). The ecosystem is moving away from static-token mosaics.
-
-**Use `/searches/*` instead:** pgSTAC search registration creates dynamic mosaics from
-STAC queries without requiring static tokens.
+| `/vector/*` | tipg | ✅ Works | OGC Features + Vector Tiles (v0.7.0+) |
 
 ### Version Summary
 
@@ -61,20 +44,19 @@ We are running **more advanced versions** of core libraries:
 - `titiler-core 1.0.2` - Major version, latest (Dec 2025)
 - `rio-tiler 8.0.5` - Latest
 
-The warning packages have not been updated yet:
+The warning packages in the base image have not been updated yet:
 - `titiler-pgstac 1.9.0` - Released Sep 2024, written for titiler-core 0.24.x
-- `cogeo-mosaic 8.2.0` - Requires rio-tiler 7.x (we don't use it)
+- `cogeo-mosaic 8.2.0` - Requires rio-tiler 7.x (unused, in base image only)
 
 ### Future: Watch for Updates
 
 - **titiler-pgstac 2.x** - Expected to officially support titiler-core 1.x
-- **cogeo-mosaic** - May be deprecated as ecosystem moves to dynamic mosaics
 
 ### Notes
 
 - Base image is in JFROG Artifactory (QA) - no changes needed
-- Current build (`v0.5.0-test`) works for all supported use cases
-- MosaicJSON endpoints exist but are not part of our supported feature set
+- pip warnings about cogeo-mosaic are harmless (we don't use it)
+- All supported endpoints work correctly despite version warnings
 
 ---
 

@@ -27,7 +27,7 @@ curl http://localhost:8000/healthz
 
 - ✅ **Azure Managed Identity OAuth** - No secrets in code, RBAC-based access
 - ✅ **Multi-Container Support** - Single OAuth token for ALL containers
-- ✅ **Three Access Patterns** - Direct COG, pgSTAC Search, MosaicJSON
+- ✅ **Multiple Access Patterns** - Direct COG, pgSTAC Search, OGC Features + Vector Tiles
 - ✅ **Production Ready** - 4 Uvicorn workers, GDAL optimizations
 - ✅ **PostgreSQL pgSTAC** - Full STAC catalog integration
 - ✅ **Interactive Viewers** - Built-in map viewers for all endpoints
@@ -83,18 +83,26 @@ curl "https://<your-app-url>/searches/<search-hash-id>/tiles/WebMercatorQuad/14/
 https://<your-app-url>/searches/{search_id}/WebMercatorQuad/map.html?assets=data
 ```
 
-### 3. MosaicJSON
+### 3. OGC Features + Vector Tiles (TiPG)
 
-**Create Mosaic:**
+**List Collections:**
 ```bash
-curl -X POST "https://<your-app-url>/mosaicjson/" \
-  -H "Content-Type: application/json" \
-  -d @mosaic.json
+curl "https://<your-app-url>/vector/collections"
 ```
 
-**Mosaic Tiles:**
+**Query Features (GeoJSON):**
+```bash
+curl "https://<your-app-url>/vector/collections/<table_name>/items?limit=100"
 ```
-https://<your-app-url>/mosaicjson/tiles/WebMercatorQuad/{z}/{x}/{y}.png
+
+**Vector Tiles (MVT):**
+```
+https://<your-app-url>/vector/collections/<table_name>/tiles/WebMercatorQuad/{z}/{x}/{y}
+```
+
+**Interactive Viewer:**
+```
+https://<your-app-url>/vector/collections/<table_name>/map
 ```
 
 ## 🏗️ Architecture

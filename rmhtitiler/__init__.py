@@ -28,14 +28,9 @@ Supported Endpoints:
 - /xarray/* - Zarr/NetCDF (uses titiler.xarray's own rio-tiler 8.x)
 - /searches/* - pgSTAC dynamic mosaics (forwards-compatible)
 - /vector/* - OGC Features + Vector Tiles via TiPG (v0.7.0+)
-
-Unsupported Endpoints:
-- /mosaicjson/* - Requires static tokens embedded in JSON files.
-  Incompatible with our OAuth/Managed Identity security model.
-  Use /searches/* for dynamic mosaics instead.
 """
 
-__version__ = "0.7.0"
+__version__ = "0.7.1"
 __author__ = "Rob Harrison"
 
 __all__ = ["__version__"]
