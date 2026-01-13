@@ -30,14 +30,14 @@ RUN pip install --no-cache-dir \
 WORKDIR /app
 
 # Copy application package
-COPY rmhtitiler /app/rmhtitiler
+COPY geotiler /app/geotiler
 
 # Production settings
 ENV LOCAL_MODE=false
 ENV USE_AZURE_AUTH=true
 ENV ENABLE_PLANETARY_COMPUTER=true
 ENV ENABLE_TIPG=true
-ENV TIPG_SCHEMAS=geo,public
+ENV TIPG_SCHEMAS=geo
 
 # Observability settings (set APPLICATIONINSIGHTS_CONNECTION_STRING to enable telemetry)
 # OBSERVABILITY_MODE enables detailed request/latency logging
@@ -50,4 +50,4 @@ EXPOSE 8000
 
 # Production command - uses main.py for proper telemetry initialization
 # IMPORTANT: main.py configures Azure Monitor BEFORE FastAPI import
-CMD ["uvicorn", "rmhtitiler.main:app", "--host", "0.0.0.0", "--port", "8000", "--workers", "1"]
+CMD ["uvicorn", "geotiler.main:app", "--host", "0.0.0.0", "--port", "8000", "--workers", "1"]

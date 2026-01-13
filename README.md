@@ -123,7 +123,7 @@ Azure Blob Storage (RBAC: Storage Blob Data Reader)
 
 ### Components
 
-- **Application**: `rmhtitiler/` - Modular FastAPI package with OAuth middleware
+- **Application**: `geotiler/` - Modular FastAPI package with OAuth middleware
 - **Base Image**: `ghcr.io/stac-utils/titiler-pgstac:1.9.0`
 - **Database**: Azure PostgreSQL with pgSTAC extension
 - **Storage**: Azure Blob Storage (multi-container support)
@@ -133,8 +133,8 @@ Azure Blob Storage (RBAC: Storage Blob Data Reader)
 ## 📁 Project Structure
 
 ```
-rmhtitiler/
-├── rmhtitiler/                 # Main application package
+geotiler/
+├── geotiler/                 # Main application package
 │   ├── __init__.py             # Version (0.7.8.x)
 │   ├── app.py                  # FastAPI factory with lifespan
 │   ├── config.py               # Pydantic Settings
@@ -182,12 +182,12 @@ rmhtitiler/
 
 ### Hot Reload
 
-Changes to `rmhtitiler/` are automatically detected via volume mount:
+Changes to `geotiler/` are automatically detected via volume mount:
 
 ```yaml
 volumes:
-  - ./rmhtitiler:/app/rmhtitiler
-command: ["uvicorn", "rmhtitiler.app:app", "--host", "0.0.0.0", "--port", "8000", "--reload"]
+  - ./geotiler:/app/geotiler
+command: ["uvicorn", "geotiler.app:app", "--host", "0.0.0.0", "--port", "8000", "--reload"]
 ```
 
 ## 🚢 Deployment
@@ -291,7 +291,7 @@ az webapp log download --name <your-app-name> --resource-group <your-resource-gr
 | `DATABASE_URL` | PostgreSQL connection string | Set in docker-compose.yml | Set in App Service |
 | `ENABLE_PLANETARY_COMPUTER` | Enable PC credential provider | `true` | `true` |
 | `ENABLE_TIPG` | Enable OGC Features + Vector Tiles | `true` | `true` |
-| `TIPG_SCHEMAS` | PostGIS schemas to expose | `geo,public` | `geo,public` |
+| `TIPG_SCHEMAS` | PostGIS schemas to expose | `geo` | `geo` |
 | `GDAL_*` | GDAL optimizations | Auto | Auto |
 
 ### GDAL Optimizations

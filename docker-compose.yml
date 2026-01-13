@@ -57,7 +57,7 @@ services:
       # Observability - enable request timing logs
       OBSERVABILITY_MODE: "true"
       SLOW_REQUEST_THRESHOLD_MS: "2000"
-      APP_NAME: "rmhtitiler-local"
+      APP_NAME: "geotiler-local"
       ENVIRONMENT: "dev"
 
     volumes:
@@ -69,15 +69,15 @@ services:
       - ~/.azure:/root/.azure:ro
 
       # Mount source code for hot reload during development
-      - ./rmhtitiler:/app/rmhtitiler:ro
+      - ./geotiler:/app/geotiler:ro
       - ./dashboard:/app/dashboard:ro
 
     command: >
-      uvicorn rmhtitiler.main:app
+      uvicorn geotiler.main:app
       --host 0.0.0.0
       --port 8000
       --reload
-      --reload-dir /app/rmhtitiler
+      --reload-dir /app/geotiler
       --log-level info
 
     # Health check

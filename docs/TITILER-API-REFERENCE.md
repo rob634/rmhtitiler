@@ -1,7 +1,7 @@
 # TiTiler API Reference for STAC Integration
 
 **Date:** November 7, 2025
-**Production Endpoint:** `https://rmhtitiler-ghcyd7g0bxdvc2hc.eastus-01.azurewebsites.net`
+**Production Endpoint:** `https://geotiler-ghcyd7g0bxdvc2hc.eastus-01.azurewebsites.net`
 **Storage Account:** `rmhazuregeo`
 **Container:** `silver-cogs`
 
@@ -16,7 +16,7 @@ This document provides the complete TiTiler API reference for integration with t
 ## Base URL Pattern
 
 ```
-https://rmhtitiler-ghcyd7g0bxdvc2hc.eastus-01.azurewebsites.net/cog/{endpoint}
+https://geotiler-ghcyd7g0bxdvc2hc.eastus-01.azurewebsites.net/cog/{endpoint}
 ```
 
 ---
@@ -53,12 +53,12 @@ url=/vsiaz/silver-cogs/copy47_of_dctest3_R1C2_cog_analysis.tif
 
 **URL Pattern:**
 ```
-https://rmhtitiler-ghcyd7g0bxdvc2hc.eastus-01.azurewebsites.net/cog/info?url=/vsiaz/{container}/{blob_path}
+https://geotiler-ghcyd7g0bxdvc2hc.eastus-01.azurewebsites.net/cog/info?url=/vsiaz/{container}/{blob_path}
 ```
 
 **Example:**
 ```bash
-curl "https://rmhtitiler-ghcyd7g0bxdvc2hc.eastus-01.azurewebsites.net/cog/info?url=/vsiaz/silver-cogs/copy47_of_dctest3_R1C2_cog_analysis.tif"
+curl "https://geotiler-ghcyd7g0bxdvc2hc.eastus-01.azurewebsites.net/cog/info?url=/vsiaz/silver-cogs/copy47_of_dctest3_R1C2_cog_analysis.tif"
 ```
 
 **Response Schema:**
@@ -109,12 +109,12 @@ curl "https://rmhtitiler-ghcyd7g0bxdvc2hc.eastus-01.azurewebsites.net/cog/info?u
 
 **URL Pattern:**
 ```
-https://rmhtitiler-ghcyd7g0bxdvc2hc.eastus-01.azurewebsites.net/cog/statistics?url=/vsiaz/{container}/{blob_path}
+https://geotiler-ghcyd7g0bxdvc2hc.eastus-01.azurewebsites.net/cog/statistics?url=/vsiaz/{container}/{blob_path}
 ```
 
 **Example:**
 ```bash
-curl "https://rmhtitiler-ghcyd7g0bxdvc2hc.eastus-01.azurewebsites.net/cog/statistics?url=/vsiaz/silver-cogs/copy47_of_dctest3_R1C2_cog_analysis.tif"
+curl "https://geotiler-ghcyd7g0bxdvc2hc.eastus-01.azurewebsites.net/cog/statistics?url=/vsiaz/silver-cogs/copy47_of_dctest3_R1C2_cog_analysis.tif"
 ```
 
 **Response Schema:**
@@ -157,12 +157,12 @@ curl "https://rmhtitiler-ghcyd7g0bxdvc2hc.eastus-01.azurewebsites.net/cog/statis
 
 **URL Pattern:**
 ```
-https://rmhtitiler-ghcyd7g0bxdvc2hc.eastus-01.azurewebsites.net/cog/info.geojson?url=/vsiaz/{container}/{blob_path}
+https://geotiler-ghcyd7g0bxdvc2hc.eastus-01.azurewebsites.net/cog/info.geojson?url=/vsiaz/{container}/{blob_path}
 ```
 
 **Example:**
 ```bash
-curl "https://rmhtitiler-ghcyd7g0bxdvc2hc.eastus-01.azurewebsites.net/cog/info.geojson?url=/vsiaz/silver-cogs/copy47_of_dctest3_R1C2_cog_analysis.tif"
+curl "https://geotiler-ghcyd7g0bxdvc2hc.eastus-01.azurewebsites.net/cog/info.geojson?url=/vsiaz/silver-cogs/copy47_of_dctest3_R1C2_cog_analysis.tif"
 ```
 
 **Response Schema:**
@@ -205,13 +205,13 @@ curl "https://rmhtitiler-ghcyd7g0bxdvc2hc.eastus-01.azurewebsites.net/cog/info.g
 
 **URL Pattern:**
 ```
-https://rmhtitiler-ghcyd7g0bxdvc2hc.eastus-01.azurewebsites.net/cog/tiles/{tileMatrixSetId}/{z}/{x}/{y}.png?url=/vsiaz/{container}/{blob_path}
+https://geotiler-ghcyd7g0bxdvc2hc.eastus-01.azurewebsites.net/cog/tiles/{tileMatrixSetId}/{z}/{x}/{y}.png?url=/vsiaz/{container}/{blob_path}
 ```
 
 **Example:**
 ```bash
 # WebMercator tile (most common for web maps)
-curl "https://rmhtitiler-ghcyd7g0bxdvc2hc.eastus-01.azurewebsites.net/cog/tiles/WebMercatorQuad/15/9373/12532.png?url=/vsiaz/silver-cogs/copy47_of_dctest3_R1C2_cog_analysis.tif" --output tile.png
+curl "https://geotiler-ghcyd7g0bxdvc2hc.eastus-01.azurewebsites.net/cog/tiles/WebMercatorQuad/15/9373/12532.png?url=/vsiaz/silver-cogs/copy47_of_dctest3_R1C2_cog_analysis.tif" --output tile.png
 ```
 
 **Tile Matrix Sets:**
@@ -238,23 +238,23 @@ curl "https://rmhtitiler-ghcyd7g0bxdvc2hc.eastus-01.azurewebsites.net/cog/tiles/
 
 **URL Pattern:**
 ```
-https://rmhtitiler-ghcyd7g0bxdvc2hc.eastus-01.azurewebsites.net/cog/{tileMatrixSetId}/tilejson.json?url=/vsiaz/{container}/{blob_path}
+https://geotiler-ghcyd7g0bxdvc2hc.eastus-01.azurewebsites.net/cog/{tileMatrixSetId}/tilejson.json?url=/vsiaz/{container}/{blob_path}
 ```
 
 **Example:**
 ```bash
-curl "https://rmhtitiler-ghcyd7g0bxdvc2hc.eastus-01.azurewebsites.net/cog/WebMercatorQuad/tilejson.json?url=/vsiaz/silver-cogs/copy47_of_dctest3_R1C2_cog_analysis.tif"
+curl "https://geotiler-ghcyd7g0bxdvc2hc.eastus-01.azurewebsites.net/cog/WebMercatorQuad/tilejson.json?url=/vsiaz/silver-cogs/copy47_of_dctest3_R1C2_cog_analysis.tif"
 ```
 
 **Response Schema:**
 ```json
 {
   "tilejson": "2.2.0",
-  "name": "rmhtitiler",
+  "name": "geotiler",
   "version": "1.0.0",
   "scheme": "xyz",
   "tiles": [
-    "https://rmhtitiler-ghcyd7g0bxdvc2hc.eastus-01.azurewebsites.net/cog/tiles/WebMercatorQuad/{z}/{x}/{y}@1x?url=/vsiaz/silver-cogs/copy47_of_dctest3_R1C2_cog_analysis.tif"
+    "https://geotiler-ghcyd7g0bxdvc2hc.eastus-01.azurewebsites.net/cog/tiles/WebMercatorQuad/{z}/{x}/{y}@1x?url=/vsiaz/silver-cogs/copy47_of_dctest3_R1C2_cog_analysis.tif"
   ],
   "minzoom": 0,
   "maxzoom": 24,
@@ -283,12 +283,12 @@ curl "https://rmhtitiler-ghcyd7g0bxdvc2hc.eastus-01.azurewebsites.net/cog/WebMer
 
 **URL Pattern:**
 ```
-https://rmhtitiler-ghcyd7g0bxdvc2hc.eastus-01.azurewebsites.net/cog/{tileMatrixSetId}/map.html?url=/vsiaz/{container}/{blob_path}
+https://geotiler-ghcyd7g0bxdvc2hc.eastus-01.azurewebsites.net/cog/{tileMatrixSetId}/map.html?url=/vsiaz/{container}/{blob_path}
 ```
 
 **Example:**
 ```
-https://rmhtitiler-ghcyd7g0bxdvc2hc.eastus-01.azurewebsites.net/cog/WebMercatorQuad/map.html?url=/vsiaz/silver-cogs/copy47_of_dctest3_R1C2_cog_analysis.tif
+https://geotiler-ghcyd7g0bxdvc2hc.eastus-01.azurewebsites.net/cog/WebMercatorQuad/map.html?url=/vsiaz/silver-cogs/copy47_of_dctest3_R1C2_cog_analysis.tif
 ```
 
 **STAC Integration:**
@@ -314,12 +314,12 @@ https://rmhtitiler-ghcyd7g0bxdvc2hc.eastus-01.azurewebsites.net/cog/WebMercatorQ
 
 **URL Pattern:**
 ```
-https://rmhtitiler-ghcyd7g0bxdvc2hc.eastus-01.azurewebsites.net/cog/preview.png?url=/vsiaz/{container}/{blob_path}
+https://geotiler-ghcyd7g0bxdvc2hc.eastus-01.azurewebsites.net/cog/preview.png?url=/vsiaz/{container}/{blob_path}
 ```
 
 **Example:**
 ```bash
-curl "https://rmhtitiler-ghcyd7g0bxdvc2hc.eastus-01.azurewebsites.net/cog/preview.png?url=/vsiaz/silver-cogs/copy47_of_dctest3_R1C2_cog_analysis.tif&max_size=512" --output preview.png
+curl "https://geotiler-ghcyd7g0bxdvc2hc.eastus-01.azurewebsites.net/cog/preview.png?url=/vsiaz/silver-cogs/copy47_of_dctest3_R1C2_cog_analysis.tif&max_size=512" --output preview.png
 ```
 
 **STAC Integration:**
@@ -342,7 +342,7 @@ curl "https://rmhtitiler-ghcyd7g0bxdvc2hc.eastus-01.azurewebsites.net/cog/previe
 
 **URL Pattern:**
 ```
-https://rmhtitiler-ghcyd7g0bxdvc2hc.eastus-01.azurewebsites.net/cog/{tileMatrixSetId}/WMTSCapabilities.xml?url=/vsiaz/{container}/{blob_path}
+https://geotiler-ghcyd7g0bxdvc2hc.eastus-01.azurewebsites.net/cog/{tileMatrixSetId}/WMTSCapabilities.xml?url=/vsiaz/{container}/{blob_path}
 ```
 
 **STAC Integration:**
@@ -360,7 +360,7 @@ import requests
 from datetime import datetime
 
 # Configuration
-TITILER_BASE = "https://rmhtitiler-ghcyd7g0bxdvc2hc.eastus-01.azurewebsites.net"
+TITILER_BASE = "https://geotiler-ghcyd7g0bxdvc2hc.eastus-01.azurewebsites.net"
 CONTAINER = "silver-cogs"
 BLOB_NAME = "copy47_of_dctest3_R1C2_cog_analysis.tif"
 COG_URL = f"/vsiaz/{CONTAINER}/{BLOB_NAME}"
@@ -552,7 +552,7 @@ def get_tile_url_template(container: str, blob_name: str, tile_matrix: str = "We
 # Example
 tile_template = get_tile_url_template("silver-cogs", "copy47_of_dctest3_R1C2_cog_analysis.tif")
 print(tile_template)
-# Output: https://rmhtitiler-ghcyd7g0bxdvc2hc.eastus-01.azurewebsites.net/cog/tiles/WebMercatorQuad/{z}/{x}/{y}.png?url=/vsiaz/silver-cogs/copy47_of_dctest3_R1C2_cog_analysis.tif
+# Output: https://geotiler-ghcyd7g0bxdvc2hc.eastus-01.azurewebsites.net/cog/tiles/WebMercatorQuad/{z}/{x}/{y}.png?url=/vsiaz/silver-cogs/copy47_of_dctest3_R1C2_cog_analysis.tif
 ```
 
 ---
@@ -583,7 +583,7 @@ info_url = f"{TITILER_BASE}/cog/info?url={encoded_cog_url}"
 
 **URL:**
 ```
-https://rmhtitiler-ghcyd7g0bxdvc2hc.eastus-01.azurewebsites.net/healthz
+https://geotiler-ghcyd7g0bxdvc2hc.eastus-01.azurewebsites.net/healthz
 ```
 
 **Example Response:**
@@ -645,12 +645,12 @@ https://rmhtitiler-ghcyd7g0bxdvc2hc.eastus-01.azurewebsites.net/healthz
 
 **Interactive API Docs:**
 ```
-https://rmhtitiler-ghcyd7g0bxdvc2hc.eastus-01.azurewebsites.net/docs
+https://geotiler-ghcyd7g0bxdvc2hc.eastus-01.azurewebsites.net/docs
 ```
 
 **OpenAPI JSON Spec:**
 ```
-https://rmhtitiler-ghcyd7g0bxdvc2hc.eastus-01.azurewebsites.net/openapi.json
+https://geotiler-ghcyd7g0bxdvc2hc.eastus-01.azurewebsites.net/openapi.json
 ```
 
 ---
@@ -659,13 +659,13 @@ https://rmhtitiler-ghcyd7g0bxdvc2hc.eastus-01.azurewebsites.net/openapi.json
 
 | Purpose | URL Pattern | Example |
 |---------|-------------|---------|
-| **Metadata** | `/cog/info?url={cog_url}` | [Info](https://rmhtitiler-ghcyd7g0bxdvc2hc.eastus-01.azurewebsites.net/cog/info?url=/vsiaz/silver-cogs/copy47_of_dctest3_R1C2_cog_analysis.tif) |
-| **GeoJSON** | `/cog/info.geojson?url={cog_url}` | [GeoJSON](https://rmhtitiler-ghcyd7g0bxdvc2hc.eastus-01.azurewebsites.net/cog/info.geojson?url=/vsiaz/silver-cogs/copy47_of_dctest3_R1C2_cog_analysis.tif) |
-| **Statistics** | `/cog/statistics?url={cog_url}` | [Stats](https://rmhtitiler-ghcyd7g0bxdvc2hc.eastus-01.azurewebsites.net/cog/statistics?url=/vsiaz/silver-cogs/copy47_of_dctest3_R1C2_cog_analysis.tif) |
-| **Tiles (XYZ)** | `/cog/tiles/WebMercatorQuad/{z}/{x}/{y}.png?url={cog_url}` | [Tile](https://rmhtitiler-ghcyd7g0bxdvc2hc.eastus-01.azurewebsites.net/cog/tiles/WebMercatorQuad/15/9373/12532.png?url=/vsiaz/silver-cogs/copy47_of_dctest3_R1C2_cog_analysis.tif) |
-| **TileJSON** | `/cog/WebMercatorQuad/tilejson.json?url={cog_url}` | [TileJSON](https://rmhtitiler-ghcyd7g0bxdvc2hc.eastus-01.azurewebsites.net/cog/WebMercatorQuad/tilejson.json?url=/vsiaz/silver-cogs/copy47_of_dctest3_R1C2_cog_analysis.tif) |
-| **Viewer** | `/cog/WebMercatorQuad/map.html?url={cog_url}` | [Viewer](https://rmhtitiler-ghcyd7g0bxdvc2hc.eastus-01.azurewebsites.net/cog/WebMercatorQuad/map.html?url=/vsiaz/silver-cogs/copy47_of_dctest3_R1C2_cog_analysis.tif) |
-| **Thumbnail** | `/cog/preview.png?url={cog_url}&max_size=256` | [Preview](https://rmhtitiler-ghcyd7g0bxdvc2hc.eastus-01.azurewebsites.net/cog/preview.png?url=/vsiaz/silver-cogs/copy47_of_dctest3_R1C2_cog_analysis.tif&max_size=256) |
+| **Metadata** | `/cog/info?url={cog_url}` | [Info](https://geotiler-ghcyd7g0bxdvc2hc.eastus-01.azurewebsites.net/cog/info?url=/vsiaz/silver-cogs/copy47_of_dctest3_R1C2_cog_analysis.tif) |
+| **GeoJSON** | `/cog/info.geojson?url={cog_url}` | [GeoJSON](https://geotiler-ghcyd7g0bxdvc2hc.eastus-01.azurewebsites.net/cog/info.geojson?url=/vsiaz/silver-cogs/copy47_of_dctest3_R1C2_cog_analysis.tif) |
+| **Statistics** | `/cog/statistics?url={cog_url}` | [Stats](https://geotiler-ghcyd7g0bxdvc2hc.eastus-01.azurewebsites.net/cog/statistics?url=/vsiaz/silver-cogs/copy47_of_dctest3_R1C2_cog_analysis.tif) |
+| **Tiles (XYZ)** | `/cog/tiles/WebMercatorQuad/{z}/{x}/{y}.png?url={cog_url}` | [Tile](https://geotiler-ghcyd7g0bxdvc2hc.eastus-01.azurewebsites.net/cog/tiles/WebMercatorQuad/15/9373/12532.png?url=/vsiaz/silver-cogs/copy47_of_dctest3_R1C2_cog_analysis.tif) |
+| **TileJSON** | `/cog/WebMercatorQuad/tilejson.json?url={cog_url}` | [TileJSON](https://geotiler-ghcyd7g0bxdvc2hc.eastus-01.azurewebsites.net/cog/WebMercatorQuad/tilejson.json?url=/vsiaz/silver-cogs/copy47_of_dctest3_R1C2_cog_analysis.tif) |
+| **Viewer** | `/cog/WebMercatorQuad/map.html?url={cog_url}` | [Viewer](https://geotiler-ghcyd7g0bxdvc2hc.eastus-01.azurewebsites.net/cog/WebMercatorQuad/map.html?url=/vsiaz/silver-cogs/copy47_of_dctest3_R1C2_cog_analysis.tif) |
+| **Thumbnail** | `/cog/preview.png?url={cog_url}&max_size=256` | [Preview](https://geotiler-ghcyd7g0bxdvc2hc.eastus-01.azurewebsites.net/cog/preview.png?url=/vsiaz/silver-cogs/copy47_of_dctest3_R1C2_cog_analysis.tif&max_size=256) |
 
 **Note:** Replace `{cog_url}` with `/vsiaz/{container}/{blob_path}` (URL-encoded if needed)
 
@@ -720,7 +720,7 @@ TiTiler also supports multidimensional data (Zarr, NetCDF) via the `/xarray/*` e
 
 **Example:**
 ```bash
-curl "https://rmhtitiler-ghcyd7g0bxdvc2hc.eastus-01.azurewebsites.net/xarray/variables?url=https://rmhazuregeo.blob.core.windows.net/silver-cogs/test-zarr/cmip6-tasmax-sample.zarr&decode_times=false"
+curl "https://geotiler-ghcyd7g0bxdvc2hc.eastus-01.azurewebsites.net/xarray/variables?url=https://rmhazuregeo.blob.core.windows.net/silver-cogs/test-zarr/cmip6-tasmax-sample.zarr&decode_times=false"
 ```
 
 **Response:**
@@ -743,7 +743,7 @@ curl "https://rmhtitiler-ghcyd7g0bxdvc2hc.eastus-01.azurewebsites.net/xarray/var
 
 **Example:**
 ```bash
-curl "https://rmhtitiler-ghcyd7g0bxdvc2hc.eastus-01.azurewebsites.net/xarray/info?url=https://rmhazuregeo.blob.core.windows.net/silver-cogs/test-zarr/cmip6-tasmax-sample.zarr&variable=tasmax&decode_times=false"
+curl "https://geotiler-ghcyd7g0bxdvc2hc.eastus-01.azurewebsites.net/xarray/info?url=https://rmhazuregeo.blob.core.windows.net/silver-cogs/test-zarr/cmip6-tasmax-sample.zarr&variable=tasmax&decode_times=false"
 ```
 
 **Response includes:**
@@ -768,12 +768,12 @@ curl "https://rmhtitiler-ghcyd7g0bxdvc2hc.eastus-01.azurewebsites.net/xarray/inf
 
 **Example (basic):**
 ```bash
-curl "https://rmhtitiler-ghcyd7g0bxdvc2hc.eastus-01.azurewebsites.net/xarray/tiles/WebMercatorQuad/0/0/0@1x.png?url=https://rmhazuregeo.blob.core.windows.net/silver-cogs/test-zarr/cmip6-tasmax-sample.zarr&variable=tasmax&decode_times=false&bidx=1" --output tile.png
+curl "https://geotiler-ghcyd7g0bxdvc2hc.eastus-01.azurewebsites.net/xarray/tiles/WebMercatorQuad/0/0/0@1x.png?url=https://rmhazuregeo.blob.core.windows.net/silver-cogs/test-zarr/cmip6-tasmax-sample.zarr&variable=tasmax&decode_times=false&bidx=1" --output tile.png
 ```
 
 **Example (with colormap and rescaling):**
 ```bash
-curl "https://rmhtitiler-ghcyd7g0bxdvc2hc.eastus-01.azurewebsites.net/xarray/tiles/WebMercatorQuad/0/0/0@1x.png?url=https://rmhazuregeo.blob.core.windows.net/silver-cogs/test-zarr/cmip6-tasmax-sample.zarr&variable=tasmax&decode_times=false&bidx=1&colormap_name=turbo&rescale=250,320" --output tile_colored.png
+curl "https://geotiler-ghcyd7g0bxdvc2hc.eastus-01.azurewebsites.net/xarray/tiles/WebMercatorQuad/0/0/0@1x.png?url=https://rmhazuregeo.blob.core.windows.net/silver-cogs/test-zarr/cmip6-tasmax-sample.zarr&variable=tasmax&decode_times=false&bidx=1&colormap_name=turbo&rescale=250,320" --output tile_colored.png
 ```
 
 ---
@@ -791,7 +791,7 @@ curl "https://rmhtitiler-ghcyd7g0bxdvc2hc.eastus-01.azurewebsites.net/xarray/til
 
 **Example:**
 ```
-https://rmhtitiler-ghcyd7g0bxdvc2hc.eastus-01.azurewebsites.net/xarray/WebMercatorQuad/map.html?url=https://rmhazuregeo.blob.core.windows.net/silver-cogs/test-zarr/cmip6-tasmax-sample.zarr&variable=tasmax&decode_times=false&bidx=1&colormap_name=turbo&rescale=250,320
+https://geotiler-ghcyd7g0bxdvc2hc.eastus-01.azurewebsites.net/xarray/WebMercatorQuad/map.html?url=https://rmhazuregeo.blob.core.windows.net/silver-cogs/test-zarr/cmip6-tasmax-sample.zarr&variable=tasmax&decode_times=false&bidx=1&colormap_name=turbo&rescale=250,320
 ```
 
 ---
@@ -891,12 +891,12 @@ TiTiler provides several endpoints for extracting raster data as files or values
 
 **Example - Extract US region as GeoTIFF:**
 ```bash
-curl "https://rmhtitiler.../xarray/bbox/-125,25,-65,50.tif?url=https://rmhazuregeo.blob.core.windows.net/silver-cogs/test-zarr/cmip6-tasmax-sample.zarr&variable=tasmax&decode_times=false&bidx=1" -o us_extract.tif
+curl "https://geotiler.../xarray/bbox/-125,25,-65,50.tif?url=https://rmhazuregeo.blob.core.windows.net/silver-cogs/test-zarr/cmip6-tasmax-sample.zarr&variable=tasmax&decode_times=false&bidx=1" -o us_extract.tif
 ```
 
 **Example - Extract with specific dimensions and colormap:**
 ```bash
-curl "https://rmhtitiler.../xarray/bbox/-125,25,-65,50/512x256.png?url=...&variable=tasmax&decode_times=false&bidx=1&colormap_name=turbo&rescale=250,320" -o us_temp.png
+curl "https://geotiler.../xarray/bbox/-125,25,-65,50/512x256.png?url=...&variable=tasmax&decode_times=false&bidx=1&colormap_name=turbo&rescale=250,320" -o us_temp.png
 ```
 
 **Response:**
@@ -921,7 +921,7 @@ curl "https://rmhtitiler.../xarray/bbox/-125,25,-65,50/512x256.png?url=...&varia
 
 **Example:**
 ```bash
-curl "https://rmhtitiler.../xarray/point/-77.0,38.9?url=...&variable=tasmax&decode_times=false&bidx=1"
+curl "https://geotiler.../xarray/point/-77.0,38.9?url=...&variable=tasmax&decode_times=false&bidx=1"
 ```
 
 **Response:**
@@ -966,7 +966,7 @@ curl "https://rmhtitiler.../xarray/point/-77.0,38.9?url=...&variable=tasmax&deco
 
 **Example:**
 ```bash
-curl -X POST "https://rmhtitiler.../xarray/feature.tif?url=...&variable=tasmax&decode_times=false&bidx=1&max_size=512" \
+curl -X POST "https://geotiler.../xarray/feature.tif?url=...&variable=tasmax&decode_times=false&bidx=1&max_size=512" \
   -H "Content-Type: application/json" \
   -d '{"type":"Feature","properties":{},"geometry":{"type":"Polygon","coordinates":[[[-80,35],[-75,35],[-75,40],[-80,40],[-80,35]]]}}' \
   -o clipped.tif
@@ -993,7 +993,7 @@ curl -X POST "https://rmhtitiler.../xarray/feature.tif?url=...&variable=tasmax&d
 
 **Example:**
 ```bash
-curl -X POST "https://rmhtitiler.../xarray/statistics?url=...&variable=tasmax&decode_times=false&bidx=1" \
+curl -X POST "https://geotiler.../xarray/statistics?url=...&variable=tasmax&decode_times=false&bidx=1" \
   -H "Content-Type: application/json" \
   -d '{"type":"Feature","properties":{},"geometry":{"type":"Polygon","coordinates":[[[-80,35],[-75,35],[-75,40],[-80,40],[-80,35]]]}}'
 ```

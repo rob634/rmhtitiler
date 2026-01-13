@@ -200,7 +200,7 @@ TiTiler works with **both** Azure storage account types:
 | `APPLICATIONINSIGHTS_CONNECTION_STRING` | App Insights connection string (enables telemetry) | *(none)* |
 | `OBSERVABILITY_MODE` | Enable detailed request/latency logging | `false` |
 | `SLOW_REQUEST_THRESHOLD_MS` | Slow request threshold in milliseconds | `2000` |
-| `APP_NAME` | Service name for log correlation | `rmhtitiler` |
+| `APP_NAME` | Service name for log correlation | `geotiler` |
 | `ENVIRONMENT` | Deployment environment (dev/qa/prod) | `dev` |
 
 ---
@@ -755,4 +755,4 @@ For current environment mappings, see environment-specific deployment documentat
 ---
 
 **Maintained by:** Geospatial Data Hub Team
-**Repository:** rmhtitiler
+**Repository:** geotiler

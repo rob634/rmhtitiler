@@ -1,4 +1,4 @@
-# TODO - rmhtitiler
+# TODO - geotiler
 
 > Outstanding issues and future work items
 
@@ -65,14 +65,14 @@ The warning packages in the base image have not been updated yet:
 **Status:** Complete
 **Date:** 2026-01-05
 
-Restructured from single 1,663-line `custom_pgstac_main.py` to modular `rmhtitiler/` package.
+Restructured from single 1,663-line `custom_pgstac_main.py` to modular `geotiler/` package.
 
 See `RESTRUCTURE.md` for full details.
 
 ### New Structure
 
 ```
-rmhtitiler/
+geotiler/
 ├── __init__.py          # v0.5.0
 ├── app.py               # FastAPI factory with lifespan
 ├── config.py            # Pydantic Settings
@@ -101,9 +101,9 @@ rmhtitiler/
 
 ## TiPG Integration - OGC Features + Vector Tiles
 
-**Status:** Planned
-**Date:** 2026-01-12
-**Priority:** High
+**Status:** Complete
+**Date:** 2026-01-13
+**Priority:** Done
 
 ### Overview
 
@@ -123,7 +123,7 @@ Integrate [TiPG](https://github.com/developmentseed/tipg) (Development Seed) to 
 ### Architecture
 
 ```
-rmhtitiler (single FastAPI app)
+geotiler (single FastAPI app)
 ├── app.state.dbpool    → titiler-pgstac (psycopg)
 ├── app.state.pool      → TiPG (asyncpg)
 │
@@ -144,11 +144,11 @@ rmhtitiler (single FastAPI app)
 - [ ] Add `tipg>=0.12.0` to `requirements.txt`
 - [ ] Verify dependency compatibility (asyncpg, pydantic, fastapi versions)
 - [ ] Add TiPG-specific settings to `config.py`:
-  - `TIPG_SCHEMAS` - PostGIS schemas to expose (default: `["geo", "public"]`)
+  - `TIPG_SCHEMAS` - PostGIS schemas to expose (default: `"geo"`)
   - `TIPG_ENABLE` - Feature flag to enable/disable TiPG routes
 
 #### Phase 2: Database Integration
-- [ ] Create `rmhtitiler/routers/vector.py`:
+- [ ] Create `geotiler/routers/vector.py`:
   - Helper to build TiPG PostgresSettings from existing auth
   - TiPG endpoint factory configuration
 - [ ] Extend `app.py` lifespan handler:

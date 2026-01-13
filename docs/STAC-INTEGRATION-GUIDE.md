@@ -2,7 +2,7 @@
 
 **For:** Geospatial ETL Pipeline Team
 **Date:** November 7, 2025
-**Production Endpoint:** `https://rmhtitiler-ghcyd7g0bxdvc2hc.eastus-01.azurewebsites.net`
+**Production Endpoint:** `https://geotiler-ghcyd7g0bxdvc2hc.eastus-01.azurewebsites.net`
 
 ---
 
@@ -12,44 +12,44 @@ When creating STAC catalog entries for COGs in the `silver-cogs` container, use 
 
 ### 1. Metadata Endpoint
 ```
-https://rmhtitiler-ghcyd7g0bxdvc2hc.eastus-01.azurewebsites.net/cog/info?url=/vsiaz/silver-cogs/{blob_name}
+https://geotiler-ghcyd7g0bxdvc2hc.eastus-01.azurewebsites.net/cog/info?url=/vsiaz/silver-cogs/{blob_name}
 ```
 **Use for:** Extracting bounds, CRS, band info, dimensions for STAC item properties
 
 ### 2. GeoJSON Bounds
 ```
-https://rmhtitiler-ghcyd7g0bxdvc2hc.eastus-01.azurewebsites.net/cog/info.geojson?url=/vsiaz/silver-cogs/{blob_name}
+https://geotiler-ghcyd7g0bxdvc2hc.eastus-01.azurewebsites.net/cog/info.geojson?url=/vsiaz/silver-cogs/{blob_name}
 ```
 **Use for:** STAC item geometry (already in GeoJSON format)
 
 ### 3. Statistics
 ```
-https://rmhtitiler-ghcyd7g0bxdvc2hc.eastus-01.azurewebsites.net/cog/statistics?url=/vsiaz/silver-cogs/{blob_name}
+https://geotiler-ghcyd7g0bxdvc2hc.eastus-01.azurewebsites.net/cog/statistics?url=/vsiaz/silver-cogs/{blob_name}
 ```
 **Use for:** Band statistics (min, max, mean, stddev) for `raster:bands` property
 
 ### 4. Thumbnail Preview
 ```
-https://rmhtitiler-ghcyd7g0bxdvc2hc.eastus-01.azurewebsites.net/cog/preview.png?url=/vsiaz/silver-cogs/{blob_name}&max_size=256
+https://geotiler-ghcyd7g0bxdvc2hc.eastus-01.azurewebsites.net/cog/preview.png?url=/vsiaz/silver-cogs/{blob_name}&max_size=256
 ```
 **Use for:** STAC item thumbnail asset
 
 ### 5. Interactive Viewer (IMPORTANT!)
 ```
-https://rmhtitiler-ghcyd7g0bxdvc2hc.eastus-01.azurewebsites.net/cog/WebMercatorQuad/map.html?url=/vsiaz/silver-cogs/{blob_name}
+https://geotiler-ghcyd7g0bxdvc2hc.eastus-01.azurewebsites.net/cog/WebMercatorQuad/map.html?url=/vsiaz/silver-cogs/{blob_name}
 ```
 **Use for:** STAC item link with `rel: "preview"`
 **Note:** The endpoint is `/cog/WebMercatorQuad/map.html`, NOT `/cog/viewer` (common mistake!)
 
 ### 6. TileJSON Specification
 ```
-https://rmhtitiler-ghcyd7g0bxdvc2hc.eastus-01.azurewebsites.net/cog/WebMercatorQuad/tilejson.json?url=/vsiaz/silver-cogs/{blob_name}
+https://geotiler-ghcyd7g0bxdvc2hc.eastus-01.azurewebsites.net/cog/WebMercatorQuad/tilejson.json?url=/vsiaz/silver-cogs/{blob_name}
 ```
 **Use for:** STAC item link with `rel: "tilejson"` (for web map integration)
 
 ### 7. XYZ Tile Template
 ```
-https://rmhtitiler-ghcyd7g0bxdvc2hc.eastus-01.azurewebsites.net/cog/tiles/WebMercatorQuad/{z}/{x}/{y}.png?url=/vsiaz/silver-cogs/{blob_name}
+https://geotiler-ghcyd7g0bxdvc2hc.eastus-01.azurewebsites.net/cog/tiles/WebMercatorQuad/{z}/{x}/{y}.png?url=/vsiaz/silver-cogs/{blob_name}
 ```
 **Use for:** Dynamic tile serving in STAC visualizers
 
@@ -61,7 +61,7 @@ https://rmhtitiler-ghcyd7g0bxdvc2hc.eastus-01.azurewebsites.net/cog/tiles/WebMer
 import requests
 from typing import Dict
 
-TITILER_BASE = "https://rmhtitiler-ghcyd7g0bxdvc2hc.eastus-01.azurewebsites.net"
+TITILER_BASE = "https://geotiler-ghcyd7g0bxdvc2hc.eastus-01.azurewebsites.net"
 CONTAINER = "silver-cogs"
 
 def create_stac_item(blob_name: str) -> Dict:
@@ -150,7 +150,7 @@ stac_item = create_stac_item("copy47_of_dctest3_R1C2_cog_analysis.tif")
    - `WebMercatorQuad` - EPSG:3857 (standard web maps) - **Use this one**
    - `WorldCRS84Quad` - EPSG:4326 (geographic coordinates)
 
-4. **Health Check:** Check `https://rmhtitiler-ghcyd7g0bxdvc2hc.eastus-01.azurewebsites.net/healthz` before batch processing to ensure service is ready
+4. **Health Check:** Check `https://geotiler-ghcyd7g0bxdvc2hc.eastus-01.azurewebsites.net/healthz` before batch processing to ensure service is ready
 
 5. **Error Handling:**
    - HTTP 404: COG not found or path incorrect
@@ -184,7 +184,7 @@ stac_item = create_stac_item("copy47_of_dctest3_R1C2_cog_analysis.tif")
       "roles": ["data"]
     },
     "thumbnail": {
-      "href": "https://rmhtitiler-ghcyd7g0bxdvc2hc.eastus-01.azurewebsites.net/cog/preview.png?url=/vsiaz/silver-cogs/copy47_of_dctest3_R1C2_cog_analysis.tif&max_size=256",
+      "href": "https://geotiler-ghcyd7g0bxdvc2hc.eastus-01.azurewebsites.net/cog/preview.png?url=/vsiaz/silver-cogs/copy47_of_dctest3_R1C2_cog_analysis.tif&max_size=256",
       "type": "image/png",
       "roles": ["thumbnail"]
     }
@@ -192,13 +192,13 @@ stac_item = create_stac_item("copy47_of_dctest3_R1C2_cog_analysis.tif")
   "links": [
     {
       "rel": "preview",
-      "href": "https://rmhtitiler-ghcyd7g0bxdvc2hc.eastus-01.azurewebsites.net/cog/WebMercatorQuad/map.html?url=/vsiaz/silver-cogs/copy47_of_dctest3_R1C2_cog_analysis.tif",
+      "href": "https://geotiler-ghcyd7g0bxdvc2hc.eastus-01.azurewebsites.net/cog/WebMercatorQuad/map.html?url=/vsiaz/silver-cogs/copy47_of_dctest3_R1C2_cog_analysis.tif",
       "type": "text/html",
       "title": "Interactive map viewer"
     },
     {
       "rel": "tilejson",
-      "href": "https://rmhtitiler-ghcyd7g0bxdvc2hc.eastus-01.azurewebsites.net/cog/WebMercatorQuad/tilejson.json?url=/vsiaz/silver-cogs/copy47_of_dctest3_R1C2_cog_analysis.tif",
+      "href": "https://geotiler-ghcyd7g0bxdvc2hc.eastus-01.azurewebsites.net/cog/WebMercatorQuad/tilejson.json?url=/vsiaz/silver-cogs/copy47_of_dctest3_R1C2_cog_analysis.tif",
       "type": "application/json",
       "title": "TileJSON specification"
     }
@@ -212,16 +212,16 @@ stac_item = create_stac_item("copy47_of_dctest3_R1C2_cog_analysis.tif")
 
 ```bash
 # Test metadata extraction
-curl "https://rmhtitiler-ghcyd7g0bxdvc2hc.eastus-01.azurewebsites.net/cog/info?url=/vsiaz/silver-cogs/copy47_of_dctest3_R1C2_cog_analysis.tif" | jq
+curl "https://geotiler-ghcyd7g0bxdvc2hc.eastus-01.azurewebsites.net/cog/info?url=/vsiaz/silver-cogs/copy47_of_dctest3_R1C2_cog_analysis.tif" | jq
 
 # Test GeoJSON bounds
-curl "https://rmhtitiler-ghcyd7g0bxdvc2hc.eastus-01.azurewebsites.net/cog/info.geojson?url=/vsiaz/silver-cogs/copy47_of_dctest3_R1C2_cog_analysis.tif" | jq
+curl "https://geotiler-ghcyd7g0bxdvc2hc.eastus-01.azurewebsites.net/cog/info.geojson?url=/vsiaz/silver-cogs/copy47_of_dctest3_R1C2_cog_analysis.tif" | jq
 
 # Test statistics
-curl "https://rmhtitiler-ghcyd7g0bxdvc2hc.eastus-01.azurewebsites.net/cog/statistics?url=/vsiaz/silver-cogs/copy47_of_dctest3_R1C2_cog_analysis.tif" | jq
+curl "https://geotiler-ghcyd7g0bxdvc2hc.eastus-01.azurewebsites.net/cog/statistics?url=/vsiaz/silver-cogs/copy47_of_dctest3_R1C2_cog_analysis.tif" | jq
 
 # Test viewer (open in browser)
-open "https://rmhtitiler-ghcyd7g0bxdvc2hc.eastus-01.azurewebsites.net/cog/WebMercatorQuad/map.html?url=/vsiaz/silver-cogs/copy47_of_dctest3_R1C2_cog_analysis.tif"
+open "https://geotiler-ghcyd7g0bxdvc2hc.eastus-01.azurewebsites.net/cog/WebMercatorQuad/map.html?url=/vsiaz/silver-cogs/copy47_of_dctest3_R1C2_cog_analysis.tif"
 ```
 
 ---
@@ -243,7 +243,7 @@ open "https://rmhtitiler-ghcyd7g0bxdvc2hc.eastus-01.azurewebsites.net/cog/WebMer
 
 **Health Check:**
 ```bash
-curl "https://rmhtitiler-ghcyd7g0bxdvc2hc.eastus-01.azurewebsites.net/healthz"
+curl "https://geotiler-ghcyd7g0bxdvc2hc.eastus-01.azurewebsites.net/healthz"
 ```
 
 Expected response:

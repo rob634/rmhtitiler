@@ -10,7 +10,7 @@ Container (Azure App Service / Docker)
     └── FastAPI tile server with pgSTAC + Azure OAuth
 ```
 
-### TiTiler App (`rmhtitiler/`)
+### TiTiler App (`geotiler/`)
 
 Dynamic tile server for Cloud Optimized GeoTIFFs (COGs), Zarr/NetCDF arrays, and PostGIS vector data.
 
@@ -36,10 +36,10 @@ Dynamic tile server for Cloud Optimized GeoTIFFs (COGs), Zarr/NetCDF arrays, and
 
 | File | Purpose |
 |------|---------|
-| `rmhtitiler/app.py` | Main FastAPI app with OAuth |
-| `rmhtitiler/config.py` | Environment configuration |
-| `rmhtitiler/routers/health.py` | Health probe endpoints |
-| `rmhtitiler/routers/vector.py` | TiPG integration (OGC Features + Vector Tiles) |
+| `geotiler/app.py` | Main FastAPI app with OAuth |
+| `geotiler/config.py` | Environment configuration |
+| `geotiler/routers/health.py` | Health probe endpoints |
+| `geotiler/routers/vector.py` | TiPG integration (OGC Features + Vector Tiles) |
 | `Dockerfile` | Production image (Managed Identity) |
 | `Dockerfile.local` | Local dev image (Azure CLI credentials) |
 | `docker-compose.yml` | Local development setup |
@@ -55,7 +55,7 @@ Dynamic tile server for Cloud Optimized GeoTIFFs (COGs), Zarr/NetCDF arrays, and
 docker-compose up --build
 
 # Option 2: Direct Python (requires local PostgreSQL)
-uvicorn rmhtitiler.app:app --reload --port 8000
+uvicorn geotiler.app:app --reload --port 8000
 ```
 
 ### Build & Deploy
@@ -75,11 +75,11 @@ az webapp config container set --name <app> --resource-group <rg> \
 
 ### Version Management
 
-Single source of truth: `__version__` in `rmhtitiler/__init__.py`
+Single source of truth: `__version__` in `geotiler/__init__.py`
 
 ```bash
 # Check current version
-grep "__version__" rmhtitiler/__init__.py
+grep "__version__" geotiler/__init__.py
 ```
 
 ---
@@ -95,7 +95,7 @@ See [WIKI.md](WIKI.md) for complete list. Key variables:
 | `DATABASE_URL` | PostgreSQL connection string |
 | `ENABLE_PLANETARY_COMPUTER` | Enable PC credential provider for public data |
 | `ENABLE_TIPG` | Enable TiPG OGC Features + Vector Tiles (default: true) |
-| `TIPG_SCHEMAS` | Comma-separated PostGIS schemas to expose (default: "geo,public") |
+| `TIPG_SCHEMAS` | Comma-separated PostGIS schemas to expose (default: "geo") |
 | `TIPG_ROUTER_PREFIX` | URL prefix for TiPG routes (default: "/vector") |
 
 ---
@@ -132,7 +132,7 @@ curl "http://localhost:8000/vector/collections/my_table/tiles/WebMercatorQuad/10
 
 When resuming work, tell Claude:
 
-> "Continue working on rmhtitiler. Check /health for current status."
+> "Continue working on geotiler. Check /health for current status."
 
 Claude will:
 1. Check the health endpoint for version and database status

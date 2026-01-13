@@ -18,7 +18,7 @@ RUN pip install --no-cache-dir \
 WORKDIR /app
 
 # Copy application package
-COPY rmhtitiler /app/rmhtitiler
+COPY geotiler /app/geotiler
 
 # Development settings - uses Azure CLI credentials
 ENV LOCAL_MODE=true
@@ -35,4 +35,4 @@ EXPOSE 8000
 
 # Development command with hot reload
 # Uses main.py for proper telemetry initialization order
-CMD ["uvicorn", "rmhtitiler.main:app", "--host", "0.0.0.0", "--port", "8000", "--reload"]
+CMD ["uvicorn", "geotiler.main:app", "--host", "0.0.0.0", "--port", "8000", "--reload"]

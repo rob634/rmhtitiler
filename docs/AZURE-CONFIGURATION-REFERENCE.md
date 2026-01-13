@@ -101,10 +101,10 @@ az acr credential show --name rmhazureacr
 ### Resource Details
 ```
 Resource Type: App Service (Linux)
-Name: rmhtitiler
+Name: geotiler
 Resource Group: rmhazure_rg
 Location: East US
-App Service Plan: ASP-rmhtitiler
+App Service Plan: ASP-geotiler
 Runtime: Docker Container (Linux)
 ```
 
@@ -122,12 +122,12 @@ Runtime: Docker Container (Linux)
 ```bash
 az webapp config set \
   --resource-group rmhazure_rg \
-  --name rmhtitiler \
+  --name geotiler \
   --always-on true
 ```
 
 **Azure Portal Path:**
-1. Navigate to: App Service → rmhtitiler
+1. Navigate to: App Service → geotiler
 2. Click: Settings → Configuration → General settings
 3. Enable: Always On
 
@@ -145,11 +145,11 @@ az webapp config set \
 ```bash
 az webapp identity assign \
   --resource-group rmhazure_rg \
-  --name rmhtitiler
+  --name geotiler
 ```
 
 **Azure Portal Path:**
-1. Navigate to: App Service → rmhtitiler
+1. Navigate to: App Service → geotiler
 2. Click: Settings → Identity
 3. Tab: System assigned
 4. Set Status: On
@@ -159,7 +159,7 @@ az webapp identity assign \
 ```bash
 az webapp identity show \
   --resource-group rmhazure_rg \
-  --name rmhtitiler
+  --name geotiler
 ```
 
 **Expected Output:**
@@ -218,7 +218,7 @@ az role assignment create \
 3. Click: + Add → Add role assignment
 4. Select Role: Storage Blob Data Reader
 5. Assign access to: Managed Identity
-6. Select: rmhtitiler (System-assigned)
+6. Select: geotiler (System-assigned)
 7. Click: Review + assign
 
 **Verification:**
@@ -233,7 +233,7 @@ az role assignment list \
 ```
 Role                        PrincipalName                         Scope
 --------------------------  ------------------------------------  -----------------------------------------------
-Storage Blob Data Reader    rmhtitiler                           /subscriptions/.../storageAccounts/rmhazuregeo
+Storage Blob Data Reader    geotiler                           /subscriptions/.../storageAccounts/rmhazuregeo
 ```
 
 **Role Permissions:**
@@ -254,7 +254,7 @@ All environment variables must be configured as **Application Settings** in the 
 ```bash
 az webapp config appsettings set \
   --resource-group rmhazure_rg \
-  --name rmhtitiler \
+  --name geotiler \
   --settings \
     LOCAL_MODE=false \
     USE_AZURE_AUTH=true \
@@ -269,7 +269,7 @@ az webapp config appsettings set \
 ```
 
 **Azure Portal Path:**
-1. Navigate to: App Service → rmhtitiler
+1. Navigate to: App Service → geotiler
 2. Click: Settings → Configuration
 3. Tab: Application settings
 4. Click: + New application setting (for each setting below)
@@ -374,7 +374,7 @@ az webapp config appsettings set \
 ```bash
 az webapp config container set \
   --resource-group rmhazure_rg \
-  --name rmhtitiler \
+  --name geotiler \
   --docker-custom-image-name rmhazureacr.azurecr.io/titiler-azure:latest \
   --docker-registry-server-url https://rmhazureacr.azurecr.io \
   --docker-registry-server-user rmhazureacr \
@@ -382,7 +382,7 @@ az webapp config container set \
 ```
 
 **Azure Portal Path:**
-1. Navigate to: App Service → rmhtitiler
+1. Navigate to: App Service → geotiler
 2. Click: Settings → Configuration
 3. Tab: Application settings
 4. Add the following settings:
@@ -408,7 +408,7 @@ az webapp config container set \
 **Image Name:** `rmhazureacr.azurecr.io/titiler-azure:latest`
 
 **Azure Portal Path:**
-1. Navigate to: App Service → rmhtitiler
+1. Navigate to: App Service → geotiler
 2. Click: Deployment → Deployment Center
 3. Set:
    - Source: Azure Container Registry
@@ -424,12 +424,12 @@ az webapp config container set \
 ```bash
 az webapp config set \
   --resource-group rmhazure_rg \
-  --name rmhtitiler \
+  --name geotiler \
   --health-check-path "/healthz"
 ```
 
 **Azure Portal Path:**
-1. Navigate to: App Service → rmhtitiler
+1. Navigate to: App Service → geotiler
 2. Click: Monitoring → Health check
 3. Enable: Health check
 4. Set Path: `/healthz`
@@ -453,7 +453,7 @@ SUBJECT: Azure Configuration Changes for TiTiler Application Deployment
 REQUEST TYPE: Azure App Service Configuration
 
 AFFECTED RESOURCES:
-- App Service: rmhtitiler (rmhazure_rg)
+- App Service: geotiler (rmhazure_rg)
 - Container Registry: rmhazureacr (rmhazure_rg)
 - Storage Account: rmhazuregeo (rmhazure_rg)
 
@@ -488,7 +488,7 @@ Verification:
 
 REQUEST 2: Enable System-Assigned Managed Identity
 -----------------------------------------------------------
-Resource: rmhtitiler (App Service)
+Resource: geotiler (App Service)
 Action: Enable system-assigned managed identity
 Reason: Secure authentication to Azure Storage without credentials
 
@@ -497,10 +497,10 @@ Configuration:
   Status: On
 
 Azure CLI Command:
-  az webapp identity assign --resource-group rmhazure_rg --name rmhtitiler
+  az webapp identity assign --resource-group rmhazure_rg --name geotiler
 
 Azure Portal Path:
-  App Service → rmhtitiler → Settings → Identity → System assigned →
+  App Service → geotiler → Settings → Identity → System assigned →
   Status: On → Save
 
 Verification:
@@ -517,7 +517,7 @@ Reason: Allow application to read blobs and generate SAS tokens
 Configuration:
   Role: Storage Blob Data Reader
   Assignee Type: Managed Identity
-  Assignee: rmhtitiler (use Principal ID from Request 2)
+  Assignee: geotiler (use Principal ID from Request 2)
   Scope: Storage Account (rmhazuregeo)
 
 Azure CLI Command:
@@ -529,17 +529,17 @@ Azure CLI Command:
 Azure Portal Path:
   Storage Account → rmhazuregeo → Access Control (IAM) →
   Add role assignment → Role: Storage Blob Data Reader →
-  Assign access to: Managed Identity → Select: rmhtitiler →
+  Assign access to: Managed Identity → Select: geotiler →
   Review + assign
 
 Verification:
-  Role assignment appears in IAM with rmhtitiler as assignee
+  Role assignment appears in IAM with geotiler as assignee
 
 ═══════════════════════════════════════════════════════════════════
 
 REQUEST 4: Configure Container Registry Authentication
 -----------------------------------------------------------
-Resource: rmhtitiler (App Service)
+Resource: geotiler (App Service)
 Action: Configure ACR credentials for container image pull
 Reason: Allow App Service to pull Docker images from ACR
 
@@ -553,14 +553,14 @@ Configuration:
 Azure CLI Command:
   az webapp config container set \
     --resource-group rmhazure_rg \
-    --name rmhtitiler \
+    --name geotiler \
     --docker-custom-image-name rmhazureacr.azurecr.io/titiler-azure:latest \
     --docker-registry-server-url https://rmhazureacr.azurecr.io \
     --docker-registry-server-user rmhazureacr \
     --docker-registry-server-password <ACR_PASSWORD>
 
 Azure Portal Path:
-  App Service → rmhtitiler → Settings → Configuration →
+  App Service → geotiler → Settings → Configuration →
   Application settings → Add each setting above → Save
 
 Verification:
@@ -570,7 +570,7 @@ Verification:
 
 REQUEST 5: Configure Application Settings (Environment Variables)
 -----------------------------------------------------------
-Resource: rmhtitiler (App Service)
+Resource: geotiler (App Service)
 Action: Add required application settings
 Reason: Configure application behavior for production deployment
 
@@ -594,7 +594,7 @@ Configuration:
 Azure CLI Command:
   az webapp config appsettings set \
     --resource-group rmhazure_rg \
-    --name rmhtitiler \
+    --name geotiler \
     --settings \
       LOCAL_MODE=false \
       USE_AZURE_AUTH=true \
@@ -608,7 +608,7 @@ Azure CLI Command:
       GDAL_DISABLE_READDIR_ON_OPEN=EMPTY_DIR
 
 Azure Portal Path:
-  App Service → rmhtitiler → Settings → Configuration →
+  App Service → geotiler → Settings → Configuration →
   Application settings → Add each setting → Save → Continue (restart)
 
 CRITICAL: Verify these settings are NOT present:
@@ -624,7 +624,7 @@ Verification:
 
 REQUEST 6: Configure Health Check
 -----------------------------------------------------------
-Resource: rmhtitiler (App Service)
+Resource: geotiler (App Service)
 Action: Enable health check monitoring
 Reason: Monitor application availability and auto-restart if unhealthy
 
@@ -636,11 +636,11 @@ Configuration:
 Azure CLI Command:
   az webapp config set \
     --resource-group rmhazure_rg \
-    --name rmhtitiler \
+    --name geotiler \
     --health-check-path "/healthz"
 
 Azure Portal Path:
-  App Service → rmhtitiler → Monitoring → Health check →
+  App Service → geotiler → Monitoring → Health check →
   Enable health check → Path: /healthz → Save
 
 Verification:
@@ -650,7 +650,7 @@ Verification:
 
 REQUEST 7: Enable Always On
 -----------------------------------------------------------
-Resource: rmhtitiler (App Service)
+Resource: geotiler (App Service)
 Action: Enable Always On setting
 Reason: Prevent cold starts and keep application warm
 
@@ -660,11 +660,11 @@ Configuration:
 Azure CLI Command:
   az webapp config set \
     --resource-group rmhazure_rg \
-    --name rmhtitiler \
+    --name geotiler \
     --always-on true
 
 Azure Portal Path:
-  App Service → rmhtitiler → Settings → Configuration →
+  App Service → geotiler → Settings → Configuration →
   General settings → Always On: On → Save
 
 Verification:
@@ -678,10 +678,10 @@ POST-DEPLOYMENT VERIFICATION
 After all changes are applied:
 
 1. Restart the App Service:
-   az webapp restart --resource-group rmhazure_rg --name rmhtitiler
+   az webapp restart --resource-group rmhazure_rg --name geotiler
 
 2. Test health endpoint:
-   curl https://rmhtitiler-ghcyd7g0bxdvc2hc.eastus-01.azurewebsites.net/healthz
+   curl https://geotiler-ghcyd7g0bxdvc2hc.eastus-01.azurewebsites.net/healthz
 
    Expected Response:
    {
@@ -693,7 +693,7 @@ After all changes are applied:
    }
 
 3. Check application logs:
-   az webapp log tail --resource-group rmhazure_rg --name rmhtitiler
+   az webapp log tail --resource-group rmhazure_rg --name geotiler
 
    Expected Log Messages:
    - "TiTiler with Azure SAS Token Auth - Starting up"
@@ -705,7 +705,7 @@ After all changes are applied:
    - "Startup complete - Ready to serve tiles!"
 
 4. Test COG access:
-   curl "https://rmhtitiler-ghcyd7g0bxdvc2hc.eastus-01.azurewebsites.net/cog/info?url=/vsiaz/silver-cogs/copy47_of_dctest3_R1C2_cog_analysis.tif"
+   curl "https://geotiler-ghcyd7g0bxdvc2hc.eastus-01.azurewebsites.net/cog/info?url=/vsiaz/silver-cogs/copy47_of_dctest3_R1C2_cog_analysis.tif"
 
    Expected: JSON response with COG metadata (bounds, bands, etc.)
 
@@ -773,7 +773,7 @@ After all configurations are applied, verify each setting:
 ### 8.3 Storage Permissions Verification
 - [ ] Role assignment exists: Storage Blob Data Reader
 - [ ] Assignment scope is correct: rmhazuregeo
-- [ ] Assignment target is correct: rmhtitiler managed identity
+- [ ] Assignment target is correct: geotiler managed identity
 
 ### 8.4 Application Settings Verification
 - [ ] All required settings are present
@@ -828,7 +828,7 @@ After all configurations are applied, verify each setting:
 ```bash
 az webapp config appsettings list \
   --resource-group rmhazure_rg \
-  --name rmhtitiler \
+  --name geotiler \
   --output table
 ```
 
@@ -836,7 +836,7 @@ az webapp config appsettings list \
 ```bash
 az webapp identity show \
   --resource-group rmhazure_rg \
-  --name rmhtitiler
+  --name geotiler
 ```
 
 ### Check role assignments
@@ -850,14 +850,14 @@ az role assignment list \
 ```bash
 az webapp log tail \
   --resource-group rmhazure_rg \
-  --name rmhtitiler
+  --name geotiler
 ```
 
 ### Restart application
 ```bash
 az webapp restart \
   --resource-group rmhazure_rg \
-  --name rmhtitiler
+  --name geotiler
 ```
 
 ---

@@ -298,7 +298,7 @@ docker info | grep -A 5 "CPUs\|Memory"
 ## File Structure
 
 ```
-rmhtitiler/
+geotiler/
 ├── custom_main.py              # TiTiler app with Azure auth
 ├── Dockerfile.local            # Local development Docker image
 ├── docker-compose.yml          # Local development orchestration

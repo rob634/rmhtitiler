@@ -174,7 +174,7 @@ This section documents the **verified working URL patterns** for xarray/Zarr end
 ### Base URL
 
 ```
-https://rmhtitiler-ghcyd7g0bxdvc2hc.eastus-01.azurewebsites.net
+https://geotiler-ghcyd7g0bxdvc2hc.eastus-01.azurewebsites.net
 ```
 
 ### Zarr URL Formats
@@ -201,7 +201,7 @@ CMIP6 climate data uses a "noleap" calendar that requires special handling:
 
 ```bash
 # List variables in a Zarr store
-curl "https://rmhtitiler-ghcyd7g0bxdvc2hc.eastus-01.azurewebsites.net/xarray/variables?url=https://rmhazuregeo.blob.core.windows.net/silver-cogs/test-zarr/cmip6-tasmax-sample.zarr&decode_times=false"
+curl "https://geotiler-ghcyd7g0bxdvc2hc.eastus-01.azurewebsites.net/xarray/variables?url=https://rmhazuregeo.blob.core.windows.net/silver-cogs/test-zarr/cmip6-tasmax-sample.zarr&decode_times=false"
 ```
 
 **Response:**
@@ -212,7 +212,7 @@ curl "https://rmhtitiler-ghcyd7g0bxdvc2hc.eastus-01.azurewebsites.net/xarray/var
 #### 2. Get Variable Info
 
 ```bash
-curl "https://rmhtitiler-ghcyd7g0bxdvc2hc.eastus-01.azurewebsites.net/xarray/info?url=https://rmhazuregeo.blob.core.windows.net/silver-cogs/test-zarr/cmip6-tasmax-sample.zarr&variable=tasmax&decode_times=false"
+curl "https://geotiler-ghcyd7g0bxdvc2hc.eastus-01.azurewebsites.net/xarray/info?url=https://rmhazuregeo.blob.core.windows.net/silver-cogs/test-zarr/cmip6-tasmax-sample.zarr&variable=tasmax&decode_times=false"
 ```
 
 **Response includes:**
@@ -227,20 +227,20 @@ curl "https://rmhtitiler-ghcyd7g0bxdvc2hc.eastus-01.azurewebsites.net/xarray/inf
 curl ".../xarray/tiles/WebMercatorQuad/0/0/0.png?url=...&variable=tasmax&decode_times=false"
 
 # ✅ CORRECT - Specify band index for time selection
-curl "https://rmhtitiler-ghcyd7g0bxdvc2hc.eastus-01.azurewebsites.net/xarray/tiles/WebMercatorQuad/0/0/0@1x.png?url=https://rmhazuregeo.blob.core.windows.net/silver-cogs/test-zarr/cmip6-tasmax-sample.zarr&variable=tasmax&decode_times=false&bidx=1"
+curl "https://geotiler-ghcyd7g0bxdvc2hc.eastus-01.azurewebsites.net/xarray/tiles/WebMercatorQuad/0/0/0@1x.png?url=https://rmhazuregeo.blob.core.windows.net/silver-cogs/test-zarr/cmip6-tasmax-sample.zarr&variable=tasmax&decode_times=false&bidx=1"
 ```
 
 #### 4. Tiles with Colormap and Rescaling
 
 ```bash
 # Temperature data with turbo colormap, rescaled for Kelvin (250-320K)
-curl "https://rmhtitiler-ghcyd7g0bxdvc2hc.eastus-01.azurewebsites.net/xarray/tiles/WebMercatorQuad/0/0/0@1x.png?url=https://rmhazuregeo.blob.core.windows.net/silver-cogs/test-zarr/cmip6-tasmax-sample.zarr&variable=tasmax&decode_times=false&bidx=1&colormap_name=turbo&rescale=250,320"
+curl "https://geotiler-ghcyd7g0bxdvc2hc.eastus-01.azurewebsites.net/xarray/tiles/WebMercatorQuad/0/0/0@1x.png?url=https://rmhazuregeo.blob.core.windows.net/silver-cogs/test-zarr/cmip6-tasmax-sample.zarr&variable=tasmax&decode_times=false&bidx=1&colormap_name=turbo&rescale=250,320"
 ```
 
 #### 5. Interactive Map Viewer
 
 ```
-https://rmhtitiler-ghcyd7g0bxdvc2hc.eastus-01.azurewebsites.net/xarray/WebMercatorQuad/map.html?url=https://rmhazuregeo.blob.core.windows.net/silver-cogs/test-zarr/cmip6-tasmax-sample.zarr&variable=tasmax&decode_times=false&bidx=1&colormap_name=turbo&rescale=250,320
+https://geotiler-ghcyd7g0bxdvc2hc.eastus-01.azurewebsites.net/xarray/WebMercatorQuad/map.html?url=https://rmhazuregeo.blob.core.windows.net/silver-cogs/test-zarr/cmip6-tasmax-sample.zarr&variable=tasmax&decode_times=false&bidx=1&colormap_name=turbo&rescale=250,320
 ```
 
 ### Query Parameters Reference
