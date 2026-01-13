@@ -20,7 +20,7 @@ az login
 docker-compose up --build
 
 # Test locally
-curl http://localhost:8000/healthz
+curl http://localhost:8000/health
 ```
 
 ## 📖 Features
@@ -123,8 +123,8 @@ Azure Blob Storage (RBAC: Storage Blob Data Reader)
 
 ### Components
 
-- **Application**: `custom_pgstac_main.py` - FastAPI app with OAuth middleware
-- **Base Image**: `ghcr.io/stac-utils/titiler-pgstac:latest`
+- **Application**: `rmhtitiler/` - Modular FastAPI package with OAuth middleware
+- **Base Image**: `ghcr.io/stac-utils/titiler-pgstac:1.9.0`
 - **Database**: Azure PostgreSQL with pgSTAC extension
 - **Storage**: Azure Blob Storage (multi-container support)
 - **Registry**: Azure Container Registry
@@ -133,18 +133,22 @@ Azure Blob Storage (RBAC: Storage Blob Data Reader)
 ## 📁 Project Structure
 
 ```
-titilerpgstac/
-├── custom_pgstac_main.py      # Main application with OAuth middleware
+rmhtitiler/
+├── rmhtitiler/                 # Main application package
+│   ├── __init__.py             # Version (0.7.8.x)
+│   ├── app.py                  # FastAPI factory with lifespan
+│   ├── config.py               # Pydantic Settings
+│   ├── auth/                   # TokenCache, storage, postgres auth
+│   ├── routers/                # health, planetary_computer, root, vector
+│   ├── middleware/             # AzureAuthMiddleware
+│   ├── services/               # database, background refresh
+│   └── templates/              # HTML templates
 ├── Dockerfile                  # Production image (Managed Identity)
 ├── Dockerfile.local            # Local dev image (Azure CLI)
 ├── docker-compose.yml          # Local development setup
-├── QA_DEPLOYMENT.md            # 📋 COMPLETE QA/Production deployment guide
+├── requirements.txt            # Python dependencies
 ├── README.md                   # This file
-├── docs/
-│   ├── implementation/         # Implementation details & guides
-│   ├── analysis/              # Technical analysis & comparisons
-│   └── historical/            # Planning docs & historical context
-└── .gitignore                  # Prevents .azure/ credential leaks
+└── docs/                       # Documentation
 ```
 
 ## 🔐 Security Features
@@ -172,18 +176,18 @@ titilerpgstac/
 
 3. **Test locally:**
    ```bash
-   curl "http://localhost:8000/healthz"
+   curl "http://localhost:8000/health"
    curl "http://localhost:8000/cog/info?url=/vsiaz/<container>/<path-to-cog>.tif"
    ```
 
 ### Hot Reload
 
-Changes to `custom_pgstac_main.py` are automatically detected via volume mount:
+Changes to `rmhtitiler/` are automatically detected via volume mount:
 
 ```yaml
 volumes:
-  - ./custom_pgstac_main.py:/app/custom_pgstac_main.py
-command: ["uvicorn", "custom_pgstac_main:app", "--host", "0.0.0.0", "--port", "8000", "--reload"]
+  - ./rmhtitiler:/app/rmhtitiler
+command: ["uvicorn", "rmhtitiler.app:app", "--host", "0.0.0.0", "--port", "8000", "--reload"]
 ```
 
 ## 🚢 Deployment
@@ -219,66 +223,50 @@ az webapp restart --name $APP_NAME --resource-group $RESOURCE_GROUP
 
 ## 📊 Monitoring
 
-### Health Endpoints
+### Health Endpoint
 
-The application provides two health endpoints for Kubernetes/Azure health probes:
-
-| Endpoint | Purpose | When to Use |
-|----------|---------|-------------|
-| `/livez` | Liveness probe | Azure startup probe - responds immediately |
-| `/healthz` | Readiness probe | Full health check including database status |
-
-#### Liveness Probe (`/livez`)
+The application provides a comprehensive health endpoint at `/health`:
 
 ```bash
-curl https://<your-app-url>/livez
-```
-
-**Response:**
-```json
-{
-  "status": "alive",
-  "message": "Container is running"
-}
-```
-
-This endpoint responds immediately after container startup, before database connections are established. Configure Azure App Service to use this for the **startup probe** to prevent container restarts during slow MI token acquisition.
-
-**Azure App Service Configuration:**
-```bash
-az webapp config set --name <app-name> --resource-group <rg> \
-  --startup-file "" \
-  --generic-configurations '{"healthCheckPath": "/livez"}'
-```
-
-#### Readiness Probe (`/healthz`)
-
-```bash
-curl https://<your-app-url>/healthz
+curl https://<your-app-url>/health
 ```
 
 **Response (healthy):**
 ```json
 {
   "status": "healthy",
-  "azure_auth_enabled": true,
-  "local_mode": false,
-  "auth_type": "OAuth Bearer Token",
-  "storage_account": "<your-storage-account>",
-  "token_expires_in_seconds": 86197,
-  "token_scope": "ALL containers (RBAC-based)",
-  "token_status": "active",
-  "database_status": "connected"
+  "version": "0.7.8.1",
+  "checks": {
+    "storage": {"status": "ok", "account": "<storage-account>"},
+    "database": {"status": "ok", "connected": true},
+    "tipg": {"status": "ok", "pool_exists": true}
+  },
+  "available_features": {
+    "cog_tiles": true,
+    "xarray": true,
+    "pgstac_searches": true,
+    "planetary_computer": true,
+    "ogc_features": true,
+    "vector_tiles": true
+  }
 }
 ```
 
-**Response (degraded - database not connected):**
+**Response (degraded):**
 ```json
 {
   "status": "degraded",
-  "azure_auth_enabled": true,
-  "database_status": "not_connected"
+  "version": "0.7.8.1",
+  "checks": {
+    "database": {"status": "error", "error": "connection failed"}
+  }
 }
+```
+
+Configure Azure App Service to use `/health` for health checks:
+```bash
+az webapp config set --name <app-name> --resource-group <rg> \
+  --generic-configurations '{"healthCheckPath": "/health"}'
 ```
 
 ### Logs
@@ -301,6 +289,9 @@ az webapp log download --name <your-app-name> --resource-group <your-resource-gr
 | `USE_AZURE_AUTH` | Enable OAuth authentication | `true` | `true` |
 | `AZURE_STORAGE_ACCOUNT` | Storage account name | `<your-storage-account>` | `<your-storage-account>` |
 | `DATABASE_URL` | PostgreSQL connection string | Set in docker-compose.yml | Set in App Service |
+| `ENABLE_PLANETARY_COMPUTER` | Enable PC credential provider | `true` | `true` |
+| `ENABLE_TIPG` | Enable OGC Features + Vector Tiles | `true` | `true` |
+| `TIPG_SCHEMAS` | PostGIS schemas to expose | `geo,public` | `geo,public` |
 | `GDAL_*` | GDAL optimizations | Auto | Auto |
 
 ### GDAL Optimizations
@@ -353,6 +344,7 @@ az webapp log tail --name <your-app-name> --resource-group <your-resource-group>
 
 - [TiTiler Documentation](https://developmentseed.org/titiler/)
 - [TiTiler-pgSTAC](https://stac-utils.github.io/titiler-pgstac/)
+- [TiPG Documentation](https://developmentseed.org/tipg/)
 - [pgSTAC](https://github.com/stac-utils/pgstac)
 - [GDAL /vsiaz/](https://gdal.org/user/virtual_file_systems.html#vsiaz-microsoft-azure-blob-files)
 - [Azure Managed Identity](https://learn.microsoft.com/en-us/azure/active-directory/managed-identities-azure-resources/)
@@ -363,6 +355,7 @@ az webapp log tail --name <your-app-name> --resource-group <your-resource-group>
 This project uses:
 - TiTiler (MIT License)
 - TiTiler-pgSTAC (MIT License)
+- TiPG (MIT License)
 - GDAL (MIT/X License)
 
 ## 🙏 Acknowledgments
@@ -370,5 +363,6 @@ This project uses:
 Built with:
 - [TiTiler](https://github.com/developmentseed/titiler) by Development Seed
 - [TiTiler-pgSTAC](https://github.com/stac-utils/titiler-pgstac) by STAC Utils
+- [TiPG](https://github.com/developmentseed/tipg) by Development Seed
 - [pgSTAC](https://github.com/stac-utils/pgstac) by STAC Utils
 - [Azure SDK for Python](https://github.com/Azure/azure-sdk-for-python) by Microsoft
