@@ -102,6 +102,9 @@ class Settings(BaseSettings):
     tipg_router_prefix: str = "/vector"
     """URL prefix for TiPG routes (e.g., /vector/collections)."""
 
+    ogc_geometry_column: str = "geom"
+    """Expected geometry column name (for diagnostics). Should match ETL app's OGC_GEOMETRY_COLUMN."""
+
     @property
     def tipg_schema_list(self) -> list[str]:
         """Parse comma-separated schemas into list."""

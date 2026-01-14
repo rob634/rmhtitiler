@@ -75,6 +75,7 @@ async def tipg_diagnostics(request: Request):
     diagnostics = {
         "status": "ok",
         "configured_schemas": settings.tipg_schema_list,
+        "expected_geometry_column": settings.ogc_geometry_column,
         "connection": {},
         "postgis": {},
         "schemas": {},
@@ -338,13 +339,38 @@ async def _diagnose_schema(pool, schema: str, issues: list) -> dict:
         schema
     )
 
-    schema_diag["all_tables_detail"] = [
-        {
+    # Build detailed table list with geometry column match status
+    expected_col = settings.ogc_geometry_column
+    all_tables_detail = []
+
+    for row in all_tables:
+        potential = row["potential_geom_columns"]
+        registered = row["registered_in_geometry_columns"]
+
+        # Check if expected geometry column is present
+        has_expected_col = False
+        if potential:
+            # potential is like "geom:geometry" or "geometry:geometry, wkb:bytea"
+            col_names = [c.split(":")[0] for c in potential.split(", ")]
+            has_expected_col = expected_col in col_names
+
+        detail = {
             "table": row["table_name"],
-            "potential_geom_columns": row["potential_geom_columns"],
-            "in_geometry_columns": row["registered_in_geometry_columns"],
+            "potential_geom_columns": potential,
+            "in_geometry_columns": registered,
+            "has_expected_column": has_expected_col,
         }
-        for row in all_tables
-    ]
+
+        # Flag tables that have geometry but wrong column name
+        if potential and not has_expected_col:
+            detail["warning"] = f"Has geometry column but not named '{expected_col}'"
+            issues.append(
+                f"Table '{row['table_name']}' has geometry column ({potential}) "
+                f"but not named '{expected_col}' - TiPG may not discover it correctly"
+            )
+
+        all_tables_detail.append(detail)
+
+    schema_diag["all_tables_detail"] = all_tables_detail
 
     return schema_diag
