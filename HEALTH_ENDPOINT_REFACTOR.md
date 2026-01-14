@@ -1,108 +1,170 @@
-"""
-Health probe endpoints for Kubernetes and Azure App Service.
+# Health Endpoint Refactor Plan
 
-Provides three endpoints following Kubernetes probe conventions:
-- /livez  - Liveness probe (is the container alive?)
-- /readyz - Readiness probe (is the service ready for traffic?)
-- /health - Full health check (detailed diagnostics)
+**Date**: 13 JAN 2026
+**Purpose**: Restructure `/health` response to cleanly report individual services for rmhgeoapi integration
+**Implementer**: Docker Claude
 
-The /health endpoint returns a structured response with:
-- services: Status of each service (cog, xarray, pgstac, tipg, stac_api)
-  - Each service has: status, available, description, endpoints, details
-- dependencies: Status of shared dependencies (database, oauth tokens)
-  - Each dependency has: status, required_by
-- hardware: Runtime environment info (CPU, RAM, Azure metadata)
-- issues: List of any problems detected
-- config: Current configuration flags
-"""
+---
 
-import sys
-import os
-import logging
-from typing import Optional, Tuple
+## Background
 
-from fastapi import APIRouter, Response
+The rmhgeoapi Function App needs to monitor the health of individual services within this Docker container. Currently the `/health` endpoint has good information but it's spread across `checks` and `available_features`. We need a cleaner `services` structure.
 
-from geotiler import __version__
-from geotiler.config import settings, READYZ_MIN_TTL_SECS
-from geotiler.auth.cache import (
-    storage_token_cache,
-    postgres_token_cache,
-    db_error_cache,
-    TokenCache,
-)
-from geotiler.services.database import ping_database, ping_database_with_timing, get_db_pool, get_app_state
+---
 
-logger = logging.getLogger(__name__)
+## Current vs Proposed Response Structure
 
-router = APIRouter(tags=["Health"])
+### Current Response (Simplified)
+```json
+{
+  "status": "healthy",
+  "version": "0.7.x",
+  "checks": {
+    "database": { "status": "ok", "ping_time_ms": 12.5 },
+    "storage_oauth": { "status": "ok", "expires_in_seconds": 3456 },
+    "tipg": { "status": "ok", "collections_discovered": 42 },
+    "stac_api": { "status": "ok" }
+  },
+  "available_features": {
+    "cog_tiles": true,
+    "xarray_zarr": true,
+    "pgstac_searches": true,
+    "ogc_features": true,
+    "vector_tiles": true,
+    "stac_api": true
+  }
+}
+```
 
-
-@router.get("/livez")
-async def liveness():
-    """
-    Liveness probe - responds immediately to indicate container is running.
-
-    This endpoint is for Kubernetes/Azure App Service liveness probes. It responds
-    before database connection is established, preventing the container from being
-    killed during slow database connections or MI token acquisition.
-
-    Use /readyz for readiness checks, /health for full diagnostics.
-    """
-    return {
-        "status": "alive",
-        "message": "Container is running",
+### Proposed Response
+```json
+{
+  "status": "healthy",
+  "version": "0.7.x",
+  "services": {
+    "cog": {
+      "status": "healthy",
+      "available": true,
+      "description": "Cloud-Optimized GeoTIFF tile serving",
+      "endpoints": ["/cog/info", "/cog/tiles/{z}/{x}/{y}", "/cog/statistics"]
+    },
+    "xarray": {
+      "status": "healthy",
+      "available": true,
+      "description": "Zarr/NetCDF multidimensional array tiles",
+      "endpoints": ["/xarray/info", "/xarray/tiles/{z}/{x}/{y}"]
+    },
+    "pgstac": {
+      "status": "healthy",
+      "available": true,
+      "description": "STAC mosaic searches and dynamic tiling",
+      "endpoints": ["/searches/{search_id}/tiles", "/mosaic/tiles"]
+    },
+    "tipg": {
+      "status": "healthy",
+      "available": true,
+      "description": "OGC Features API + Vector Tiles (MVT)",
+      "endpoints": ["/vector/collections", "/vector/collections/{id}/items", "/vector/collections/{id}/tiles/{z}/{x}/{y}"],
+      "details": {
+        "collections_discovered": 42,
+        "schemas": ["geo"],
+        "router_prefix": "/vector"
+      }
+    },
+    "stac_api": {
+      "status": "healthy",
+      "available": true,
+      "description": "STAC catalog browsing and search",
+      "endpoints": ["/stac", "/stac/collections", "/stac/search"],
+      "details": {
+        "router_prefix": "/stac"
+      }
     }
+  },
+  "dependencies": {
+    "database": {
+      "status": "ok",
+      "ping_time_ms": 12.5,
+      "host": "rmhpostgres...",
+      "required_by": ["pgstac", "tipg", "stac_api"]
+    },
+    "storage_oauth": {
+      "status": "ok",
+      "expires_in_seconds": 3456,
+      "storage_account": "rmhazureblobs",
+      "required_by": ["cog", "xarray"]
+    },
+    "postgres_oauth": {
+      "status": "ok",
+      "expires_in_seconds": 3456,
+      "required_by": ["database"]
+    }
+  },
+  "hardware": { /* unchanged */ },
+  "issues": [],
+  "config": { /* unchanged */ }
+}
+```
 
+---
 
-@router.get("/readyz")
-async def readiness(response: Response):
+## Implementation
+
+### File: `geotiler/routers/health.py`
+
+### Step 1: Add Service Status Helper Function
+
+Add after `_check_token_ready()` function (around line 354):
+
+```python
+def _build_service_status(
+    name: str,
+    available: bool,
+    description: str,
+    endpoints: list,
+    details: dict = None,
+    disabled_reason: str = None
+) -> dict:
     """
-    Kubernetes-style readiness probe.
+    Build consistent service status dict.
 
-    Checks critical dependencies to determine if the service can handle traffic.
-    Returns minimal response for efficiency - use /health for full diagnostics.
+    Args:
+        name: Service name (for logging)
+        available: Whether service is operational
+        description: Human-readable description
+        endpoints: List of endpoint patterns
+        details: Optional service-specific details
+        disabled_reason: Reason if service is disabled (e.g., "ENABLE_TIPG=false")
 
     Returns:
-        HTTP 200: Ready to receive traffic
-        HTTP 503: Not ready (dependency failure)
-
-    Checks performed:
-        1. Database connection with active ping (required for pgSTAC)
-        2. Storage OAuth token validity (required for Azure blob access)
-        3. PostgreSQL OAuth token validity (if using managed identity)
+        Service status dict with consistent structure
     """
-    ready = True
-    issues = []
+    if disabled_reason:
+        return {
+            "status": "disabled",
+            "available": False,
+            "description": description,
+            "disabled_reason": disabled_reason
+        }
 
-    # Check 1: Database connection
-    db_ok, db_error = ping_database()
-    if not db_ok:
-        ready = False
-        issues.append(f"database: {db_error}")
-
-    # Check 2: Storage OAuth token (if Azure auth enabled)
-    if settings.use_azure_auth:
-        token_ok, token_issue = _check_token_ready(storage_token_cache, "storage_oauth")
-        if not token_ok:
-            ready = False
-            issues.append(token_issue)
-
-    # Check 3: PostgreSQL OAuth token (if using managed identity)
-    if settings.postgres_auth_mode == "managed_identity":
-        pg_ok, pg_issue = _check_token_ready(postgres_token_cache, "postgres_oauth")
-        if not pg_ok:
-            ready = False
-            issues.append(pg_issue)
-
-    response.status_code = 200 if ready else 503
-    return {
-        "ready": ready,
-        "version": __version__,
-        "issues": issues if issues else None,
+    result = {
+        "status": "healthy" if available else "unavailable",
+        "available": available,
+        "description": description,
+        "endpoints": endpoints
     }
 
+    if details:
+        result["details"] = details
 
+    return result
+```
+
+### Step 2: Refactor `/health` Endpoint
+
+Replace the existing `/health` endpoint function (lines 105-332) with:
+
+```python
 @router.get("/health")
 async def health(response: Response):
     """
@@ -113,9 +175,6 @@ async def health(response: Response):
     - dependencies: Status of shared dependencies (database, oauth tokens)
     - hardware: Runtime environment info
     - issues: List of any problems detected
-
-    Use /readyz for Kubernetes readiness probes (faster, minimal response).
-    Use this endpoint for dashboards, monitoring systems, and troubleshooting.
 
     Status levels:
         - healthy: All systems operational (HTTP 200)
@@ -214,41 +273,39 @@ async def health(response: Response):
     # =========================================================================
 
     # COG Tiles (TiTiler core)
-    cog_available = True
-    if settings.use_azure_auth:
-        cog_available = storage_oauth_ok
+    cog_available = settings.use_azure_auth and storage_oauth_ok
+    if not settings.use_azure_auth:
+        # If no Azure auth, COG tiles work with public URLs
+        cog_available = True
 
     services["cog"] = _build_service_status(
         name="cog",
         available=cog_available,
         description="Cloud-Optimized GeoTIFF tile serving",
-        endpoints=["/cog/info", "/cog/tiles/{z}/{x}/{y}", "/cog/statistics", "/cog/preview"],
+        endpoints=["/cog/info", "/cog/tiles/{z}/{x}/{y}", "/cog/statistics", "/cog/preview"]
     )
 
     # XArray (Zarr/NetCDF)
-    xarray_available = True
-    if settings.use_azure_auth:
-        xarray_available = storage_oauth_ok
+    xarray_available = settings.use_azure_auth and storage_oauth_ok
+    if not settings.use_azure_auth:
+        xarray_available = True
 
     services["xarray"] = _build_service_status(
         name="xarray",
         available=xarray_available,
         description="Zarr/NetCDF multidimensional array tiles",
-        endpoints=["/xarray/info", "/xarray/tiles/{z}/{x}/{y}"],
+        endpoints=["/xarray/info", "/xarray/tiles/{z}/{x}/{y}"]
     )
 
     # pgSTAC Mosaic
+    pgstac_available = db_ok
     services["pgstac"] = _build_service_status(
         name="pgstac",
-        available=db_ok,
+        available=pgstac_available,
         description="STAC mosaic searches and dynamic tiling",
-        endpoints=[
-            "/searches/{search_id}/info",
-            "/searches/{search_id}/tiles/{z}/{x}/{y}",
-            "/mosaic/tiles/{z}/{x}/{y}",
-        ],
+        endpoints=["/searches/{search_id}/info", "/searches/{search_id}/tiles/{z}/{x}/{y}", "/mosaic/tiles/{z}/{x}/{y}"]
     )
-    if not db_ok:
+    if not pgstac_available:
         issues.append("pgSTAC mosaic unavailable - database connection required")
 
     # TiPG (OGC Features + Vector Tiles)
@@ -269,13 +326,13 @@ async def health(response: Response):
                     "/vector/collections",
                     "/vector/collections/{id}",
                     "/vector/collections/{id}/items",
-                    "/vector/collections/{id}/tiles/{tms}/{z}/{x}/{y}",
+                    "/vector/collections/{id}/tiles/{tms}/{z}/{x}/{y}"
                 ],
                 details={
                     "collections_discovered": collection_count,
                     "schemas": settings.tipg_schema_list,
-                    "router_prefix": settings.tipg_router_prefix,
-                },
+                    "router_prefix": settings.tipg_router_prefix
+                }
             )
         else:
             services["tipg"] = _build_service_status(
@@ -285,8 +342,8 @@ async def health(response: Response):
                 endpoints=[],
                 details={
                     "schemas": settings.tipg_schema_list,
-                    "router_prefix": settings.tipg_router_prefix,
-                },
+                    "router_prefix": settings.tipg_router_prefix
+                }
             )
             issues.append("TiPG pool not initialized - vector endpoints will fail")
     else:
@@ -295,12 +352,14 @@ async def health(response: Response):
             available=False,
             description="OGC Features API + Vector Tiles (MVT)",
             endpoints=[],
-            disabled_reason="ENABLE_TIPG=false",
+            disabled_reason="ENABLE_TIPG=false"
         )
 
     # STAC API
+    stac_ok = False
     if settings.enable_stac_api:
         if settings.enable_tipg and tipg_ok:
+            stac_ok = True
             services["stac_api"] = _build_service_status(
                 name="stac_api",
                 available=True,
@@ -310,12 +369,12 @@ async def health(response: Response):
                     "/stac/collections",
                     "/stac/collections/{id}",
                     "/stac/collections/{id}/items",
-                    "/stac/search",
+                    "/stac/search"
                 ],
                 details={
                     "router_prefix": settings.stac_router_prefix,
-                    "pool_shared_with": "tipg",
-                },
+                    "pool_shared_with": "tipg"
+                }
             )
         elif not settings.enable_tipg:
             services["stac_api"] = _build_service_status(
@@ -323,7 +382,7 @@ async def health(response: Response):
                 available=False,
                 description="STAC catalog browsing and search",
                 endpoints=[],
-                disabled_reason="Requires ENABLE_TIPG=true (shared database pool)",
+                disabled_reason="Requires ENABLE_TIPG=true (shared database pool)"
             )
             issues.append("STAC API requires ENABLE_TIPG=true")
         else:
@@ -331,7 +390,7 @@ async def health(response: Response):
                 name="stac_api",
                 available=False,
                 description="STAC catalog browsing and search",
-                endpoints=[],
+                endpoints=[]
             )
             issues.append("STAC API pool not available")
     else:
@@ -340,7 +399,16 @@ async def health(response: Response):
             available=False,
             description="STAC catalog browsing and search",
             endpoints=[],
-            disabled_reason="ENABLE_STAC_API=false",
+            disabled_reason="ENABLE_STAC_API=false"
+        )
+
+    # Planetary Computer (optional)
+    if settings.enable_planetary_computer:
+        services["planetary_computer"] = _build_service_status(
+            name="planetary_computer",
+            available=True,
+            description="Microsoft Planetary Computer data access",
+            endpoints=["/pc/item/tiles", "/pc/item/info"]
         )
 
     # =========================================================================
@@ -377,106 +445,94 @@ async def health(response: Response):
             "tipg_enabled": settings.enable_tipg,
             "tipg_schemas": settings.tipg_schema_list if settings.enable_tipg else None,
             "stac_api_enabled": settings.enable_stac_api,
-            "planetary_computer_enabled": settings.enable_planetary_computer,
         },
     }
+```
 
+---
 
-def _check_token_ready(cache: TokenCache, name: str) -> Tuple[bool, str]:
-    """
-    Check if token cache is valid for readiness.
+## Key Changes Summary
 
-    Args:
-        cache: TokenCache instance to check.
-        name: Name for error messages (e.g., "storage_oauth").
+| Change | Before | After |
+|--------|--------|-------|
+| Service status location | `available_features` (booleans) | `services` (rich objects) |
+| Dependency status location | `checks` | `dependencies` |
+| Service descriptions | None | Each service has description |
+| Endpoint documentation | None | Each service lists its endpoints |
+| Service-specific details | Mixed in `checks` | Nested in `services.{name}.details` |
+| `available_features` | Top-level object | **Removed** (replaced by `services.{name}.available`) |
 
-    Returns:
-        Tuple of (is_ready: bool, error_message: str)
-    """
-    if not cache.token:
-        return False, f"{name}: no token"
+---
 
-    ttl = cache.ttl_seconds()
-    if ttl is not None and ttl < READYZ_MIN_TTL_SECS:
-        return False, f"{name}: expires in {int(ttl)}s"
+## Response Size Impact
 
-    return True, ""
+- **Before**: ~1.5KB typical response
+- **After**: ~2.5KB typical response (+1KB for endpoint lists and descriptions)
 
+This is acceptable for a monitoring endpoint called every 30-60 seconds.
 
-def _build_service_status(
-    name: str,
-    available: bool,
-    description: str,
-    endpoints: list,
-    details: dict = None,
-    disabled_reason: str = None,
-) -> dict:
-    """
-    Build consistent service status dict.
+---
 
-    Args:
-        name: Service name (for logging)
-        available: Whether service is operational
-        description: Human-readable description
-        endpoints: List of endpoint patterns
-        details: Optional service-specific details
-        disabled_reason: Reason if service is disabled (e.g., "ENABLE_TIPG=false")
+## rmhgeoapi Integration
 
-    Returns:
-        Service status dict with consistent structure
-    """
-    if disabled_reason:
-        return {
-            "status": "disabled",
-            "available": False,
-            "description": description,
-            "disabled_reason": disabled_reason,
-        }
+After this change, rmhgeoapi can consume the response like this:
 
-    result = {
-        "status": "healthy" if available else "unavailable",
-        "available": available,
-        "description": description,
-        "endpoints": endpoints,
-    }
+```python
+# In rmhgeoapi health check
+health_body = response.json()
 
-    if details:
-        result["details"] = details
+# Check overall container health
+container_healthy = health_body["status"] == "healthy"
 
-    return result
+# Check individual services
+tipg_available = health_body["services"]["tipg"]["available"]
+stac_available = health_body["services"]["stac_api"]["available"]
+cog_available = health_body["services"]["cog"]["available"]
 
+# Get service details
+tipg_collections = health_body["services"]["tipg"]["details"]["collections_discovered"]
 
-def _get_hardware_info() -> dict:
-    """
-    Get hardware and runtime environment info.
+# Check dependencies
+db_ok = health_body["dependencies"]["database"]["status"] == "ok"
+db_ping_ms = health_body["dependencies"]["database"].get("ping_time_ms")
+```
 
-    Returns:
-        Dict with CPU, memory, and Azure environment details.
-    """
-    try:
-        import psutil
+---
 
-        mem = psutil.virtual_memory()
-        process = psutil.Process()
+## Testing
 
-        return {
-            "cpu_count": psutil.cpu_count() or 0,
-            "total_ram_gb": round(mem.total / (1024**3), 2),
-            "available_ram_mb": round(mem.available / (1024**2), 1),
-            "ram_utilization_percent": round(mem.percent, 1),
-            "cpu_utilization_percent": round(psutil.cpu_percent(interval=None), 1),
-            "process_rss_mb": round(process.memory_info().rss / (1024**2), 1),
-            "python_version": sys.version.split()[0],
-            "platform": sys.platform,
-            # Azure App Service environment variables
-            "azure_site_name": os.environ.get("WEBSITE_SITE_NAME", "local"),
-            "azure_sku": os.environ.get("WEBSITE_SKU", "unknown"),
-            "azure_instance_id": (
-                os.environ.get("WEBSITE_INSTANCE_ID", "")[:16]
-                if os.environ.get("WEBSITE_INSTANCE_ID")
-                else None
-            ),
-            "azure_region": os.environ.get("REGION_NAME", "unknown"),
-        }
-    except Exception as e:
-        return {"error": str(e)}
+After implementation, verify:
+
+```bash
+# Local test
+curl http://localhost:8000/health | jq
+
+# Check services structure
+curl http://localhost:8000/health | jq '.services'
+
+# Check specific service
+curl http://localhost:8000/health | jq '.services.tipg'
+
+# Check dependencies
+curl http://localhost:8000/health | jq '.dependencies'
+```
+
+---
+
+## Version Bump
+
+After implementing, bump version in `geotiler/__init__.py`:
+
+```python
+__version__ = "0.7.9.1"  # or next appropriate version
+```
+
+---
+
+## Notes for Docker Claude
+
+1. Keep the existing `/livez` and `/readyz` endpoints unchanged
+2. The `_get_hardware_info()` function remains unchanged
+3. The `_check_token_ready()` function remains unchanged
+4. Remove the `available_features` section entirely - it's replaced by `services.{name}.available`
+5. Test with `ENABLE_TIPG=false` to ensure disabled services report correctly

@@ -27,7 +27,7 @@ from geotiler import __version__
 from geotiler.config import settings
 from geotiler.middleware.azure_auth import AzureAuthMiddleware
 from geotiler.infrastructure.middleware import RequestTimingMiddleware
-from geotiler.routers import health, planetary_computer, root, vector
+from geotiler.routers import health, planetary_computer, root, vector, stac
 from geotiler.services.database import set_app_state
 from geotiler.services.background import start_token_refresh
 from geotiler.auth.storage import initialize_storage_auth
@@ -302,6 +302,20 @@ def create_app() -> FastAPI:
             tags=["OGC Vector (TiPG)"],
         )
         logger.info(f"TiPG router mounted at {settings.tipg_router_prefix}")
+
+    # STAC API (stac-fastapi-pgstac)
+    # Note: Requires TiPG to be enabled (shares asyncpg pool)
+    if settings.enable_stac_api and settings.enable_tipg:
+        try:
+            # StacApi adds routes directly to app with router_prefix
+            stac.create_stac_api(app)
+            logger.info(f"STAC API routes added at {settings.stac_router_prefix}")
+        except Exception as e:
+            logger.error(f"Failed to create STAC API: {e}")
+            logger.warning("STAC API will not be available")
+    elif settings.enable_stac_api and not settings.enable_tipg:
+        logger.warning("STAC API requires TiPG to be enabled (shared pool)")
+        logger.warning("Set ENABLE_TIPG=true to enable STAC API")
 
     # Root info endpoint
     app.include_router(root.router)

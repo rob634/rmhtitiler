@@ -14,6 +14,7 @@ FROM ghcr.io/stac-utils/titiler-pgstac:1.9.0
 # - pydantic-settings: Type-safe configuration management
 # - azure-monitor-opentelemetry: Application Insights integration
 # - tipg: OGC Features API + Vector Tiles for PostGIS
+# - stac-fastapi.pgstac: STAC API for catalog browsing and search
 RUN pip install --no-cache-dir \
     azure-identity>=1.15.0 \
     azure-keyvault-secrets>=4.7.0 \
@@ -24,7 +25,8 @@ RUN pip install --no-cache-dir \
     psutil>=5.9.0 \
     pydantic-settings>=2.0.0 \
     azure-monitor-opentelemetry>=1.6.0 \
-    "tipg>=0.12.0"
+    "tipg>=0.12.0" \
+    "stac-fastapi.pgstac>=4.0.0"
 
 # Set working directory
 WORKDIR /app
@@ -38,6 +40,8 @@ ENV USE_AZURE_AUTH=true
 ENV ENABLE_PLANETARY_COMPUTER=true
 ENV ENABLE_TIPG=true
 ENV TIPG_SCHEMAS=geo
+ENV ENABLE_STAC_API=true
+ENV STAC_ROUTER_PREFIX=/stac
 
 # Observability settings (set APPLICATIONINSIGHTS_CONNECTION_STRING to enable telemetry)
 # OBSERVABILITY_MODE enables detailed request/latency logging

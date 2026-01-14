@@ -108,6 +108,15 @@ class Settings(BaseSettings):
         return [s.strip() for s in self.tipg_schemas.split(",") if s.strip()]
 
     # =========================================================================
+    # STAC API Configuration (stac-fastapi-pgstac)
+    # =========================================================================
+    enable_stac_api: bool = True
+    """Enable STAC API for catalog browsing and search."""
+
+    stac_router_prefix: str = "/stac"
+    """URL prefix for STAC API routes (e.g., /stac/collections)."""
+
+    # =========================================================================
     # Observability (see also: infrastructure/telemetry.py)
     # =========================================================================
     # Note: These are read directly via os.environ in infrastructure modules

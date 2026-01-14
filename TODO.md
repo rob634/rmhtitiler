@@ -225,3 +225,202 @@ starlette-cramjam>=0.4,<0.6
 - [TiPG Documentation](https://developmentseed.org/tipg/)
 - [eoAPI Architecture](https://eoapi.dev/services/) - TiTiler + TiPG + STAC
 - [OGC API - Features](https://ogcapi.ogc.org/features/)
+
+---
+
+## STAC API Integration - stac-fastapi-pgstac
+
+**Status:** Planned
+**Date:** 2026-01-13
+**Priority:** High
+
+### Overview
+
+Add full STAC API catalog browsing and search capabilities using [stac-fastapi-pgstac](https://github.com/stac-utils/stac-fastapi-pgstac). This completes the eoAPI stack alongside existing titiler-pgstac (tiles) and TiPG (vector).
+
+### Current State vs. Target
+
+| Capability | Current | With stac-fastapi |
+|------------|---------|-------------------|
+| Tile rendering from STAC | ✅ `/searches/*` | ✅ |
+| Browse STAC collections | ❌ | ✅ `/stac/collections` |
+| Search STAC items | ❌ | ✅ `/stac/search` |
+| Get item metadata | ❌ | ✅ `/stac/collections/{id}/items` |
+| CQL2 filtering | ❌ | ✅ |
+| STAC API conformance | ❌ | ✅ |
+
+### Architecture
+
+```
+pgSTAC Database (PostgreSQL)
+    │
+    ├── stac-fastapi-pgstac  → /stac/*      (catalog API) [NEW]
+    │   └── app.state.pool (asyncpg)
+    │
+    ├── titiler-pgstac       → /searches/*  (tile rendering) [EXISTING]
+    │   └── app.state.dbpool (psycopg)
+    │
+    ├── TiPG                  → /vector/*   (OGC Features) [EXISTING]
+    │   └── app.state.pool (asyncpg) - SHARED with stac-fastapi
+    │
+    └── TiTiler-core          → /cog/*      (direct COG) [EXISTING]
+```
+
+### Key Design Decisions
+
+1. **Shared asyncpg pool**: stac-fastapi-pgstac and TiPG both use asyncpg. Evaluate whether they can share `app.state.pool` or need separate pools.
+
+2. **Router prefix**: Mount at `/stac` to avoid conflicts with existing routes.
+
+3. **Token refresh**: Integrate into existing 45-minute MI token refresh cycle.
+
+4. **Extensions**: Enable commonly-used STAC extensions (filter, sort, fields, query).
+
+### Implementation Tasks
+
+#### Phase 1: Dependencies & Compatibility (~1 hour)
+
+- [ ] Check pgSTAC version compatibility:
+  - stac-fastapi-pgstac 4.x requires pgstac >=0.8,<0.10
+  - Verify current database pgstac version
+- [ ] Add dependencies to Dockerfile:
+  ```
+  stac-fastapi.pgstac>=4.0.0
+  stac-fastapi.api
+  stac-fastapi.extensions
+  ```
+- [ ] Test for dependency conflicts with existing packages
+- [ ] Add configuration to `config.py`:
+  - `ENABLE_STAC_API: bool = True`
+  - `STAC_ROUTER_PREFIX: str = "/stac"`
+  - `STAC_EXTENSIONS: str = "filter,sort,fields,query,context"`
+
+#### Phase 2: Database Integration (~2 hours)
+
+- [ ] Create `geotiler/routers/stac.py`:
+  ```python
+  from stac_fastapi.pgstac.core import CoreCrudClient
+  from stac_fastapi.pgstac.db import close_db_connection, connect_to_db
+  from stac_fastapi.api.app import StacApi
+  from stac_fastapi.extensions.core import (
+      FilterExtension, SortExtension, FieldsExtension,
+      QueryExtension, ContextExtension,
+  )
+  ```
+- [ ] Implement `get_stac_settings()` - build connection settings from existing auth
+- [ ] Implement `initialize_stac_api()` - called during app lifespan
+- [ ] Implement `close_stac_api()` - cleanup on shutdown
+- [ ] Evaluate pool sharing with TiPG vs. separate pool
+
+#### Phase 3: Router Integration (~1 hour)
+
+- [ ] Create StacApi instance with pgstac client:
+  ```python
+  stac_api = StacApi(
+      settings=api_settings,
+      client=CoreCrudClient(pool=pool),  # or separate pool
+      extensions=[
+          FilterExtension(),
+          SortExtension(),
+          FieldsExtension(),
+          QueryExtension(),
+          ContextExtension(),
+      ],
+      router_prefix=settings.stac_router_prefix,
+  )
+  ```
+- [ ] Mount STAC router in `create_app()`:
+  ```python
+  app.include_router(
+      stac_api.router,
+      prefix=settings.stac_router_prefix,
+      tags=["STAC API"]
+  )
+  ```
+- [ ] Update `/health` to report STAC API status
+- [ ] Update root endpoint with STAC API links
+
+#### Phase 4: Token Refresh Integration (~30 min)
+
+- [ ] Extend `services/background.py`:
+  - Include STAC API pool in refresh cycle (if separate pool)
+  - Or verify shared pool handles refresh correctly
+- [ ] Test token expiration handling
+
+#### Phase 5: Testing & Documentation (~1 hour)
+
+- [ ] Test STAC endpoints:
+  - `GET /stac/` - Landing page
+  - `GET /stac/collections` - List collections
+  - `GET /stac/collections/{id}/items` - Browse items
+  - `POST /stac/search` - CQL2 search
+- [ ] Verify links include correct `/stac` prefix
+- [ ] Update CLAUDE.md with new endpoints
+- [ ] Update README.md with STAC API examples
+
+### New Endpoints (after integration)
+
+| Endpoint | Method | Description |
+|----------|--------|-------------|
+| `/stac/` | GET | STAC landing page |
+| `/stac/conformance` | GET | STAC/OGC conformance classes |
+| `/stac/collections` | GET | List all STAC collections |
+| `/stac/collections/{id}` | GET | Collection metadata |
+| `/stac/collections/{id}/items` | GET | Browse items in collection |
+| `/stac/collections/{id}/items/{item_id}` | GET | Single item metadata |
+| `/stac/search` | GET/POST | Search items (CQL2 filter support) |
+| `/stac/queryables` | GET | Global queryable properties |
+| `/stac/collections/{id}/queryables` | GET | Collection-specific queryables |
+
+### Dependencies to Add
+
+```dockerfile
+# Dockerfile additions
+RUN pip install --no-cache-dir \
+    "stac-fastapi.pgstac>=4.0.0" \
+    "stac-fastapi.api" \
+    "stac-fastapi.extensions"
+```
+
+### Environment Variables
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `ENABLE_STAC_API` | `true` | Enable/disable STAC API routes |
+| `STAC_ROUTER_PREFIX` | `/stac` | URL prefix for STAC routes |
+| `STAC_EXTENSIONS` | `filter,sort,fields,query,context` | Enabled STAC extensions |
+
+### Risks & Mitigations
+
+| Risk | Likelihood | Mitigation |
+|------|------------|------------|
+| pgSTAC version mismatch | Medium | Check DB version before implementation |
+| Dependency conflicts | Low | stac-fastapi uses same ecosystem (fastapi, pydantic) |
+| Pool management complexity | Medium | Start with separate pool, optimize later if needed |
+| Memory increase | Low | Monitor after deployment |
+
+### Level of Effort Summary
+
+| Phase | Effort | Complexity |
+|-------|--------|------------|
+| Dependencies & Config | 1 hour | Low |
+| Database Integration | 2 hours | Medium |
+| Router Integration | 1 hour | Low |
+| Token Refresh | 30 min | Low |
+| Testing & Docs | 1 hour | Low |
+| **Total** | **~5.5 hours** | **Medium** |
+
+### Alternative Considered
+
+**Separate STAC API service** - Deploy stac-fastapi-pgstac as standalone container. Rejected because:
+- Additional infrastructure complexity
+- Separate auth configuration needed
+- More moving parts to manage
+- Single unified API is cleaner for consumers
+
+### References
+
+- [stac-fastapi-pgstac GitHub](https://github.com/stac-utils/stac-fastapi-pgstac)
+- [stac-fastapi Documentation](https://stac-utils.github.io/stac-fastapi/)
+- [eoAPI Architecture](https://eoapi.dev/services/)
+- [STAC API Specification](https://github.com/radiantearth/stac-api-spec)

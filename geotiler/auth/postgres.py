@@ -178,12 +178,14 @@ def _get_postgres_oauth_token() -> str:
         raise
 
 
-def build_database_url(password: str) -> str:
+def build_database_url(password: str, search_path: Optional[str] = None) -> str:
     """
     Build PostgreSQL connection URL.
 
     Args:
         password: Password or OAuth token for authentication.
+        search_path: Optional comma-separated list of schemas for search_path.
+                     e.g., "pgstac,geo,public"
 
     Returns:
         PostgreSQL connection URL with SSL mode required.
@@ -191,11 +193,19 @@ def build_database_url(password: str) -> str:
     # URL-encode the password in case it contains special characters
     encoded_password = quote_plus(password)
 
-    return (
+    url = (
         f"postgresql://{settings.postgres_user}:{encoded_password}"
         f"@{settings.postgres_host}:{settings.postgres_port}"
         f"/{settings.postgres_db}?sslmode=require"
     )
+
+    # Add search_path as connection option if specified
+    if search_path:
+        # URL-encode the options value
+        options = quote_plus(f"-c search_path={search_path}")
+        url += f"&options={options}"
+
+    return url
 
 
 def refresh_postgres_token() -> Optional[str]:
