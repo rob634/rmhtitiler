@@ -27,7 +27,7 @@ from geotiler import __version__
 from geotiler.config import settings
 from geotiler.middleware.azure_auth import AzureAuthMiddleware
 from geotiler.infrastructure.middleware import RequestTimingMiddleware
-from geotiler.routers import health, planetary_computer, admin, vector, stac
+from geotiler.routers import health, planetary_computer, admin, vector, stac, diagnostics
 from geotiler.services.database import set_app_state
 from geotiler.services.background import start_token_refresh
 from geotiler.auth.storage import initialize_storage_auth
@@ -302,6 +302,9 @@ def create_app() -> FastAPI:
             tags=["OGC Vector (TiPG)"],
         )
         logger.info(f"TiPG router mounted at {settings.tipg_router_prefix}")
+
+        # TiPG diagnostics endpoint (for debugging table discovery)
+        app.include_router(diagnostics.router, tags=["Diagnostics"])
 
     # STAC API (stac-fastapi-pgstac)
     # Note: Requires TiPG to be enabled (shares asyncpg pool)
