@@ -184,6 +184,7 @@ async def _diagnose_schema(pool, schema: str, issues: list) -> dict:
         "tables_with_geometry": 0,
         "tables_accessible": 0,
         "tables": [],
+        "all_tables_detail": [],  # Shows ALL tables with their geometry column status
     }
 
     # Check if schema exists
@@ -304,5 +305,46 @@ async def _diagnose_schema(pool, schema: str, issues: list) -> dict:
             f"Schema '{schema}' has {len(geometry_tables)} geometry tables but none are accessible. "
             "Check SELECT permissions."
         )
+
+    # Get ALL tables with potential geometry column info (for debugging)
+    # This shows every table and what columns might be geometry-like
+    all_tables = await _run_query(
+        pool,
+        """
+        SELECT
+            t.table_name,
+            (
+                SELECT string_agg(
+                    c.column_name || ':' || c.udt_name,
+                    ', ' ORDER BY c.ordinal_position
+                )
+                FROM information_schema.columns c
+                WHERE c.table_schema = t.table_schema
+                  AND c.table_name = t.table_name
+                  AND c.udt_name IN ('geometry', 'geography', 'USER-DEFINED', 'bytea')
+            ) as potential_geom_columns,
+            (
+                SELECT gc.f_geometry_column || ':' || gc.type
+                FROM geometry_columns gc
+                WHERE gc.f_table_schema = t.table_schema
+                  AND gc.f_table_name = t.table_name
+                LIMIT 1
+            ) as registered_in_geometry_columns
+        FROM information_schema.tables t
+        WHERE t.table_schema = $1
+          AND t.table_type = 'BASE TABLE'
+        ORDER BY t.table_name
+        """,
+        schema
+    )
+
+    schema_diag["all_tables_detail"] = [
+        {
+            "table": row["table_name"],
+            "potential_geom_columns": row["potential_geom_columns"],
+            "in_geometry_columns": row["registered_in_geometry_columns"],
+        }
+        for row in all_tables
+    ]
 
     return schema_diag
