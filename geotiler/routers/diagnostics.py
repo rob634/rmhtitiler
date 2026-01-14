@@ -146,6 +146,29 @@ async def tipg_diagnostics(request: Request):
         diagnostics["schemas"][schema] = schema_diag
 
     # ==========================================================================
+    # GLOBAL GEOMETRY_COLUMNS VIEW (all schemas)
+    # ==========================================================================
+    try:
+        all_geometry_columns = await _run_query(
+            pool,
+            """
+            SELECT
+                f_table_schema as schema,
+                f_table_name as table_name,
+                f_geometry_column as geometry_column,
+                type as geometry_type,
+                srid
+            FROM public.geometry_columns
+            ORDER BY f_table_schema, f_table_name
+            LIMIT 100
+            """
+        )
+        diagnostics["all_geometry_columns"] = all_geometry_columns
+        diagnostics["all_geometry_columns_count"] = len(all_geometry_columns)
+    except Exception as e:
+        diagnostics["all_geometry_columns"] = {"error": str(e)}
+
+    # ==========================================================================
     # COLLECTION CATALOG INFO
     # ==========================================================================
     catalog = getattr(app_state, "collection_catalog", None) if app_state else None
@@ -187,10 +210,12 @@ async def _diagnose_schema(pool, schema: str, issues: list) -> dict:
         "exists": False,
         "has_usage_permission": False,
         "tables_total": 0,
+        "views_total": 0,
         "tables_with_geometry": 0,
         "tables_accessible": 0,
         "tables": [],
         "all_tables_detail": [],  # Shows ALL tables with their geometry column status
+        "raw_geometry_columns": [],  # Direct query to geometry_columns view
     }
 
     # Check if schema exists
@@ -227,6 +252,35 @@ async def _diagnose_schema(pool, schema: str, issues: list) -> dict:
         schema
     )
     schema_diag["tables_total"] = table_count or 0
+
+    # Count views in schema
+    view_count = await _run_query_single(
+        pool,
+        """
+        SELECT COUNT(*) FROM information_schema.tables
+        WHERE table_schema = $1 AND table_type = 'VIEW'
+        """,
+        schema
+    )
+    schema_diag["views_total"] = view_count or 0
+
+    # Raw query to geometry_columns - shows exactly what PostGIS sees
+    raw_geom_cols = await _run_query(
+        pool,
+        """
+        SELECT
+            f_table_schema as schema,
+            f_table_name as table_name,
+            f_geometry_column as geometry_column,
+            type as geometry_type,
+            srid
+        FROM public.geometry_columns
+        WHERE f_table_schema = $1
+        ORDER BY f_table_name
+        """,
+        schema
+    )
+    schema_diag["raw_geometry_columns"] = raw_geom_cols
 
     # Get tables with geometry columns from geometry_columns view
     geometry_tables = await _run_query(
@@ -312,13 +366,14 @@ async def _diagnose_schema(pool, schema: str, issues: list) -> dict:
             "Check SELECT permissions."
         )
 
-    # Get ALL tables with potential geometry column info (for debugging)
-    # This shows every table and what columns might be geometry-like
+    # Get ALL tables AND views with potential geometry column info (for debugging)
+    # This shows every table/view and what columns might be geometry-like
     all_tables = await _run_query(
         pool,
         """
         SELECT
             t.table_name,
+            t.table_type,
             (
                 SELECT string_agg(
                     c.column_name || ':' || c.udt_name,
@@ -331,14 +386,14 @@ async def _diagnose_schema(pool, schema: str, issues: list) -> dict:
             ) as potential_geom_columns,
             (
                 SELECT gc.f_geometry_column || ':' || gc.type
-                FROM geometry_columns gc
+                FROM public.geometry_columns gc
                 WHERE gc.f_table_schema = t.table_schema
                   AND gc.f_table_name = t.table_name
                 LIMIT 1
             ) as registered_in_geometry_columns
         FROM information_schema.tables t
         WHERE t.table_schema = $1
-          AND t.table_type = 'BASE TABLE'
+          AND t.table_type IN ('BASE TABLE', 'VIEW')
         ORDER BY t.table_name
         """,
         schema
@@ -361,6 +416,7 @@ async def _diagnose_schema(pool, schema: str, issues: list) -> dict:
 
         detail = {
             "table": row["table_name"],
+            "type": row["table_type"],  # BASE TABLE or VIEW
             "potential_geom_columns": potential,
             "in_geometry_columns": registered,
             "has_expected_column": has_expected_col,
