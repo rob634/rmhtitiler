@@ -16,6 +16,7 @@ from fastapi import APIRouter, Request
 
 from geotiler.config import settings
 from geotiler.services.database import get_app_state
+from geotiler.routers.vector import get_tipg_startup_state
 
 logger = logging.getLogger(__name__)
 
@@ -72,10 +73,14 @@ async def tipg_diagnostics(request: Request):
             "hint": "Check application logs for TiPG initialization errors",
         }
 
+    # Get startup state
+    startup_state = get_tipg_startup_state()
+
     diagnostics = {
         "status": "ok",
         "configured_schemas": settings.tipg_schema_list,
         "expected_geometry_column": settings.ogc_geometry_column,
+        "startup": startup_state.to_dict(),
         "connection": {},
         "postgis": {},
         "schemas": {},

@@ -11,7 +11,8 @@ Key integration points:
 """
 
 import logging
-from typing import TYPE_CHECKING
+from datetime import datetime, timezone
+from typing import TYPE_CHECKING, Optional
 
 from tipg.settings import PostgresSettings as TiPGPostgresSettings
 from tipg.settings import DatabaseSettings as TiPGDatabaseSettings
@@ -30,6 +31,75 @@ if TYPE_CHECKING:
     from fastapi import FastAPI
 
 logger = logging.getLogger(__name__)
+
+
+# =============================================================================
+# STARTUP STATE TRACKING
+# =============================================================================
+
+class TiPGStartupState:
+    """Captures TiPG initialization state for diagnostics."""
+
+    def __init__(self):
+        self.reset()
+
+    def reset(self):
+        """Reset state (called before each init/refresh)."""
+        self.last_init_time: Optional[datetime] = None
+        self.last_init_type: Optional[str] = None  # "startup" or "refresh"
+        self.schemas_configured: list[str] = []
+        self.collections_discovered: int = 0
+        self.collection_ids: list[str] = []
+        self.init_success: bool = False
+        self.init_error: Optional[str] = None
+        self.search_path_used: Optional[str] = None
+
+    def record_success(
+        self,
+        init_type: str,
+        schemas: list[str],
+        collection_count: int,
+        collection_ids: list[str],
+        search_path: str,
+    ):
+        """Record successful initialization."""
+        self.last_init_time = datetime.now(timezone.utc)
+        self.last_init_type = init_type
+        self.schemas_configured = schemas
+        self.collections_discovered = collection_count
+        self.collection_ids = collection_ids[:50]  # Cap at 50 for diagnostics
+        self.init_success = True
+        self.init_error = None
+        self.search_path_used = search_path
+
+    def record_failure(self, init_type: str, error: str):
+        """Record failed initialization."""
+        self.last_init_time = datetime.now(timezone.utc)
+        self.last_init_type = init_type
+        self.init_success = False
+        self.init_error = error
+
+    def to_dict(self) -> dict:
+        """Convert to dict for diagnostics endpoint."""
+        return {
+            "last_init_time": self.last_init_time.isoformat() if self.last_init_time else None,
+            "last_init_type": self.last_init_type,
+            "init_success": self.init_success,
+            "init_error": self.init_error,
+            "schemas_configured": self.schemas_configured,
+            "search_path_used": self.search_path_used,
+            "collections_discovered": self.collections_discovered,
+            "collection_ids": self.collection_ids,
+        }
+
+
+# Module-level singleton
+tipg_startup_state = TiPGStartupState()
+
+
+def get_tipg_startup_state() -> TiPGStartupState:
+    """Get the TiPG startup state for diagnostics."""
+    return tipg_startup_state
 
 
 def get_tipg_postgres_settings(schemas: list[str] | None = None) -> TiPGPostgresSettings:
@@ -122,15 +192,38 @@ async def initialize_tipg(app: "FastAPI") -> None:
         await register_collection_catalog(app, db_settings=db_settings)
         logger.info("TiPG collection catalog registered")
 
-        # Log discovered collections
+        # Log discovered collections and record startup state
+        collection_count = 0
+        collection_ids = []
         if hasattr(app.state, "collection_catalog"):
             catalog = app.state.collection_catalog
             collection_count = len(catalog) if catalog else 0
+            collection_ids = list(catalog.keys()) if catalog else []
             logger.info(f"TiPG discovered {collection_count} collections")
+            if collection_ids:
+                logger.info(f"Collection IDs: {collection_ids[:10]}{'...' if len(collection_ids) > 10 else ''}")
+
+        # Build search_path string for recording
+        search_path_schemas = schemas.copy()
+        if "public" not in search_path_schemas:
+            search_path_schemas.append("public")
+        search_path = ",".join(search_path_schemas)
+
+        # Record successful startup
+        tipg_startup_state.record_success(
+            init_type="startup",
+            schemas=schemas,
+            collection_count=collection_count,
+            collection_ids=collection_ids,
+            search_path=search_path,
+        )
 
         logger.info("TiPG initialization complete")
 
     except Exception as e:
+        # Record failed startup
+        tipg_startup_state.record_failure(init_type="startup", error=str(e))
+
         logger.error("=" * 60)
         logger.error("TIPG INITIALIZATION FAILED")
         logger.error("=" * 60)
@@ -200,9 +293,31 @@ async def refresh_tipg_pool(app: "FastAPI") -> None:
             app.state.writepool = app.state.pool
             app.state.get_connection = stac_get_connection
 
-        logger.info("TiPG pool refresh complete")
+        # Record refresh state
+        collection_count = 0
+        collection_ids = []
+        if hasattr(app.state, "collection_catalog"):
+            catalog = app.state.collection_catalog
+            collection_count = len(catalog) if catalog else 0
+            collection_ids = list(catalog.keys()) if catalog else []
+
+        search_path_schemas = schemas.copy()
+        if "public" not in search_path_schemas:
+            search_path_schemas.append("public")
+        search_path = ",".join(search_path_schemas)
+
+        tipg_startup_state.record_success(
+            init_type="refresh",
+            schemas=schemas,
+            collection_count=collection_count,
+            collection_ids=collection_ids,
+            search_path=search_path,
+        )
+
+        logger.info(f"TiPG pool refresh complete - {collection_count} collections")
 
     except Exception as e:
+        tipg_startup_state.record_failure(init_type="refresh", error=str(e))
         logger.error(f"TiPG pool refresh failed: {e}")
 
 
