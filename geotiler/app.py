@@ -27,7 +27,7 @@ from geotiler import __version__
 from geotiler.config import settings
 from geotiler.middleware.azure_auth import AzureAuthMiddleware
 from geotiler.infrastructure.middleware import RequestTimingMiddleware
-from geotiler.routers import health, planetary_computer, root, vector, stac
+from geotiler.routers import health, planetary_computer, admin, vector, stac
 from geotiler.services.database import set_app_state
 from geotiler.services.background import start_token_refresh
 from geotiler.auth.storage import initialize_storage_auth
@@ -317,8 +317,8 @@ def create_app() -> FastAPI:
         logger.warning("STAC API requires TiPG to be enabled (shared pool)")
         logger.warning("Set ENABLE_TIPG=true to enable STAC API")
 
-    # Root info endpoint
-    app.include_router(root.router)
+    # Admin console (HTML at /, JSON at /api)
+    app.include_router(admin.router)
 
     return app
 
