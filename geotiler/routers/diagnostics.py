@@ -901,6 +901,102 @@ async def verbose_diagnostics(
     except Exception as e:
         result["geometry_registration"] = {"error": str(e)}
 
+    # ==========================================================================
+    # SELECT ATTEMPT DIAGNOSTICS - Actually try to SELECT from each table
+    # This captures real permission errors for service requests
+    # ==========================================================================
+    try:
+        # Get all tables from pg_class (includes ones we can't SELECT from)
+        all_pg_tables = await _run_query(
+            pool,
+            """
+            SELECT c.relname as table_name
+            FROM pg_class c
+            JOIN pg_namespace n ON c.relnamespace = n.oid
+            WHERE n.nspname = $1 AND c.relkind = 'r'
+            ORDER BY c.relname
+            """,
+            schema
+        )
+
+        select_attempts = []
+        for t in all_pg_tables:
+            table_name = t["table_name"]
+            full_table = f"{schema}.{table_name}"
+            attempt = {
+                "table": table_name,
+                "full_name": full_table,
+                "can_select": False,
+                "error": None,
+                "row_sample": None,
+            }
+
+            try:
+                # Try to actually SELECT from the table
+                async with pool.acquire() as conn:
+                    # Use LIMIT 1 to minimize data transfer
+                    row = await conn.fetchrow(f'SELECT 1 FROM "{schema}"."{table_name}" LIMIT 1')
+                    attempt["can_select"] = True
+                    attempt["row_sample"] = "OK - SELECT succeeded"
+            except Exception as select_error:
+                # Capture the actual error message - this is the evidence we need
+                attempt["can_select"] = False
+                attempt["error"] = str(select_error)
+                # Extract just the key part of the error for readability
+                error_str = str(select_error)
+                if "permission denied" in error_str.lower():
+                    attempt["error_type"] = "PERMISSION_DENIED"
+                elif "does not exist" in error_str.lower():
+                    attempt["error_type"] = "TABLE_NOT_FOUND"
+                else:
+                    attempt["error_type"] = "OTHER"
+
+            select_attempts.append(attempt)
+
+        # Summarize results
+        succeeded = [a for a in select_attempts if a["can_select"]]
+        failed = [a for a in select_attempts if not a["can_select"]]
+        permission_denied = [a for a in failed if a.get("error_type") == "PERMISSION_DENIED"]
+
+        result["select_attempts"] = {
+            "total_tables": len(select_attempts),
+            "select_succeeded": len(succeeded),
+            "select_failed": len(failed),
+            "permission_denied_count": len(permission_denied),
+            "details": select_attempts,
+        }
+
+        # Generate fix SQL for permission issues
+        if permission_denied:
+            current_user = await _run_query_single(pool, "SELECT current_user")
+            fix_lines = [
+                f"-- Fix SELECT permissions for {current_user} in {schema} schema",
+                f"-- Run this SQL as database administrator",
+                f"-- Service Request Evidence: {len(permission_denied)} tables returned 'permission denied'",
+                "",
+            ]
+            for a in permission_denied:
+                fix_lines.append(f"GRANT SELECT ON {a['full_name']} TO {current_user};")
+
+            fix_lines.extend([
+                "",
+                "-- To automatically grant SELECT on future tables:",
+                f"ALTER DEFAULT PRIVILEGES IN SCHEMA {schema} GRANT SELECT ON TABLES TO {current_user};",
+            ])
+
+            result["select_attempts"]["fix_sql"] = "\n".join(fix_lines)
+
+            # Add a clear summary for service request
+            result["select_attempts"]["service_request_summary"] = {
+                "issue": f"User '{current_user}' lacks SELECT permission on {len(permission_denied)} tables in schema '{schema}'",
+                "affected_tables": [a["table"] for a in permission_denied],
+                "sample_error": permission_denied[0]["error"] if permission_denied else None,
+                "resolution": f"Grant SELECT on listed tables to {current_user}",
+            }
+
+    except Exception as e:
+        result["select_attempts"] = {"error": str(e)}
+
     return result
 
 
