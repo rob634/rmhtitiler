@@ -770,6 +770,137 @@ async def verbose_diagnostics(
             "Tables may not be properly registered with PostGIS."
         )
 
+    # ==========================================================================
+    # PERMISSION DIAGNOSTICS - Check what user can actually see
+    # ==========================================================================
+    try:
+        # Tables visible via information_schema (requires SELECT privilege)
+        visible_tables = await _run_query(
+            pool,
+            """
+            SELECT table_name
+            FROM information_schema.tables
+            WHERE table_schema = $1 AND table_type = 'BASE TABLE'
+            ORDER BY table_name
+            """,
+            schema
+        )
+
+        # All tables in pg_class (system catalog, no privilege filter)
+        all_pg_tables = await _run_query(
+            pool,
+            """
+            SELECT c.relname as table_name
+            FROM pg_class c
+            JOIN pg_namespace n ON c.relnamespace = n.oid
+            WHERE n.nspname = $1 AND c.relkind = 'r'
+            ORDER BY c.relname
+            """,
+            schema
+        )
+
+        # Check SELECT privilege on each table
+        permission_check = []
+        for t in all_pg_tables:
+            table_name = t["table_name"]
+            has_select = await _run_query_single(
+                pool,
+                "SELECT has_table_privilege(current_user, $1, 'SELECT')",
+                f"{schema}.{table_name}"
+            )
+            permission_check.append({
+                "table": table_name,
+                "has_select": has_select,
+                "visible_in_info_schema": table_name in [v["table_name"] for v in visible_tables]
+            })
+
+        # Get role grants for the schema
+        schema_grants = await _run_query(
+            pool,
+            """
+            SELECT grantee, privilege_type
+            FROM information_schema.role_table_grants
+            WHERE table_schema = $1
+            ORDER BY grantee, table_name
+            LIMIT 50
+            """
+            , schema
+        )
+
+        result["permissions"] = {
+            "current_user": await _run_query_single(pool, "SELECT current_user"),
+            "tables_in_pg_class": len(all_pg_tables),
+            "tables_visible_in_info_schema": len(visible_tables),
+            "tables_with_select": sum(1 for p in permission_check if p["has_select"]),
+            "permission_details": permission_check,
+            "missing_select": [
+                p["table"] for p in permission_check
+                if not p["has_select"]
+            ],
+        }
+
+        # Add summary of the permission issue
+        if result["permissions"]["tables_in_pg_class"] != result["permissions"]["tables_visible_in_info_schema"]:
+            result["permissions"]["issue"] = (
+                f"User '{result['permissions']['current_user']}' can see "
+                f"{result['permissions']['tables_in_pg_class']} tables in pg_class but only "
+                f"{result['permissions']['tables_visible_in_info_schema']} in information_schema. "
+                f"Missing SELECT on: {result['permissions']['missing_select']}"
+            )
+
+    except Exception as e:
+        result["permissions"] = {"error": str(e)}
+
+    # ==========================================================================
+    # GEOMETRY REGISTRATION DIAGNOSTICS
+    # ==========================================================================
+    try:
+        # Compare pg_attribute (actual columns) vs geometry_columns (PostGIS registry)
+        pg_attr_geom = await _run_query(
+            pool,
+            """
+            SELECT c.relname as table_name
+            FROM pg_class c
+            JOIN pg_namespace ns ON c.relnamespace = ns.oid
+            JOIN pg_attribute a ON a.attrelid = c.oid
+            JOIN pg_type t ON a.atttypid = t.oid
+            WHERE ns.nspname = $1
+            AND c.relkind = 'r'
+            AND a.attnum > 0
+            AND NOT a.attisdropped
+            AND t.typname IN ('geometry', 'geography')
+            ORDER BY c.relname
+            """,
+            schema
+        )
+        tables_with_geom_attr = [t["table_name"] for t in pg_attr_geom]
+
+        geom_cols_registered = await _run_query(
+            pool,
+            "SELECT f_table_name FROM geometry_columns WHERE f_table_schema = $1",
+            schema
+        )
+        tables_registered = [t["f_table_name"] for t in geom_cols_registered]
+
+        # Find tables with geometry column but NOT registered
+        not_registered = [t for t in tables_with_geom_attr if t not in tables_registered]
+
+        result["geometry_registration"] = {
+            "tables_with_geometry_column": tables_with_geom_attr,
+            "tables_in_geometry_columns": tables_registered,
+            "not_registered_with_postgis": not_registered,
+            "registration_issue": len(not_registered) > 0,
+        }
+
+        if not_registered:
+            result["geometry_registration"]["fix_sql"] = [
+                f"SELECT Populate_Geometry_Columns('{schema}.{t}'::regclass);"
+                for t in not_registered
+            ]
+
+    except Exception as e:
+        result["geometry_registration"] = {"error": str(e)}
+
     return result
 
 
