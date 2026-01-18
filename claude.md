@@ -86,7 +86,7 @@ grep "__version__" geotiler/__init__.py
 
 ## Environment Variables
 
-See [WIKI.md](WIKI.md) for complete list. Key variables:
+See [docs/WIKI.md](docs/WIKI.md) for complete list. Key variables:
 
 | Variable | Description |
 |----------|-------------|
@@ -121,10 +121,15 @@ curl "http://localhost:8000/vector/collections/my_table/tiles/WebMercatorQuad/10
 
 ---
 
-## Archived Documentation
+## Documentation
 
-- [QA Deployment Dec 2025](docs/archive/QA-DEPLOYMENT-DEC2025.md) - QA environment specifics
-- [Azure Deployment Prep](docs/archive/AZURE-DEPLOYMENT-PREP.md) - Initial setup notes
+| Document | Purpose |
+|----------|---------|
+| `docs/WIKI.md` | Complete API wiki and reference |
+| `docs/QA_DEPLOYMENT.md` | QA/Production deployment guide |
+| `docs/README-LOCAL.md` | Local development setup |
+| `docs/xarray.md` | Zarr/NetCDF implementation guide |
+| `docs/NEW_TENANT_DEPLOYMENT.md` | Multi-tenant deployment |
 
 ---
 

@@ -663,6 +663,8 @@ https://{silver-storage-account}.blob.core.windows.net/silver-cogs/test-zarr/era
 | `403 Forbidden` | OAuth token expired | Check `/healthz`, restart app |
 | `404 Not Found` | Invalid URL path | Verify blob/container exists |
 | `500 Internal Server Error` | Various | Check logs, verify URL format |
+| `permission denied for table X` | Missing SELECT grant | See note below on `ALTER DEFAULT PRIVILEGES` |
+| **New tables not visible in /vector** | ETL creates tables, reader can't access | `ALTER DEFAULT PRIVILEGES` is per-grantor - see [QA_DEPLOYMENT.md](QA_DEPLOYMENT.md#issue-tables-created-by-etl-dont-have-permissions) |
 
 ### HTTP Status Codes
 
@@ -682,32 +684,28 @@ https://{silver-storage-account}.blob.core.windows.net/silver-cogs/test-zarr/era
 ### Getting Started
 | Document | Purpose |
 |----------|---------|
-| [README.md](README.md) | Project overview |
-| [ONBOARDING.md](ONBOARDING.md) | New developer guide |
+| [README.md](../README.md) | Project overview |
 | [README-LOCAL.md](README-LOCAL.md) | Local development setup |
 
 ### API & Implementation
 | Document | Purpose |
 |----------|---------|
-| [docs/TITILER-API-REFERENCE.md](docs/TITILER-API-REFERENCE.md) | Complete API reference |
+| [TITILER-API-REFERENCE.md](TITILER-API-REFERENCE.md) | Complete API reference |
 | [xarray.md](xarray.md) | Xarray/Zarr implementation guide |
-| [SERVICE-LAYER-API-DESIGN.md](SERVICE-LAYER-API-DESIGN.md) | Future service layer design |
 
 ### Deployment
 | Document | Purpose |
 |----------|---------|
-| [CLAUDE.md](CLAUDE.md) | Deployment resume guide |
+| [CLAUDE.md](../CLAUDE.md) | Project overview and resume guide |
 | [QA_DEPLOYMENT.md](QA_DEPLOYMENT.md) | QA environment deployment |
 | [NEW_TENANT_DEPLOYMENT.md](NEW_TENANT_DEPLOYMENT.md) | Multi-tenant deployment |
-| [docs/AZURE-CONFIGURATION-REFERENCE.md](docs/AZURE-CONFIGURATION-REFERENCE.md) | Azure settings reference |
-| [docs/DEPLOYMENT-TROUBLESHOOTING.md](docs/DEPLOYMENT-TROUBLESHOOTING.md) | Troubleshooting guide |
+| [AZURE-CONFIGURATION-REFERENCE.md](AZURE-CONFIGURATION-REFERENCE.md) | Azure settings reference |
 
 ### Architecture
 | Document | Purpose |
 |----------|---------|
-| [docs/OAUTH-TOKEN-APPROACH.md](docs/OAUTH-TOKEN-APPROACH.md) | OAuth authentication design |
-| [docs/PGSTAC-IMPLEMENTATION.md](docs/PGSTAC-IMPLEMENTATION.md) | pgSTAC integration details |
-| [docs/implementation/OAUTH-ARCHITECTURE.md](docs/implementation/OAUTH-ARCHITECTURE.md) | OAuth architecture deep-dive |
+| [OAUTH-TOKEN-APPROACH.md](OAUTH-TOKEN-APPROACH.md) | OAuth authentication design |
+| [PGSTAC-IMPLEMENTATION.md](PGSTAC-IMPLEMENTATION.md) | pgSTAC integration details |
 
 ---
 

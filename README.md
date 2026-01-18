@@ -192,7 +192,7 @@ command: ["uvicorn", "geotiler.app:app", "--host", "0.0.0.0", "--port", "8000", 
 
 ## 🚢 Deployment
 
-**For QA/Production Deployment**: See [QA_DEPLOYMENT.md](QA_DEPLOYMENT.md) for the **complete deployment guide** including:
+**For QA/Production Deployment**: See [docs/QA_DEPLOYMENT.md](docs/QA_DEPLOYMENT.md) for the **complete deployment guide** including:
 - All required environment variables
 - RBAC permissions setup (system-assigned + user-assigned managed identities)
 - PostgreSQL managed identity configuration

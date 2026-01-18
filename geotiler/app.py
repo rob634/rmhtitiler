@@ -28,6 +28,7 @@ from geotiler.config import settings
 from geotiler.middleware.azure_auth import AzureAuthMiddleware
 from geotiler.infrastructure.middleware import RequestTimingMiddleware
 from geotiler.routers import health, planetary_computer, admin, vector, stac, diagnostics
+from geotiler.routers import cog_landing, xarray_landing, searches_landing, stac_explorer, docs_guide
 from geotiler.services.database import set_app_state
 from geotiler.services.background import start_token_refresh
 from geotiler.auth.storage import initialize_storage_auth
@@ -319,6 +320,18 @@ def create_app() -> FastAPI:
     elif settings.enable_stac_api and not settings.enable_tipg:
         logger.warning("STAC API requires TiPG to be enabled (shared pool)")
         logger.warning("Set ENABLE_TIPG=true to enable STAC API")
+
+    # Landing pages for TiTiler components
+    app.include_router(cog_landing.router, tags=["Landing Pages"])
+    app.include_router(xarray_landing.router, tags=["Landing Pages"])
+    app.include_router(searches_landing.router, tags=["Landing Pages"])
+
+    # STAC Explorer GUI
+    if settings.enable_stac_api and settings.enable_tipg:
+        app.include_router(stac_explorer.router, tags=["STAC Explorer"])
+
+    # Documentation guides
+    app.include_router(docs_guide.router, tags=["Documentation"])
 
     # Admin console (HTML at /, JSON at /api)
     app.include_router(admin.router)

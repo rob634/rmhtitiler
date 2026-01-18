@@ -258,6 +258,35 @@ GRANT SELECT ON TABLES TO "titiler-db-access";
 GRANT pgstac_read TO "titiler-db-access";
 ```
 
+> ⚠️ **CRITICAL: `ALTER DEFAULT PRIVILEGES` is Per-Grantor!**
+>
+> PostgreSQL's `ALTER DEFAULT PRIVILEGES` only applies to tables created **by the user who ran the command**. This is a common gotcha!
+>
+> **Example Problem:**
+> - Superadmin runs: `ALTER DEFAULT PRIVILEGES ... GRANT SELECT TO reader-identity`
+> - ETL app (using `etl-admin` identity) creates new tables
+> - Reader identity **cannot** access those tables - the default privileges don't apply!
+>
+> **Solution:** The ETL identity must also grant default privileges:
+> ```sql
+> -- Run this AS the ETL admin identity (the role that creates tables)
+> ALTER DEFAULT PRIVILEGES FOR ROLE "etl-admin-identity" IN SCHEMA geo
+> GRANT SELECT ON TABLES TO "reader-identity";
+> ```
+>
+> Or grant the reader role to the ETL admin so it inherits:
+> ```sql
+> GRANT "reader-identity" TO "etl-admin-identity";
+> ```
+>
+> **To verify who needs to grant:** Check which role owns the tables:
+> ```sql
+> SELECT tableowner, COUNT(*) FROM pg_tables
+> WHERE schemaname = 'geo' GROUP BY tableowner;
+> ```
+>
+> See [Troubleshooting: Tables created by ETL don't have permissions](#issue-tables-created-by-etl-dont-have-permissions) for diagnostics.
+
 **What This Enables:**
 - ✅ Tile serving: `/searches/{search_id}/tiles/{z}/{x}/{y}`
 - ✅ Collection info: `/collections`
@@ -636,6 +665,95 @@ GRANT pgstac_read TO "titiler-db-access";
 
 -- For read-write
 GRANT INSERT, UPDATE, DELETE ON pgstac.searches TO "titiler-db-access";
+```
+
+### Issue: Tables created by ETL don't have permissions
+
+**Symptom:** Reader identity can access old tables but not new tables created by the ETL process.
+
+**Root Cause:** `ALTER DEFAULT PRIVILEGES` is **per-grantor** in PostgreSQL. Default privileges only apply to tables created by the user who ran the `ALTER DEFAULT PRIVILEGES` command.
+
+**Diagnosis using TiTiler diagnostics:**
+```bash
+# This endpoint actually attempts SELECT on each table and captures errors
+curl "https://<app-url>/vector/diagnostics/verbose?schema=geo" | jq '.select_attempts.service_request_summary'
+```
+
+**Check who owns the tables:**
+```sql
+-- See which roles own tables in the schema
+SELECT tableowner, COUNT(*) as table_count
+FROM pg_tables
+WHERE schemaname = 'geo'
+GROUP BY tableowner
+ORDER BY table_count DESC;
+```
+
+**Check existing default privileges:**
+```sql
+-- See what default privileges exist and who granted them
+SELECT
+    pg_get_userbyid(defaclrole) as grantor,
+    defaclnamespace::regnamespace as schema,
+    defaclobjtype as object_type,
+    defaclacl as privileges
+FROM pg_default_acl
+WHERE defaclnamespace = 'geo'::regnamespace;
+```
+
+**Fix - Option 1: ETL admin grants default privileges to reader**
+```sql
+-- Connect as superadmin and run:
+-- This makes future tables created by etl-admin accessible to reader
+ALTER DEFAULT PRIVILEGES FOR ROLE "etl-admin-identity" IN SCHEMA geo
+GRANT SELECT ON TABLES TO "reader-identity";
+
+-- Also grant on existing tables the ETL admin created
+GRANT SELECT ON ALL TABLES IN SCHEMA geo TO "reader-identity";
+```
+
+**Fix - Option 2: Grant reader role to ETL admin**
+```sql
+-- ETL admin will grant permissions through role membership
+GRANT "reader-identity" TO "etl-admin-identity";
+```
+
+**Fix - Option 3: Use a shared role for table ownership**
+```sql
+-- Create a shared owner role
+CREATE ROLE geo_table_owner;
+
+-- Both ETL admin and reader get membership
+GRANT geo_table_owner TO "etl-admin-identity";
+GRANT geo_table_owner TO "reader-identity";
+
+-- Set default privileges for the shared role
+ALTER DEFAULT PRIVILEGES FOR ROLE geo_table_owner IN SCHEMA geo
+GRANT SELECT ON TABLES TO "reader-identity";
+
+-- ETL creates tables as this role
+SET ROLE geo_table_owner;
+CREATE TABLE geo.new_table (...);
+RESET ROLE;
+```
+
+**Verification:**
+```bash
+# After fixing, verify with diagnostics endpoint
+curl "https://<app-url>/vector/diagnostics/verbose?schema=geo" | jq '{
+  total: .select_attempts.total_tables,
+  accessible: .select_attempts.select_succeeded,
+  denied: .select_attempts.permission_denied_count
+}'
+```
+
+Expected output after fix:
+```json
+{
+  "total": 15,
+  "accessible": 15,
+  "denied": 0
+}
 ```
 
 ---

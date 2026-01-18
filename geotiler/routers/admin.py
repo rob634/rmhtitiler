@@ -662,8 +662,12 @@ def _render_full_page(health_data: dict) -> str:
             geotiler <span>v{__version__}</span>
         </div>
         <div class="navbar-links">
-            <a href="/health">Health JSON</a>
-            <a href="/api">API Info</a>
+            <a href="/cog/">COG</a>
+            <a href="/xarray/">XArray</a>
+            <a href="/searches/">Searches</a>
+            <a href="/vector">Vector</a>
+            <a href="/stac/">STAC</a>
+            <a href="/guide/">Guide</a>
             <a href="/docs">API Docs</a>
         </div>
     </nav>
