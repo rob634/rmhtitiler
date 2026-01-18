@@ -21,7 +21,6 @@ import logging
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
-from fastapi.middleware.cors import CORSMiddleware
 
 from geotiler import __version__
 from geotiler.config import settings
@@ -258,15 +257,9 @@ def create_app() -> FastAPI:
     # =========================================================================
     # Middleware (order matters - first added = outermost = runs first)
     # =========================================================================
-
-    # CORS - Allow cross-origin requests
-    app.add_middleware(
-        CORSMiddleware,
-        allow_origins=["*"],
-        allow_credentials=True,
-        allow_methods=["*"],
-        allow_headers=["*"],
-    )
+    # Note: CORS is handled by infrastructure (Azure APIM / Cloudflare CDN),
+    # not by the application. This app runs behind reverse proxies that manage
+    # cross-origin access, caching, and security policies.
 
     # Request timing - Captures latency, status, response size for all requests
     # Only logs when OBSERVABILITY_MODE=true (zero overhead otherwise)
