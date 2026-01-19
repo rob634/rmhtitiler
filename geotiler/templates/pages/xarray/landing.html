@@ -1,0 +1,227 @@
+{% extends "base.html" %}
+
+{% block title %}XArray Explorer{% endblock %}
+
+{% block content %}
+<div class="container">
+    <div class="page-header">
+        <h1 class="page-title">
+            XArray / Zarr Explorer
+            {% if planetary_computer_enabled %}
+            <span class="badge badge-ok">Planetary Computer</span>
+            {% endif %}
+        </h1>
+        <p class="page-description">
+            Explore and visualize multidimensional datasets in Zarr or NetCDF format.
+            Powered by <a href="https://github.com/developmentseed/titiler-xarray">titiler-xarray</a>.
+        </p>
+    </div>
+
+    {% if planetary_computer_enabled %}
+    <div class="callout callout-info">
+        <strong>Planetary Computer Integration Enabled</strong>
+        This instance supports automatic token signing for Microsoft Planetary Computer datasets.
+        Use <code>/pc/*</code> endpoints for PC-hosted Zarr data.
+    </div>
+    {% endif %}
+
+    <div class="card">
+        <h2 class="card-title">Explore a Dataset</h2>
+        <div class="form-group">
+            <label class="form-label" for="zarr-url">Dataset URL</label>
+            <input type="text" id="zarr-url" class="form-input"
+                   placeholder="https://example.com/path/to/data.zarr"
+                   value="">
+            <p class="form-hint">
+                Enter a URL to a Zarr store or NetCDF file. Supports HTTPS, Azure Blob, and S3 paths.
+            </p>
+        </div>
+        <div class="form-row">
+            <div class="form-group">
+                <label class="form-label" for="variable">Variable Name</label>
+                <input type="text" id="variable" class="form-input"
+                       placeholder="e.g., temperature, precipitation">
+                <p class="form-hint">
+                    Leave empty to auto-select first variable, or use "List Variables" to discover.
+                </p>
+            </div>
+            <div class="form-group">
+                <label class="form-label" for="time-idx">Time Index (optional)</label>
+                <input type="text" id="time-idx" class="form-input"
+                       placeholder="e.g., 0 or 2024-01-15">
+                <p class="form-hint">
+                    Index or datetime string for temporal dimension.
+                </p>
+            </div>
+        </div>
+        <div class="btn-group">
+            <button class="btn btn-primary" onclick="openViewer()">Open Viewer</button>
+            <button class="btn btn-secondary" onclick="getVariables()">List Variables</button>
+            <button class="btn btn-secondary" onclick="getInfo()">Get Info</button>
+            <button class="btn btn-secondary" onclick="getTileJSON()">TileJSON</button>
+        </div>
+    </div>
+
+    {% if sample_zarr_urls %}
+    <div class="card">
+        <h2 class="card-title">Sample Datasets</h2>
+        <p style="color: var(--ds-gray); margin-bottom: 15px; font-size: 13px;">
+            Click any dataset to load it in the explorer above:
+        </p>
+        <div class="sample-grid">
+            {% for sample in sample_zarr_urls %}
+            <div class="sample-card" onclick="setUrl('{{ sample.url }}', 'zarr-url'); {% if sample.variable %}document.getElementById('variable').value='{{ sample.variable }}';{% endif %}">
+                <div class="sample-label">{{ sample.label }}</div>
+                {% if sample.description %}
+                <div class="sample-description">{{ sample.description }}</div>
+                {% endif %}
+            </div>
+            {% endfor %}
+        </div>
+    </div>
+    {% else %}
+    <div class="card">
+        <h2 class="card-title">Sample Datasets</h2>
+        <p style="color: var(--ds-gray); margin-bottom: 15px; font-size: 13px;">
+            Click any dataset to load it in the explorer above:
+        </p>
+        <div class="sample-grid">
+            <div class="sample-card" onclick="setUrl('https://cpdataeuwest.blob.core.windows.net/cpdata/raw/era5/pds/2020/01/era5-pds-2020-01-fc.zarr', 'zarr-url'); document.getElementById('variable').value='t2m';">
+                <div class="sample-label">ERA5 2m Temperature</div>
+                <div class="sample-description">Planetary Computer - January 2020</div>
+            </div>
+            <div class="sample-card" onclick="setUrl('https://noaa-gfs-bdp-pds.s3.amazonaws.com/gfs.20240115/00/atmos/gfs.t00z.pgrb2.0p25.f000.zarr', 'zarr-url'); document.getElementById('variable').value='TMP_2maboveground';">
+                <div class="sample-label">GFS 2m Temperature</div>
+                <div class="sample-description">AWS Open Data</div>
+            </div>
+        </div>
+    </div>
+    {% endif %}
+
+    <div class="card">
+        <h2 class="card-title">Available Endpoints</h2>
+        <table>
+            <thead>
+                <tr>
+                    <th>Endpoint</th>
+                    <th>Description</th>
+                </tr>
+            </thead>
+            <tbody>
+                <tr>
+                    <td><code>GET /xarray/variables</code></td>
+                    <td>List all variables in the dataset</td>
+                </tr>
+                <tr>
+                    <td><code>GET /xarray/info</code></td>
+                    <td>Get variable metadata (dims, shape, dtype)</td>
+                </tr>
+                <tr>
+                    <td><code>GET /xarray/tiles/{tms}/{z}/{x}/{y}</code></td>
+                    <td>XYZ map tiles</td>
+                </tr>
+                <tr>
+                    <td><code>GET /xarray/{tms}/tilejson.json</code></td>
+                    <td>TileJSON for web maps</td>
+                </tr>
+                <tr>
+                    <td><code>GET /xarray/{tms}/map</code></td>
+                    <td>Interactive map viewer</td>
+                </tr>
+                <tr>
+                    <td><code>GET /xarray/point/{lon},{lat}</code></td>
+                    <td>Value at point</td>
+                </tr>
+            </tbody>
+        </table>
+        <p style="margin-top: 15px;">
+            <a href="/docs#/Multidimensional%20(Zarr/NetCDF)">View full API documentation</a>
+        </p>
+    </div>
+
+    <div class="card">
+        <h2 class="card-title">Common Query Parameters</h2>
+        <table>
+            <thead>
+                <tr>
+                    <th>Parameter</th>
+                    <th>Description</th>
+                </tr>
+            </thead>
+            <tbody>
+                <tr>
+                    <td><code>url</code></td>
+                    <td>Zarr store or NetCDF URL (required)</td>
+                </tr>
+                <tr>
+                    <td><code>variable</code></td>
+                    <td>Variable name to visualize</td>
+                </tr>
+                <tr>
+                    <td><code>datetime</code></td>
+                    <td>Time index or datetime string</td>
+                </tr>
+                <tr>
+                    <td><code>colormap_name</code></td>
+                    <td>Colormap (viridis, plasma, inferno, magma, etc.)</td>
+                </tr>
+                <tr>
+                    <td><code>rescale</code></td>
+                    <td>Min,max value scaling (e.g., 0,100)</td>
+                </tr>
+                <tr>
+                    <td><code>decode_times</code></td>
+                    <td>Set to false to disable time decoding</td>
+                </tr>
+            </tbody>
+        </table>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+function getInfo() {
+    const url = document.getElementById('zarr-url').value;
+    if (!url) { alert('Please enter a Zarr/NetCDF URL'); return; }
+    const variable = document.getElementById('variable').value;
+
+    let endpoint = '/xarray/info?url=' + encodeURIComponent(url);
+    if (variable) endpoint += '&variable=' + encodeURIComponent(variable);
+
+    window.location.href = endpoint;
+}
+
+function getVariables() {
+    const url = document.getElementById('zarr-url').value;
+    if (!url) { alert('Please enter a Zarr/NetCDF URL'); return; }
+    window.location.href = '/xarray/variables?url=' + encodeURIComponent(url);
+}
+
+function openViewer() {
+    const url = document.getElementById('zarr-url').value;
+    if (!url) { alert('Please enter a Zarr/NetCDF URL'); return; }
+
+    const variable = document.getElementById('variable').value;
+    const timeIdx = document.getElementById('time-idx').value;
+
+    let endpoint = '/xarray/WebMercatorQuad/map?url=' + encodeURIComponent(url);
+    if (variable) endpoint += '&variable=' + encodeURIComponent(variable);
+    if (timeIdx) endpoint += '&datetime=' + encodeURIComponent(timeIdx);
+
+    window.location.href = endpoint;
+}
+
+function getTileJSON() {
+    const url = document.getElementById('zarr-url').value;
+    if (!url) { alert('Please enter a Zarr/NetCDF URL'); return; }
+
+    const variable = document.getElementById('variable').value;
+
+    let endpoint = '/xarray/WebMercatorQuad/tilejson.json?url=' + encodeURIComponent(url);
+    if (variable) endpoint += '&variable=' + encodeURIComponent(variable);
+
+    window.location.href = endpoint;
+}
+</script>
+{% endblock %}

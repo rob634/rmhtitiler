@@ -327,3 +327,1259 @@ Based on severity and effort, suggested order of fixes:
 7. **CSS duplication** (#8) - Extract shared styles for maintainability
 
 Items 9-12 can be addressed opportunistically during other work.
+
+---
+
+## Implementation Plan: Jinja2 UI Refactoring
+
+**Status:** In Progress (Phases 1-6 Complete, Phase 7 Partial)
+**Target Issues:** #8 (CSS duplication), #11 (Hardcoded URLs), Front-end consolidation
+**Approach:** Treat the UI as a proper website with Jinja2 templating, static assets, and environment-driven configuration
+
+### Implementation Progress
+
+| Phase | Status | Notes |
+|-------|--------|-------|
+| 1. Directory Structure | ✅ Complete | Created `static/`, `templates/`, all subdirectories |
+| 2. Config Updates | ✅ Complete | Added JSON-based sample URL settings to `config.py` |
+| 3. Base Templates | ✅ Complete | Created `base.html`, `base_guide.html`, navbar, footer, macros |
+| 4. Consolidated CSS | ✅ Complete | Created `styles.css` (~900 lines) with design tokens |
+| 5. JavaScript Utilities | ✅ Complete | Created `common.js` with helper functions |
+| 6. FastAPI Setup | ✅ Complete | Static files mounted, Jinja2 configured in `app.py` |
+| 7. Page Migration | 🔄 Partial | COG, XArray, Searches landing pages migrated |
+| 8. Testing & Cleanup | ⏳ Pending | Need to test deployment |
+
+### Files Created/Modified
+
+**New Files:**
+- `geotiler/static/css/styles.css` - Consolidated CSS (~900 lines)
+- `geotiler/static/js/common.js` - JavaScript utilities
+- `geotiler/templates/base.html` - Master template
+- `geotiler/templates/base_guide.html` - Guide pages template
+- `geotiler/templates/components/navbar.html`
+- `geotiler/templates/components/footer.html`
+- `geotiler/templates/components/macros.html`
+- `geotiler/templates/components/guide_sidebar.html`
+- `geotiler/templates/pages/cog/landing.html`
+- `geotiler/templates/pages/xarray/landing.html`
+- `geotiler/templates/pages/searches/landing.html`
+- `geotiler/templates_utils.py` - Template helper functions
+
+**Modified Files:**
+- `geotiler/app.py` - Added static file mounting, Jinja2 configuration
+- `geotiler/config.py` - Added sample URL JSON settings
+- `geotiler/routers/cog_landing.py` - Converted to use templates
+- `geotiler/routers/xarray_landing.py` - Converted to use templates
+- `geotiler/routers/searches_landing.py` - Converted to use templates
+
+### Remaining Work
+
+**Phase 7 (Page Migration) - Remaining:**
+- [ ] `admin.py` → `templates/pages/admin/index.html` (complex - HTMX auto-refresh)
+- [ ] `stac_explorer.py` → `templates/pages/stac/explorer.html` (complex - Leaflet map)
+- [ ] `docs_guide.py` → `templates/pages/guide/*.html` (10+ routes)
+
+**Phase 8 (Testing):**
+- [ ] Test all migrated pages render correctly
+- [ ] Verify static file caching
+- [ ] Test sample URL configuration
+- [ ] Deploy and verify in production
+
+---
+
+### Goals
+
+1. **Single source of truth for CSS** - One stylesheet, cached by browser/CDN
+2. **Reusable components** - Navbar, footer, cards via Jinja2 macros/includes
+3. **Template inheritance** - Base template with `{% block %}` for page content
+4. **Environment-driven samples** - No hardcoded URLs, configurable per deployment
+5. **Maintainable structure** - Clear separation of templates, static files, and routes
+
+---
+
+### Phase 1: Project Structure
+
+#### 1.1 New Directory Structure
+
+```
+geotiler/
+├── static/                          # NEW: Static assets
+│   ├── css/
+│   │   └── styles.css               # Consolidated CSS (~400 lines)
+│   └── js/
+│       └── common.js                # Shared JavaScript utilities
+│
+├── templates/                       # NEW: Jinja2 templates
+│   ├── base.html                    # Master template (DOCTYPE, head, nav, footer)
+│   ├── components/
+│   │   ├── navbar.html              # Navigation bar macro
+│   │   ├── footer.html              # Footer macro
+│   │   ├── cards.html               # Card components (service, sample URL, etc.)
+│   │   ├── status_badge.html        # Status indicator macro
+│   │   ├── code_block.html          # Syntax-highlighted code macro
+│   │   └── callout.html             # Info/warning/success callout macro
+│   │
+│   └── pages/
+│       ├── admin/
+│       │   └── index.html           # Admin dashboard
+│       ├── cog/
+│       │   └── index.html           # COG landing page
+│       ├── xarray/
+│       │   └── index.html           # Zarr/NetCDF landing page
+│       ├── searches/
+│       │   └── index.html           # pgSTAC searches landing page
+│       ├── stac/
+│       │   └── explorer.html        # STAC explorer with map
+│       └── guide/
+│           ├── index.html           # Documentation home
+│           ├── authentication.html
+│           ├── quick-start.html
+│           ├── data-scientists/
+│           │   ├── index.html
+│           │   ├── point-queries.html
+│           │   ├── batch-queries.html
+│           │   └── stac-search.html
+│           └── web-developers/
+│               ├── index.html
+│               ├── maplibre-tiles.html
+│               └── vector-features.html
+│
+├── config.py                        # MODIFY: Add sample URL settings
+│
+└── routers/
+    ├── pages.py                     # NEW: Consolidated UI routes
+    └── api.py                       # Keep API routes separate (health, etc.)
+```
+
+#### 1.2 Files to Delete (after migration)
+
+```
+geotiler/routers/
+├── admin.py                 # → templates/pages/admin/index.html
+├── cog_landing.py           # → templates/pages/cog/index.html
+├── xarray_landing.py        # → templates/pages/xarray/index.html
+├── searches_landing.py      # → templates/pages/searches/index.html
+├── stac_explorer.py         # → templates/pages/stac/explorer.html
+└── docs_guide.py            # → templates/pages/guide/*.html
+```
+
+---
+
+### Phase 2: Configuration Updates
+
+#### 2.1 Sample URLs Configuration (`config.py`)
+
+```python
+from pydantic import Field
+from pydantic_settings import BaseSettings
+from typing import Optional
+import json
+
+class SampleUrl(BaseSettings):
+    """Single sample URL configuration."""
+    label: str
+    url: str
+    description: Optional[str] = None
+    # For xarray samples
+    variable: Optional[str] = None
+    datetime: Optional[str] = None
+
+class Settings(BaseSettings):
+    # ... existing settings ...
+
+    # ==========================================================================
+    # Sample URLs for Landing Pages (JSON arrays in env vars)
+    # ==========================================================================
+    sample_cog_urls_json: str = Field(
+        default='[]',
+        alias='SAMPLE_COG_URLS',
+        description='JSON array of COG sample URLs'
+    )
+
+    sample_zarr_urls_json: str = Field(
+        default='[]',
+        alias='SAMPLE_ZARR_URLS',
+        description='JSON array of Zarr/NetCDF sample URLs'
+    )
+
+    sample_stac_collections_json: str = Field(
+        default='[]',
+        alias='SAMPLE_STAC_COLLECTIONS',
+        description='JSON array of STAC collection IDs to highlight'
+    )
+
+    @property
+    def sample_cog_urls(self) -> list[dict]:
+        """Parse COG sample URLs from JSON."""
+        try:
+            return json.loads(self.sample_cog_urls_json)
+        except json.JSONDecodeError:
+            return []
+
+    @property
+    def sample_zarr_urls(self) -> list[dict]:
+        """Parse Zarr sample URLs from JSON."""
+        try:
+            return json.loads(self.sample_zarr_urls_json)
+        except json.JSONDecodeError:
+            return []
+
+    @property
+    def sample_stac_collections(self) -> list[dict]:
+        """Parse STAC collection samples from JSON."""
+        try:
+            return json.loads(self.sample_stac_collections_json)
+        except json.JSONDecodeError:
+            return []
+```
+
+#### 2.2 Example Environment Variables
+
+```bash
+# Sample COG URLs (JSON array)
+SAMPLE_COG_URLS='[
+  {"label": "Swiss Terrain (SRTM)", "url": "https://data.geo.admin.ch/ch.swisstopo.swissalti3d/swissalti3d_2019_2573-1085/swissalti3d_2019_2573-1085_0.5_2056_5728.tif", "description": "High-resolution Swiss elevation data"},
+  {"label": "Sentinel-2 TCI", "url": "https://sentinel-cogs.s3.us-west-2.amazonaws.com/sentinel-s2-l2a-cogs/36/Q/WD/2020/7/S2A_36QWD_20200701_0_L2A/TCI.tif", "description": "True color imagery"}
+]'
+
+# Sample Zarr URLs (JSON array)
+SAMPLE_ZARR_URLS='[
+  {"label": "ERA5 Temperature", "url": "https://example.com/era5.zarr", "variable": "t2m", "description": "Global temperature reanalysis"}
+]'
+
+# Sample STAC collections
+SAMPLE_STAC_COLLECTIONS='[
+  {"id": "flood-risk", "label": "Flood Risk Maps", "description": "Flood depth and extent models"}
+]'
+```
+
+---
+
+### Phase 3: Base Template & Components
+
+#### 3.1 Base Template (`templates/base.html`)
+
+```html
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{% block title %}geotiler{% endblock %} - geotiler v{{ version }}</title>
+    <link rel="stylesheet" href="{{ url_for('static', path='css/styles.css') }}">
+    {% block head %}{% endblock %}
+</head>
+<body>
+    {% include "components/navbar.html" %}
+
+    <main class="{% block main_class %}container{% endblock %}">
+        {% block content %}{% endblock %}
+    </main>
+
+    {% include "components/footer.html" %}
+
+    <script src="{{ url_for('static', path='js/common.js') }}"></script>
+    {% block scripts %}{% endblock %}
+</body>
+</html>
+```
+
+#### 3.2 Navbar Component (`templates/components/navbar.html`)
+
+```html
+{# Navbar macro - pass active page name #}
+{% macro navbar(active='') %}
+<nav class="navbar">
+    <a href="/" class="navbar-brand">
+        geotiler <span class="version">v{{ version }}</span>
+    </a>
+    <div class="navbar-links">
+        <a href="/cog/" class="{{ 'active' if active == 'cog' else '' }}">COG</a>
+        <a href="/xarray/" class="{{ 'active' if active == 'xarray' else '' }}">XArray</a>
+        <a href="/searches/" class="{{ 'active' if active == 'searches' else '' }}">Searches</a>
+        <a href="/vector" class="{{ 'active' if active == 'vector' else '' }}">Vector</a>
+        {% if stac_api_enabled %}
+        <a href="/stac/" class="{{ 'active' if active == 'stac' else '' }}">STAC</a>
+        {% endif %}
+        <a href="/guide/" class="{{ 'active' if active == 'guide' else '' }}">Guide</a>
+        <a href="/docs" class="{{ 'active' if active == 'docs' else '' }}">API Docs</a>
+    </div>
+</nav>
+{% endmacro %}
+
+{# Auto-render if included directly #}
+{{ navbar(active|default('')) }}
+```
+
+#### 3.3 Sample URL Card (`templates/components/cards.html`)
+
+```html
+{# Sample URL card - clickable to populate form #}
+{% macro sample_url_card(sample, input_id) %}
+<div class="sample-card" onclick="setUrl('{{ sample.url }}', '{{ input_id }}')">
+    <div class="sample-label">{{ sample.label }}</div>
+    {% if sample.description %}
+    <div class="sample-description">{{ sample.description }}</div>
+    {% endif %}
+</div>
+{% endmacro %}
+
+{# Service status card for admin #}
+{% macro service_card(name, service) %}
+<div class="service-card {{ 'healthy' if service.status == 'healthy' else 'degraded' }}">
+    <div class="service-header">
+        <span class="service-name">{{ name }}</span>
+        {% include "components/status_badge.html" %}
+    </div>
+    <div class="service-description">{{ service.description }}</div>
+    {% if service.endpoints %}
+    <ul class="service-endpoints">
+        {% for endpoint in service.endpoints[:3] %}
+        <li><code>{{ endpoint }}</code></li>
+        {% endfor %}
+    </ul>
+    {% endif %}
+</div>
+{% endmacro %}
+
+{# Guide navigation card #}
+{% macro guide_card(href, title, description) %}
+<a href="{{ href }}" class="card-link">
+    <div class="card">
+        <h3>{{ title }}</h3>
+        <p>{{ description }}</p>
+    </div>
+</a>
+{% endmacro %}
+```
+
+#### 3.4 Status Badge (`templates/components/status_badge.html`)
+
+```html
+{% macro status_badge(status) %}
+<span class="badge badge-{{ status }}">
+    {% if status == 'healthy' or status == 'ok' %}✓{% endif %}
+    {% if status == 'degraded' %}⚠{% endif %}
+    {% if status == 'error' %}✗{% endif %}
+    {{ status }}
+</span>
+{% endmacro %}
+```
+
+---
+
+### Phase 4: Static CSS (`static/css/styles.css`)
+
+#### 4.1 CSS Structure
+
+```css
+/* ==========================================================================
+   CSS Variables (Design System)
+   ========================================================================== */
+:root {
+    /* Brand Colors */
+    --ds-blue-primary: #0071BC;
+    --ds-blue-dark: #245AAD;
+    --ds-navy: #053657;
+    --ds-cyan: #00A3DA;
+    --ds-gold: #FFC14D;
+
+    /* Neutral Colors */
+    --ds-gray: #626F86;
+    --ds-gray-light: #e9ecef;
+    --ds-bg: #f8f9fa;
+    --ds-white: #ffffff;
+
+    /* Status Colors */
+    --ds-success: #059669;
+    --ds-warning: #d97706;
+    --ds-error: #dc2626;
+
+    /* Code Colors */
+    --ds-code-bg: #1e1e1e;
+    --ds-code-text: #d4d4d4;
+
+    /* Spacing */
+    --spacing-xs: 4px;
+    --spacing-sm: 8px;
+    --spacing-md: 16px;
+    --spacing-lg: 24px;
+    --spacing-xl: 40px;
+
+    /* Typography */
+    --font-sans: "Open Sans", Arial, sans-serif;
+    --font-mono: "SF Mono", Monaco, "Cascadia Code", monospace;
+}
+
+/* ==========================================================================
+   Reset & Base
+   ========================================================================== */
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+body {
+    font-family: var(--font-sans);
+    font-size: 15px;
+    line-height: 1.7;
+    color: var(--ds-navy);
+    background-color: var(--ds-bg);
+}
+
+a { color: var(--ds-blue-primary); text-decoration: none; }
+a:hover { color: var(--ds-cyan); text-decoration: underline; }
+
+/* ==========================================================================
+   Layout
+   ========================================================================== */
+.container {
+    max-width: 1200px;
+    margin: 0 auto;
+    padding: var(--spacing-lg);
+}
+
+.layout-sidebar {
+    display: flex;
+    min-height: calc(100vh - 60px);
+}
+
+.sidebar { /* Documentation sidebar */ }
+.content { /* Main content area */ }
+
+/* ==========================================================================
+   Navbar
+   ========================================================================== */
+.navbar {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 12px 30px;
+    background: var(--ds-white);
+    border-bottom: 3px solid var(--ds-blue-primary);
+    position: sticky;
+    top: 0;
+    z-index: 100;
+}
+
+.navbar-brand {
+    font-size: 16px;
+    font-weight: 700;
+    color: var(--ds-navy);
+}
+
+.navbar-brand .version {
+    color: var(--ds-gray);
+    font-weight: 400;
+    font-size: 13px;
+}
+
+.navbar-links { display: flex; gap: 15px; }
+.navbar-links a {
+    color: var(--ds-blue-primary);
+    font-weight: 500;
+    padding: 5px 10px;
+    border-radius: 4px;
+    font-size: 13px;
+}
+.navbar-links a:hover { background: var(--ds-gray-light); text-decoration: none; }
+.navbar-links a.active { background: var(--ds-blue-primary); color: white; }
+
+/* ==========================================================================
+   Cards
+   ========================================================================== */
+.card-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+    gap: var(--spacing-lg);
+    margin: var(--spacing-lg) 0;
+}
+
+.card {
+    background: var(--ds-white);
+    border-radius: 8px;
+    padding: var(--spacing-lg);
+    border: 1px solid var(--ds-gray-light);
+    transition: all 0.2s;
+}
+
+.card:hover {
+    border-color: var(--ds-blue-primary);
+    transform: translateY(-2px);
+}
+
+.card h3 { margin-top: 0; margin-bottom: var(--spacing-sm); }
+.card p { margin-bottom: 0; color: var(--ds-gray); font-size: 14px; }
+
+.card-link { text-decoration: none; color: inherit; display: block; }
+.card-link:hover { text-decoration: none; }
+
+/* Sample URL cards */
+.sample-card {
+    padding: var(--spacing-md);
+    background: var(--ds-white);
+    border: 1px solid var(--ds-gray-light);
+    border-radius: 6px;
+    cursor: pointer;
+    transition: all 0.2s;
+}
+
+.sample-card:hover {
+    border-color: var(--ds-blue-primary);
+    background: #f0f7ff;
+}
+
+.sample-label { font-weight: 600; font-size: 14px; }
+.sample-description { font-size: 12px; color: var(--ds-gray); margin-top: 4px; }
+
+/* ==========================================================================
+   Status Badges
+   ========================================================================== */
+.badge {
+    display: inline-block;
+    padding: 3px 8px;
+    border-radius: 10px;
+    font-size: 11px;
+    font-weight: 600;
+    text-transform: uppercase;
+}
+
+.badge-healthy, .badge-ok { background: #d1fae5; color: var(--ds-success); }
+.badge-degraded, .badge-warning { background: #fef3c7; color: var(--ds-warning); }
+.badge-error { background: #fee2e2; color: var(--ds-error); }
+
+/* HTTP method badges */
+.badge-get { background: #d1fae5; color: var(--ds-success); }
+.badge-post { background: #fef3c7; color: var(--ds-warning); }
+
+/* ==========================================================================
+   Forms
+   ========================================================================== */
+.form-group { margin-bottom: var(--spacing-md); }
+
+.form-label {
+    display: block;
+    font-weight: 600;
+    margin-bottom: var(--spacing-xs);
+}
+
+.form-input {
+    width: 100%;
+    padding: 10px 14px;
+    border: 1px solid var(--ds-gray-light);
+    border-radius: 6px;
+    font-size: 14px;
+    font-family: var(--font-mono);
+}
+
+.form-input:focus {
+    outline: none;
+    border-color: var(--ds-blue-primary);
+    box-shadow: 0 0 0 3px rgba(0, 113, 188, 0.1);
+}
+
+.btn {
+    display: inline-block;
+    padding: 10px 20px;
+    border: none;
+    border-radius: 6px;
+    font-size: 14px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all 0.2s;
+}
+
+.btn-primary {
+    background: var(--ds-blue-primary);
+    color: white;
+}
+
+.btn-primary:hover {
+    background: var(--ds-blue-dark);
+}
+
+.btn-secondary {
+    background: var(--ds-gray-light);
+    color: var(--ds-navy);
+}
+
+/* ==========================================================================
+   Code Blocks
+   ========================================================================== */
+pre {
+    background: var(--ds-code-bg);
+    color: var(--ds-code-text);
+    padding: var(--spacing-lg);
+    border-radius: 6px;
+    overflow-x: auto;
+    margin-bottom: var(--spacing-lg);
+    font-size: 13px;
+    line-height: 1.5;
+}
+
+code {
+    font-family: var(--font-mono);
+}
+
+p code, li code {
+    background: var(--ds-gray-light);
+    padding: 2px 6px;
+    border-radius: 3px;
+    font-size: 13px;
+    color: var(--ds-navy);
+}
+
+/* Syntax highlighting */
+.kw { color: #569cd6; }   /* keywords */
+.str { color: #ce9178; }  /* strings */
+.num { color: #b5cea8; }  /* numbers */
+.cmt { color: #6a9955; }  /* comments */
+.fn { color: #dcdcaa; }   /* functions */
+.var { color: #9cdcfe; }  /* variables */
+
+/* ==========================================================================
+   Callouts
+   ========================================================================== */
+.callout {
+    padding: 15px 20px;
+    border-radius: 6px;
+    margin: var(--spacing-lg) 0;
+    border-left: 4px solid;
+}
+
+.callout-info { background: #e8f4fc; border-color: var(--ds-cyan); }
+.callout-warning { background: #fef3c7; border-color: var(--ds-gold); }
+.callout-success { background: #d1fae5; border-color: var(--ds-success); }
+.callout-error { background: #fee2e2; border-color: var(--ds-error); }
+
+.callout strong { display: block; margin-bottom: 5px; }
+
+/* ==========================================================================
+   Tables
+   ========================================================================== */
+table {
+    width: 100%;
+    border-collapse: collapse;
+    margin: var(--spacing-lg) 0;
+    font-size: 14px;
+}
+
+th, td {
+    padding: 12px 15px;
+    text-align: left;
+    border-bottom: 1px solid var(--ds-gray-light);
+}
+
+th {
+    background: var(--ds-bg);
+    font-weight: 600;
+}
+
+/* ==========================================================================
+   Documentation Sidebar
+   ========================================================================== */
+.sidebar {
+    width: 260px;
+    background: var(--ds-white);
+    border-right: 1px solid var(--ds-gray-light);
+    padding: var(--spacing-lg) 0;
+    position: sticky;
+    top: 60px;
+    height: calc(100vh - 60px);
+    overflow-y: auto;
+}
+
+.sidebar-section { margin-bottom: var(--spacing-lg); }
+
+.sidebar-title {
+    font-size: 11px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    color: var(--ds-gray);
+    padding: 0 var(--spacing-lg);
+    margin-bottom: var(--spacing-sm);
+}
+
+.sidebar-nav { list-style: none; }
+.sidebar-nav a {
+    display: block;
+    padding: var(--spacing-sm) var(--spacing-lg);
+    font-size: 14px;
+    color: var(--ds-navy);
+    border-left: 3px solid transparent;
+}
+.sidebar-nav a:hover { background: var(--ds-bg); text-decoration: none; }
+.sidebar-nav a.active {
+    border-left-color: var(--ds-blue-primary);
+    background: var(--ds-bg);
+    font-weight: 600;
+}
+
+/* ==========================================================================
+   Footer
+   ========================================================================== */
+.footer {
+    text-align: center;
+    padding: var(--spacing-xl);
+    color: var(--ds-gray);
+    font-size: 12px;
+    border-top: 1px solid var(--ds-gray-light);
+    margin-top: var(--spacing-xl);
+}
+
+/* ==========================================================================
+   Admin Dashboard Specific
+   ========================================================================== */
+.service-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+    gap: var(--spacing-lg);
+}
+
+.service-card {
+    background: var(--ds-white);
+    border-radius: 8px;
+    padding: var(--spacing-lg);
+    border-left: 4px solid var(--ds-gray);
+}
+
+.service-card.healthy { border-left-color: var(--ds-success); }
+.service-card.degraded { border-left-color: var(--ds-warning); }
+.service-card.error { border-left-color: var(--ds-error); }
+
+/* ==========================================================================
+   STAC Explorer Specific
+   ========================================================================== */
+.split-layout {
+    display: grid;
+    grid-template-columns: 400px 1fr;
+    height: calc(100vh - 60px);
+}
+
+.explorer-panel {
+    overflow-y: auto;
+    padding: var(--spacing-lg);
+    background: var(--ds-white);
+    border-right: 1px solid var(--ds-gray-light);
+}
+
+.map-container {
+    height: 100%;
+}
+
+#map { height: 100%; width: 100%; }
+
+/* JSON viewer */
+.json-viewer {
+    background: var(--ds-code-bg);
+    color: var(--ds-code-text);
+    padding: var(--spacing-md);
+    border-radius: 6px;
+    font-family: var(--font-mono);
+    font-size: 12px;
+    max-height: 400px;
+    overflow: auto;
+}
+
+/* ==========================================================================
+   Responsive
+   ========================================================================== */
+@media (max-width: 768px) {
+    .navbar { flex-direction: column; gap: var(--spacing-sm); }
+    .navbar-links { flex-wrap: wrap; justify-content: center; }
+
+    .layout-sidebar { flex-direction: column; }
+    .sidebar { width: 100%; height: auto; position: static; }
+
+    .split-layout { grid-template-columns: 1fr; }
+    .explorer-panel { max-height: 50vh; }
+}
+```
+
+---
+
+### Phase 5: JavaScript Utilities (`static/js/common.js`)
+
+```javascript
+/**
+ * Common JavaScript utilities for geotiler UI
+ */
+
+/**
+ * Set URL in a form input field
+ * @param {string} url - The URL to set
+ * @param {string} inputId - The input element ID
+ */
+function setUrl(url, inputId) {
+    const input = document.getElementById(inputId);
+    if (input) {
+        input.value = url;
+        input.focus();
+    }
+}
+
+/**
+ * Navigate to info endpoint with URL parameter
+ * @param {string} baseEndpoint - e.g., '/cog/info', '/xarray/info'
+ * @param {string} inputId - The input element ID containing the URL
+ * @param {object} extraParams - Additional query parameters
+ */
+function getInfo(baseEndpoint, inputId, extraParams = {}) {
+    const input = document.getElementById(inputId);
+    const url = input?.value?.trim();
+
+    if (!url) {
+        alert('Please enter a URL');
+        return;
+    }
+
+    const params = new URLSearchParams({ url, ...extraParams });
+    window.location.href = `${baseEndpoint}?${params}`;
+}
+
+/**
+ * Navigate to tile viewer
+ * @param {string} baseEndpoint - e.g., '/cog', '/xarray'
+ * @param {string} inputId - The input element ID containing the URL
+ */
+function viewTiles(baseEndpoint, inputId) {
+    const input = document.getElementById(inputId);
+    const url = input?.value?.trim();
+
+    if (!url) {
+        alert('Please enter a URL');
+        return;
+    }
+
+    const encodedUrl = encodeURIComponent(url);
+    window.location.href = `${baseEndpoint}/WebMercatorQuad/map?url=${encodedUrl}`;
+}
+
+/**
+ * Copy text to clipboard
+ * @param {string} text - Text to copy
+ * @param {HTMLElement} button - Button element for feedback
+ */
+async function copyToClipboard(text, button) {
+    try {
+        await navigator.clipboard.writeText(text);
+        const originalText = button.textContent;
+        button.textContent = 'Copied!';
+        setTimeout(() => { button.textContent = originalText; }, 2000);
+    } catch (err) {
+        console.error('Copy failed:', err);
+    }
+}
+
+/**
+ * Format JSON for display
+ * @param {object} obj - Object to format
+ * @returns {string} - Formatted JSON string
+ */
+function formatJson(obj) {
+    return JSON.stringify(obj, null, 2);
+}
+
+/**
+ * Debounce function for search inputs
+ * @param {function} func - Function to debounce
+ * @param {number} wait - Wait time in ms
+ */
+function debounce(func, wait = 300) {
+    let timeout;
+    return function executedFunction(...args) {
+        const later = () => {
+            clearTimeout(timeout);
+            func(...args);
+        };
+        clearTimeout(timeout);
+        timeout = setTimeout(later, wait);
+    };
+}
+```
+
+---
+
+### Phase 6: FastAPI Integration
+
+#### 6.1 Static Files & Templates Setup (`app.py`)
+
+```python
+from fastapi import FastAPI
+from fastapi.staticfiles import StaticFiles
+from fastapi.templating import Jinja2Templates
+from pathlib import Path
+
+# Get base directory
+BASE_DIR = Path(__file__).resolve().parent
+
+def create_app() -> FastAPI:
+    app = FastAPI(...)
+
+    # Mount static files
+    app.mount(
+        "/static",
+        StaticFiles(directory=BASE_DIR / "static"),
+        name="static"
+    )
+
+    # ... rest of app setup
+
+    return app
+
+# Create templates instance (shared across routers)
+templates = Jinja2Templates(directory=BASE_DIR / "templates")
+
+# Add global template context
+templates.env.globals.update({
+    "version": __version__,
+    "settings": settings,
+})
+```
+
+#### 6.2 Consolidated Pages Router (`routers/pages.py`)
+
+```python
+"""
+UI Pages Router
+
+Serves all HTML pages using Jinja2 templates.
+"""
+
+from fastapi import APIRouter, Request
+from fastapi.responses import HTMLResponse
+
+from geotiler import __version__
+from geotiler.config import settings
+from geotiler.app import templates
+
+router = APIRouter(tags=["Pages"], include_in_schema=False)
+
+
+def _context(request: Request, **kwargs) -> dict:
+    """Build template context with common variables."""
+    return {
+        "request": request,
+        "version": __version__,
+        "stac_api_enabled": settings.enable_stac_api,
+        "tipg_enabled": settings.enable_tipg,
+        **kwargs
+    }
+
+
+# =============================================================================
+# Landing Pages
+# =============================================================================
+
+@router.get("/", response_class=HTMLResponse)
+async def admin_page(request: Request):
+    """Admin dashboard."""
+    # Fetch health data for display
+    # ...
+    return templates.TemplateResponse(
+        "pages/admin/index.html",
+        _context(request, active="admin", health=health_data)
+    )
+
+
+@router.get("/cog/", response_class=HTMLResponse)
+async def cog_landing(request: Request):
+    """COG landing page."""
+    return templates.TemplateResponse(
+        "pages/cog/index.html",
+        _context(
+            request,
+            active="cog",
+            sample_urls=settings.sample_cog_urls
+        )
+    )
+
+
+@router.get("/xarray/", response_class=HTMLResponse)
+async def xarray_landing(request: Request):
+    """Zarr/NetCDF landing page."""
+    return templates.TemplateResponse(
+        "pages/xarray/index.html",
+        _context(
+            request,
+            active="xarray",
+            sample_urls=settings.sample_zarr_urls
+        )
+    )
+
+
+@router.get("/searches/", response_class=HTMLResponse)
+async def searches_landing(request: Request):
+    """pgSTAC searches landing page."""
+    return templates.TemplateResponse(
+        "pages/searches/index.html",
+        _context(request, active="searches")
+    )
+
+
+@router.get("/stac/", response_class=HTMLResponse)
+async def stac_explorer(request: Request):
+    """STAC explorer with map."""
+    return templates.TemplateResponse(
+        "pages/stac/explorer.html",
+        _context(
+            request,
+            active="stac",
+            sample_collections=settings.sample_stac_collections
+        )
+    )
+
+
+# =============================================================================
+# Documentation Guide
+# =============================================================================
+
+@router.get("/guide/", response_class=HTMLResponse)
+async def guide_index(request: Request):
+    """Documentation home."""
+    return templates.TemplateResponse(
+        "pages/guide/index.html",
+        _context(request, active="guide", guide_active="/guide/")
+    )
+
+
+@router.get("/guide/authentication", response_class=HTMLResponse)
+async def guide_authentication(request: Request):
+    """Authentication guide."""
+    return templates.TemplateResponse(
+        "pages/guide/authentication.html",
+        _context(request, active="guide", guide_active="/guide/authentication")
+    )
+
+
+@router.get("/guide/quick-start", response_class=HTMLResponse)
+async def guide_quick_start(request: Request):
+    """Quick start guide."""
+    return templates.TemplateResponse(
+        "pages/guide/quick-start.html",
+        _context(request, active="guide", guide_active="/guide/quick-start")
+    )
+
+
+# ... additional guide routes ...
+```
+
+---
+
+### Phase 7: Example Page Template
+
+#### 7.1 COG Landing Page (`templates/pages/cog/index.html`)
+
+```html
+{% extends "base.html" %}
+
+{% block title %}COG Tiles{% endblock %}
+
+{% block content %}
+<div class="page-header">
+    <h1>Cloud Optimized GeoTIFF</h1>
+    <p class="subtitle">Access raster tiles from any COG via HTTP range requests</p>
+</div>
+
+<div class="form-section">
+    <div class="form-group">
+        <label class="form-label" for="cog-url">COG URL</label>
+        <input
+            type="text"
+            id="cog-url"
+            class="form-input"
+            placeholder="https://example.com/file.tif or /vsiaz/container/file.tif"
+        >
+    </div>
+
+    <div class="btn-group">
+        <button class="btn btn-primary" onclick="getInfo('/cog/info', 'cog-url')">
+            Get Info
+        </button>
+        <button class="btn btn-secondary" onclick="viewTiles('/cog', 'cog-url')">
+            View Tiles
+        </button>
+    </div>
+</div>
+
+{% if sample_urls %}
+<div class="samples-section">
+    <h2>Sample Datasets</h2>
+    <p>Click a sample to populate the URL field:</p>
+
+    <div class="card-grid">
+        {% for sample in sample_urls %}
+        {% include "components/cards.html" %}
+        {{ sample_url_card(sample, 'cog-url') }}
+        {% endfor %}
+    </div>
+</div>
+{% endif %}
+
+<div class="endpoints-section">
+    <h2>Available Endpoints</h2>
+
+    <table>
+        <thead>
+            <tr>
+                <th>Endpoint</th>
+                <th>Description</th>
+            </tr>
+        </thead>
+        <tbody>
+            <tr>
+                <td><code>GET /cog/info</code></td>
+                <td>Get COG metadata (bounds, CRS, bands)</td>
+            </tr>
+            <tr>
+                <td><code>GET /cog/tiles/{tms}/{z}/{x}/{y}</code></td>
+                <td>Get raster tile (PNG/WebP)</td>
+            </tr>
+            <tr>
+                <td><code>GET /cog/statistics</code></td>
+                <td>Get band statistics</td>
+            </tr>
+            <tr>
+                <td><code>GET /cog/point/{lon},{lat}</code></td>
+                <td>Query pixel value at coordinate</td>
+            </tr>
+        </tbody>
+    </table>
+</div>
+{% endblock %}
+```
+
+---
+
+### Phase 8: Migration Checklist
+
+#### 8.1 Pre-Migration
+
+- [ ] Create `geotiler/static/` directory
+- [ ] Create `geotiler/templates/` directory structure
+- [ ] Add `jinja2` and `aiofiles` to dependencies (if not present)
+- [ ] Update `config.py` with sample URL settings
+- [ ] Create consolidated `styles.css`
+- [ ] Create `common.js`
+- [ ] Create `base.html` template
+- [ ] Create component templates (navbar, footer, cards, etc.)
+
+#### 8.2 Page Migration (one at a time)
+
+For each page:
+1. [ ] Create template in `templates/pages/`
+2. [ ] Add route in `routers/pages.py`
+3. [ ] Test new template renders correctly
+4. [ ] Remove old router file
+5. [ ] Update `app.py` imports
+
+Migration order:
+1. [ ] `cog_landing.py` → `templates/pages/cog/index.html`
+2. [ ] `xarray_landing.py` → `templates/pages/xarray/index.html`
+3. [ ] `searches_landing.py` → `templates/pages/searches/index.html`
+4. [ ] `admin.py` → `templates/pages/admin/index.html`
+5. [ ] `stac_explorer.py` → `templates/pages/stac/explorer.html`
+6. [ ] `docs_guide.py` → `templates/pages/guide/*.html`
+
+#### 8.3 Post-Migration
+
+- [ ] Delete old router files
+- [ ] Update `app.py` to use new `pages.py` router
+- [ ] Add sample URL environment variables to deployment docs
+- [ ] Update `APP_REVIEW.md` to mark issue #8 and #11 as resolved
+- [ ] Test all pages work correctly
+- [ ] Verify static file caching headers
+- [ ] Deploy and verify in production
+
+---
+
+### Phase 9: Environment Variable Documentation
+
+Add to `docs/WIKI.md` or create `docs/UI_CONFIGURATION.md`:
+
+```markdown
+## UI Configuration
+
+### Sample URLs
+
+The landing pages display sample datasets that users can click to populate the URL field.
+Configure these via environment variables using JSON arrays.
+
+#### COG Samples
+
+```bash
+SAMPLE_COG_URLS='[
+  {
+    "label": "Swiss Terrain (SRTM)",
+    "url": "https://data.geo.admin.ch/.../swissalti3d.tif",
+    "description": "High-resolution Swiss elevation data"
+  },
+  {
+    "label": "Sentinel-2 RGB",
+    "url": "https://sentinel-cogs.s3.amazonaws.com/.../TCI.tif",
+    "description": "True color satellite imagery"
+  }
+]'
+```
+
+#### Zarr/NetCDF Samples
+
+```bash
+SAMPLE_ZARR_URLS='[
+  {
+    "label": "ERA5 Temperature",
+    "url": "https://storage.../era5.zarr",
+    "variable": "t2m",
+    "description": "Global 2m temperature reanalysis"
+  }
+]'
+```
+
+#### STAC Collection Highlights
+
+```bash
+SAMPLE_STAC_COLLECTIONS='[
+  {
+    "id": "flood-risk",
+    "label": "Flood Risk Maps",
+    "description": "Flood depth and extent models for East Africa"
+  }
+]'
+```
+
+### Disabling Sample URLs
+
+To hide the samples section, set the variable to an empty array:
+
+```bash
+SAMPLE_COG_URLS='[]'
+```
+```
+
+---
+
+### Estimated Effort
+
+| Phase | Tasks | Effort |
+|-------|-------|--------|
+| 1. Structure | Create directories, move files | 30 min |
+| 2. Config | Add sample URL settings | 30 min |
+| 3. Base Template | Create base.html, components | 1 hour |
+| 4. CSS | Consolidate into styles.css | 1.5 hours |
+| 5. JavaScript | Create common.js | 30 min |
+| 6. FastAPI Setup | Static files, templates | 30 min |
+| 7. Page Migration | 6 pages × 30 min each | 3 hours |
+| 8. Testing | Verify all pages, responsive | 1 hour |
+| 9. Documentation | Update docs, env vars | 30 min |
+
+**Total Estimated: ~9 hours**
+
+---
+
+### Success Criteria
+
+1. **All existing pages render identically** (visual regression check)
+2. **CSS file is cached** (check browser network tab)
+3. **No hardcoded URLs** in templates (grep verification)
+4. **Sample URLs configurable** via environment variables
+5. **Lighthouse score maintained** (performance, accessibility)
+6. **All tests pass** (if any exist for UI)
+7. **Mobile responsive** (test on narrow viewport)

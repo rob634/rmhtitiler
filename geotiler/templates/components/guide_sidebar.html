@@ -1,0 +1,54 @@
+{# Documentation guide sidebar component #}
+{# Pass 'guide_active' variable to highlight current page #}
+
+{% macro sidebar_link(href, text) %}
+<a href="{{ href }}" class="{{ 'active' if href == guide_active else '' }}">{{ text }}</a>
+{% endmacro %}
+
+<aside class="sidebar">
+    <div class="sidebar-section">
+        <div class="sidebar-title">Getting Started</div>
+        <ul class="sidebar-nav">
+            {{ sidebar_link("/guide/", "Overview") }}
+            {{ sidebar_link("/guide/authentication", "Authentication") }}
+            {{ sidebar_link("/guide/quick-start", "Quick Start") }}
+        </ul>
+    </div>
+    <div class="sidebar-section">
+        <div class="sidebar-title">Data Scientists</div>
+        <ul class="sidebar-nav">
+            {{ sidebar_link("/guide/data-scientists/", "Overview") }}
+            {{ sidebar_link("/guide/data-scientists/point-queries", "Point Queries") }}
+            {{ sidebar_link("/guide/data-scientists/batch-queries", "Batch Queries") }}
+            {{ sidebar_link("/guide/data-scientists/stac-search", "STAC Search") }}
+        </ul>
+    </div>
+    <div class="sidebar-section">
+        <div class="sidebar-title">Web Developers</div>
+        <ul class="sidebar-nav">
+            {{ sidebar_link("/guide/web-developers/", "Overview") }}
+            {{ sidebar_link("/guide/web-developers/maplibre-tiles", "MapLibre Tiles") }}
+            {{ sidebar_link("/guide/web-developers/vector-features", "Vector Features") }}
+        </ul>
+    </div>
+    <div class="sidebar-section">
+        <div class="sidebar-title">API Reference</div>
+        <ul class="sidebar-nav">
+            {{ sidebar_link("/docs", "Swagger UI") }}
+            {{ sidebar_link("/redoc", "ReDoc") }}
+            {{ sidebar_link("/api", "API Info") }}
+        </ul>
+    </div>
+    <div class="sidebar-section">
+        <div class="sidebar-title">Endpoints</div>
+        <ul class="sidebar-nav">
+            {{ sidebar_link("/cog/", "COG Tiles") }}
+            {{ sidebar_link("/xarray/", "XArray / Zarr") }}
+            {{ sidebar_link("/searches/", "STAC Searches") }}
+            {{ sidebar_link("/vector", "Vector (TiPG)") }}
+            {% if stac_api_enabled %}
+            {{ sidebar_link("/stac-explorer", "STAC Explorer") }}
+            {% endif %}
+        </ul>
+    </div>
+</aside>

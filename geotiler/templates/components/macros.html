@@ -1,0 +1,173 @@
+{# Reusable Jinja2 macros for UI components #}
+
+{# ============================================================================
+   Status Badges
+   ============================================================================ #}
+
+{% macro status_badge(status) %}
+<span class="badge badge-{{ status }}">
+    {%- if status == 'healthy' or status == 'ok' -%}&#10003;{%- endif -%}
+    {%- if status == 'degraded' or status == 'warning' -%}&#9888;{%- endif -%}
+    {%- if status == 'error' or status == 'unhealthy' -%}&#10007;{%- endif -%}
+    {{ status }}
+</span>
+{% endmacro %}
+
+{% macro http_badge(method) %}
+<span class="badge badge-{{ method|lower }}">{{ method }}</span>
+{% endmacro %}
+
+
+{# ============================================================================
+   Cards
+   ============================================================================ #}
+
+{% macro sample_url_card(sample, input_id) %}
+<div class="sample-card" onclick="setUrl('{{ sample.url }}', '{{ input_id }}')">
+    <div class="sample-label">{{ sample.label }}</div>
+    {% if sample.description %}
+    <div class="sample-description">{{ sample.description }}</div>
+    {% endif %}
+</div>
+{% endmacro %}
+
+{% macro guide_card(href, title, description) %}
+<a href="{{ href }}" class="card-link">
+    <div class="card">
+        <h3>{{ title }}</h3>
+        <p>{{ description }}</p>
+    </div>
+</a>
+{% endmacro %}
+
+{% macro service_card(name, service) %}
+<div class="service-card {{ service.status }}">
+    <div class="service-header">
+        <span class="service-name">{{ name }}</span>
+        {{ status_badge(service.status) }}
+    </div>
+    <div class="service-description">{{ service.description }}</div>
+    {% if service.endpoints %}
+    <ul class="service-endpoints">
+        {% for endpoint in service.endpoints[:3] %}
+        <li><code>{{ endpoint }}</code></li>
+        {% endfor %}
+    </ul>
+    {% endif %}
+</div>
+{% endmacro %}
+
+{% macro dependency_card(name, dep) %}
+<div class="dependency-card {{ dep.status }}">
+    <div class="dependency-header">
+        <span class="dependency-name">{{ name }}</span>
+        {{ status_badge(dep.status) }}
+    </div>
+    {% if dep.ping_time_ms %}
+    <div class="dependency-detail">Ping: {{ "%.1f"|format(dep.ping_time_ms) }}ms</div>
+    {% endif %}
+    {% if dep.expires_in_seconds %}
+    <div class="dependency-detail">TTL: {{ (dep.expires_in_seconds / 60)|int }}min</div>
+    {% endif %}
+</div>
+{% endmacro %}
+
+
+{# ============================================================================
+   Callouts
+   ============================================================================ #}
+
+{% macro callout(type, title, content) %}
+<div class="callout callout-{{ type }}">
+    {% if title %}<strong>{{ title }}</strong>{% endif %}
+    {{ content }}
+</div>
+{% endmacro %}
+
+{% macro callout_info(title, content) %}
+{{ callout('info', title, content) }}
+{% endmacro %}
+
+{% macro callout_warning(title, content) %}
+{{ callout('warning', title, content) }}
+{% endmacro %}
+
+{% macro callout_success(title, content) %}
+{{ callout('success', title, content) }}
+{% endmacro %}
+
+
+{# ============================================================================
+   Code Blocks
+   ============================================================================ #}
+
+{% macro code_block(code, language='') %}
+<pre{% if language %} class="language-{{ language }}"{% endif %}>{{ code }}</pre>
+{% endmacro %}
+
+
+{# ============================================================================
+   Forms
+   ============================================================================ #}
+
+{% macro url_input(id, label, placeholder='https://example.com/file.tif') %}
+<div class="form-group">
+    <label class="form-label" for="{{ id }}">{{ label }}</label>
+    <input
+        type="text"
+        id="{{ id }}"
+        class="form-input"
+        placeholder="{{ placeholder }}"
+    >
+</div>
+{% endmacro %}
+
+{% macro button(text, onclick='', type='primary', id='') %}
+<button
+    class="btn btn-{{ type }}"
+    {% if onclick %}onclick="{{ onclick }}"{% endif %}
+    {% if id %}id="{{ id }}"{% endif %}
+>{{ text }}</button>
+{% endmacro %}
+
+
+{# ============================================================================
+   Tables
+   ============================================================================ #}
+
+{% macro endpoint_table(endpoints) %}
+<table>
+    <thead>
+        <tr>
+            <th>Endpoint</th>
+            <th>Description</th>
+        </tr>
+    </thead>
+    <tbody>
+        {% for ep in endpoints %}
+        <tr>
+            <td><code>{{ ep.method|default('GET') }} {{ ep.path }}</code></td>
+            <td>{{ ep.description }}</td>
+        </tr>
+        {% endfor %}
+    </tbody>
+</table>
+{% endmacro %}
+
+
+{# ============================================================================
+   Documentation Sidebar
+   ============================================================================ #}
+
+{% macro sidebar_section(title, links, active_path='') %}
+<div class="sidebar-section">
+    <div class="sidebar-title">{{ title }}</div>
+    <ul class="sidebar-nav">
+        {% for link in links %}
+        <a href="{{ link.href }}" class="{{ 'active' if link.href == active_path else '' }}">
+            {{ link.text }}
+        </a>
+        {% endfor %}
+    </ul>
+</div>
+{% endmacro %}

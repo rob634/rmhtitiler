@@ -15,10 +15,18 @@ Observability Configuration:
     - APPLICATIONINSIGHTS_CONNECTION_STRING: Enable App Insights telemetry
     - OBSERVABILITY_MODE: Enable detailed request/latency logging
     - SLOW_REQUEST_THRESHOLD_MS: Slow request threshold (default: 2000ms)
+
+UI Configuration:
+    Sample URLs for landing pages are configured via JSON environment variables:
+    - SAMPLE_COG_URLS: JSON array of COG sample datasets
+    - SAMPLE_ZARR_URLS: JSON array of Zarr/NetCDF sample datasets
+    - SAMPLE_STAC_COLLECTIONS: JSON array of STAC collections to highlight
 """
 
+import json
+import logging
 import os
-from typing import Optional, Dict
+from typing import Optional, Dict, List
 from functools import lru_cache
 
 from pydantic_settings import BaseSettings, SettingsConfigDict
@@ -118,6 +126,50 @@ class Settings(BaseSettings):
 
     stac_router_prefix: str = "/stac"
     """URL prefix for STAC API routes (e.g., /stac/collections)."""
+
+    # =========================================================================
+    # UI Sample URLs (Landing Pages)
+    # =========================================================================
+    # These are JSON arrays passed via environment variables.
+    # Example: SAMPLE_COG_URLS='[{"label": "...", "url": "...", "description": "..."}]'
+
+    sample_cog_urls_json: str = "[]"
+    """JSON array of COG sample URLs for the /cog/ landing page."""
+
+    sample_zarr_urls_json: str = "[]"
+    """JSON array of Zarr/NetCDF sample URLs for the /xarray/ landing page."""
+
+    sample_stac_collections_json: str = "[]"
+    """JSON array of STAC collections to highlight in the explorer."""
+
+    @property
+    def sample_cog_urls(self) -> List[dict]:
+        """Parse COG sample URLs from JSON environment variable."""
+        return self._parse_json_list(self.sample_cog_urls_json, "SAMPLE_COG_URLS")
+
+    @property
+    def sample_zarr_urls(self) -> List[dict]:
+        """Parse Zarr sample URLs from JSON environment variable."""
+        return self._parse_json_list(self.sample_zarr_urls_json, "SAMPLE_ZARR_URLS")
+
+    @property
+    def sample_stac_collections(self) -> List[dict]:
+        """Parse STAC collection highlights from JSON environment variable."""
+        return self._parse_json_list(self.sample_stac_collections_json, "SAMPLE_STAC_COLLECTIONS")
+
+    def _parse_json_list(self, json_str: str, var_name: str) -> List[dict]:
+        """Safely parse a JSON array, returning empty list on error."""
+        if not json_str or json_str.strip() == "":
+            return []
+        try:
+            result = json.loads(json_str)
+            if not isinstance(result, list):
+                logging.warning(f"{var_name} must be a JSON array, got {type(result).__name__}")
+                return []
+            return result
+        except json.JSONDecodeError as e:
+            logging.warning(f"Failed to parse {var_name} as JSON: {e}")
+            return []
 
     # =========================================================================
     # Observability (see also: infrastructure/telemetry.py)

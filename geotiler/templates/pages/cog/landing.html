@@ -1,0 +1,143 @@
+{% extends "base.html" %}
+
+{% block title %}COG Explorer{% endblock %}
+
+{% block content %}
+<div class="container">
+    <div class="page-header">
+        <h1 class="page-title">Cloud Optimized GeoTIFF Explorer</h1>
+        <p class="page-description">
+            Explore and visualize Cloud Optimized GeoTIFFs (COGs) from any accessible URL.
+            Supports Azure Blob Storage with OAuth, HTTP URLs, and /vsiaz/ paths.
+        </p>
+    </div>
+
+    <div class="card">
+        <h2 class="card-title">Explore a COG</h2>
+        <div class="form-group">
+            <label class="form-label" for="cog-url">COG URL</label>
+            <input type="text" id="cog-url" class="form-input"
+                   placeholder="https://example.com/path/to/file.tif"
+                   value="">
+            <p class="form-hint">
+                Enter a URL to a Cloud Optimized GeoTIFF. Supports HTTPS, Azure Blob (/vsiaz/), and S3 (/vsis3/) paths.
+            </p>
+        </div>
+        <div class="btn-group">
+            <button class="btn btn-primary" onclick="getInfo()">Get Info</button>
+            <button class="btn btn-primary" onclick="openViewer()">Open Viewer</button>
+            <button class="btn btn-secondary" onclick="getTileJSON()">TileJSON</button>
+            <button class="btn btn-secondary" onclick="getStatistics()">Statistics</button>
+        </div>
+    </div>
+
+    {% if sample_cog_urls %}
+    <div class="card">
+        <h2 class="card-title">Sample COG URLs</h2>
+        <p style="color: var(--ds-gray); margin-bottom: 15px; font-size: 13px;">
+            Click any URL to use it in the explorer above:
+        </p>
+        <div class="sample-grid">
+            {% for sample in sample_cog_urls %}
+            <div class="sample-card" onclick="setUrl('{{ sample.url }}', 'cog-url')">
+                <div class="sample-label">{{ sample.label }}</div>
+                {% if sample.description %}
+                <div class="sample-description">{{ sample.description }}</div>
+                {% endif %}
+            </div>
+            {% endfor %}
+        </div>
+    </div>
+    {% else %}
+    <div class="card">
+        <h2 class="card-title">Sample COG URLs</h2>
+        <p style="color: var(--ds-gray); margin-bottom: 15px; font-size: 13px;">
+            Click any URL to use it in the explorer above:
+        </p>
+        <div class="sample-grid">
+            <div class="sample-card" onclick="setUrl('https://data.geo.admin.ch/ch.swisstopo.swissalti3d/swissalti3d_2019_2573-1085/swissalti3d_2019_2573-1085_0.5_2056_5728.tif', 'cog-url')">
+                <div class="sample-label">Swiss Terrain (SRTM)</div>
+                <div class="sample-description">data.geo.admin.ch</div>
+            </div>
+            <div class="sample-card" onclick="setUrl('https://sentinel-cogs.s3.us-west-2.amazonaws.com/sentinel-s2-l2a-cogs/36/Q/WD/2020/7/S2A_36QWD_20200701_0_L2A/TCI.tif', 'cog-url')">
+                <div class="sample-label">Sentinel-2 True Color</div>
+                <div class="sample-description">AWS Open Data</div>
+            </div>
+        </div>
+    </div>
+    {% endif %}
+
+    <div class="card">
+        <h2 class="card-title">Available Endpoints</h2>
+        <table>
+            <thead>
+                <tr>
+                    <th>Endpoint</th>
+                    <th>Description</th>
+                </tr>
+            </thead>
+            <tbody>
+                <tr>
+                    <td><code>GET /cog/info</code></td>
+                    <td>Get COG metadata (bounds, CRS, bands)</td>
+                </tr>
+                <tr>
+                    <td><code>GET /cog/statistics</code></td>
+                    <td>Band statistics (min, max, mean, std)</td>
+                </tr>
+                <tr>
+                    <td><code>GET /cog/tiles/{tms}/{z}/{x}/{y}</code></td>
+                    <td>XYZ map tiles</td>
+                </tr>
+                <tr>
+                    <td><code>GET /cog/{tms}/tilejson.json</code></td>
+                    <td>TileJSON for web maps</td>
+                </tr>
+                <tr>
+                    <td><code>GET /cog/{tms}/map</code></td>
+                    <td>Interactive map viewer</td>
+                </tr>
+                <tr>
+                    <td><code>GET /cog/point/{lon},{lat}</code></td>
+                    <td>Value at point</td>
+                </tr>
+                <tr>
+                    <td><code>GET /cog/preview</code></td>
+                    <td>Static preview image</td>
+                </tr>
+            </tbody>
+        </table>
+        <p style="margin-top: 15px;">
+            <a href="/docs#/Cloud%20Optimized%20GeoTIFF">View full API documentation</a>
+        </p>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+function getInfo() {
+    const url = document.getElementById('cog-url').value;
+    if (!url) { alert('Please enter a COG URL'); return; }
+    window.location.href = '/cog/info?url=' + encodeURIComponent(url);
+}
+
+function openViewer() {
+    const url = document.getElementById('cog-url').value;
+    if (!url) { alert('Please enter a COG URL'); return; }
+    window.location.href = '/cog/WebMercatorQuad/map?url=' + encodeURIComponent(url);
+}
+
+function getTileJSON() {
+    const url = document.getElementById('cog-url').value;
+    if (!url) { alert('Please enter a COG URL'); return; }
+    window.location.href = '/cog/WebMercatorQuad/tilejson.json?url=' + encodeURIComponent(url);
+}
+
+function getStatistics() {
+    const url = document.getElementById('cog-url').value;
+    if (!url) { alert('Please enter a COG URL'); return; }
+    window.location.href = '/cog/statistics?url=' + encodeURIComponent(url);
+}
+</script>
+{% endblock %}

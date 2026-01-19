@@ -1,0 +1,230 @@
+{% extends "base.html" %}
+
+{% block title %}STAC Searches{% endblock %}
+
+{% block content %}
+<div class="container">
+    <div class="page-header">
+        <h1 class="page-title">pgSTAC Mosaic Searches</h1>
+        <p class="page-description">
+            Dynamic tile mosaics generated from STAC catalog searches.
+            Register a search query to create a mosaic of matching items.
+        </p>
+    </div>
+
+    <div id="db-status"></div>
+
+    <div class="card">
+        <h2 class="card-title">Registered Searches</h2>
+        <div id="searches-container">
+            <div class="loading">Loading searches...</div>
+        </div>
+    </div>
+
+    <div class="card">
+        <h2 class="card-title">How It Works</h2>
+        <ol class="steps">
+            <li><strong>Register a Search:</strong> POST a STAC search query to <code>/searches/register</code></li>
+            <li><strong>Get a Search ID:</strong> The response contains a unique search ID</li>
+            <li><strong>Render Tiles:</strong> Use <code>/searches/{id}/tiles/...</code> to render mosaic tiles</li>
+            <li><strong>View on Map:</strong> Open the interactive viewer at <code>/searches/{id}/{tms}/map</code></li>
+        </ol>
+    </div>
+
+    <div class="card">
+        <h2 class="card-title">Available Endpoints</h2>
+        <table>
+            <thead>
+                <tr>
+                    <th>Endpoint</th>
+                    <th>Description</th>
+                </tr>
+            </thead>
+            <tbody>
+                <tr>
+                    <td><code>GET /searches/list</code></td>
+                    <td>List all registered searches</td>
+                </tr>
+                <tr>
+                    <td><code>POST /searches/register</code></td>
+                    <td>Register a new search (returns search ID)</td>
+                </tr>
+                <tr>
+                    <td><code>GET /searches/{id}/info</code></td>
+                    <td>Get search metadata and bounds</td>
+                </tr>
+                <tr>
+                    <td><code>GET /searches/{id}/tiles/{tms}/{z}/{x}/{y}</code></td>
+                    <td>XYZ mosaic tiles</td>
+                </tr>
+                <tr>
+                    <td><code>GET /searches/{id}/{tms}/tilejson.json</code></td>
+                    <td>TileJSON for web maps</td>
+                </tr>
+                <tr>
+                    <td><code>GET /searches/{id}/{tms}/map</code></td>
+                    <td>Interactive map viewer</td>
+                </tr>
+                <tr>
+                    <td><code>POST /searches/{id}/statistics</code></td>
+                    <td>Regional statistics</td>
+                </tr>
+            </tbody>
+        </table>
+        <p style="margin-top: 15px;">
+            <a href="/docs#/STAC%20Search">View full API documentation</a>
+        </p>
+    </div>
+
+    <div class="card">
+        <h2 class="card-title">Example: Register a Search</h2>
+        <pre>POST /searches/register
+Content-Type: application/json
+
+{
+  "collections": ["my-collection"],
+  "filter-lang": "cql2-json",
+  "filter": {
+    "op": "and",
+    "args": [
+      {"op": "<=", "args": [{"property": "eo:cloud_cover"}, 20]},
+      {"op": "s_intersects", "args": [
+        {"property": "geometry"},
+        {"type": "Polygon", "coordinates": [[[-105, 40], [-104, 40], [-104, 41], [-105, 41], [-105, 40]]]}
+      ]}
+    ]
+  }
+}</pre>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+let searchesData = [];
+
+async function loadSearches() {
+    const container = document.getElementById('searches-container');
+    const dbStatus = document.getElementById('db-status');
+
+    try {
+        const response = await fetch('/searches/list');
+
+        if (!response.ok) {
+            if (response.status === 503) {
+                dbStatus.innerHTML = '<div class="callout callout-warning"><strong>Database Unavailable</strong><br>The pgSTAC database is not connected. Searches functionality requires a PostgreSQL database with pgSTAC extension.</div>';
+                container.innerHTML = '<div class="empty-state"><h3>Database Required</h3><p>Connect to a pgSTAC database to use search functionality.</p></div>';
+                return;
+            }
+            throw new Error('Failed to load searches');
+        }
+
+        searchesData = await response.json();
+        renderSearches(searchesData);
+
+    } catch (error) {
+        console.error('Error loading searches:', error);
+        container.innerHTML = '<div class="empty-state"><h3>Error Loading Searches</h3><p>' + error.message + '</p></div>';
+    }
+}
+
+function renderSearches(searches) {
+    const container = document.getElementById('searches-container');
+
+    if (!searches || searches.length === 0) {
+        container.innerHTML = `
+            <div class="empty-state">
+                <h3>No Searches Registered</h3>
+                <p>Create a search by POSTing to <code>/searches/register</code> with a STAC search query.</p>
+                <p style="margin-top: 15px;">
+                    <a href="/docs#/STAC%20Search/register_search_searches_register_post">View API documentation</a>
+                </p>
+            </div>
+        `;
+        return;
+    }
+
+    let html = '<div class="search-list">';
+
+    for (const search of searches) {
+        const searchId = search.id || search.search_id || 'unknown';
+        const metadata = search.metadata || {};
+        const created = metadata.created || search.created || 'Unknown';
+
+        html += `
+            <div class="search-item">
+                <div class="search-header">
+                    <span class="search-id">${searchId}</span>
+                </div>
+                <div class="search-meta">
+                    Created: ${created}
+                </div>
+                <div class="btn-group">
+                    <a href="/searches/${searchId}/WebMercatorQuad/map" class="btn btn-primary">Open Viewer</a>
+                    <a href="/searches/${searchId}/info" class="btn btn-secondary">Info</a>
+                    <a href="/searches/${searchId}/WebMercatorQuad/tilejson.json" class="btn btn-secondary">TileJSON</a>
+                </div>
+            </div>
+        `;
+    }
+
+    html += '</div>';
+    container.innerHTML = html;
+}
+
+// Load searches on page load
+document.addEventListener('DOMContentLoaded', loadSearches);
+</script>
+
+<style>
+.search-list {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+}
+
+.search-item {
+    padding: 15px;
+    border: 1px solid var(--ds-gray-light);
+    border-radius: 6px;
+    transition: border-color 0.2s;
+}
+
+.search-item:hover {
+    border-color: var(--ds-blue-primary);
+}
+
+.search-header {
+    margin-bottom: 8px;
+}
+
+.search-id {
+    font-family: monospace;
+    font-weight: 600;
+    color: var(--ds-navy);
+}
+
+.search-meta {
+    font-size: 12px;
+    color: var(--ds-gray);
+    margin-bottom: 10px;
+}
+
+.empty-state {
+    text-align: center;
+    padding: 40px 20px;
+    color: var(--ds-gray);
+}
+
+.empty-state h3 {
+    margin-bottom: 10px;
+    color: var(--ds-navy);
+}
+
+.loading {
+    text-align: center;
+    padding: 40px;
+    color: var(--ds-gray);
+}
+</style>
+{% endblock %}

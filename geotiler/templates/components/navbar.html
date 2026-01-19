@@ -1,0 +1,18 @@
+{# Navigation bar component #}
+{# Pass 'nav_active' variable to highlight current page (e.g., '/cog/', '/guide/') #}
+<nav class="navbar">
+    <a href="/" class="navbar-brand">
+        geotiler <span class="version">v{{ version }}</span>
+    </a>
+    <div class="navbar-links">
+        <a href="/cog/" class="{{ 'active' if nav_active == '/cog/' else '' }}">COG</a>
+        <a href="/xarray/" class="{{ 'active' if nav_active == '/xarray/' else '' }}">XArray</a>
+        <a href="/searches/" class="{{ 'active' if nav_active == '/searches/' else '' }}">Searches</a>
+        <a href="/vector" class="{{ 'active' if nav_active == '/vector' else '' }}">Vector</a>
+        {% if stac_api_enabled %}
+        <a href="/stac/" class="{{ 'active' if nav_active == '/stac/' else '' }}">STAC</a>
+        {% endif %}
+        <a href="/guide/" class="{{ 'active' if nav_active and nav_active.startswith('/guide') else '' }}">Guide</a>
+        <a href="/docs" class="{{ 'active' if nav_active == '/docs' else '' }}">API Docs</a>
+    </div>
+</nav>

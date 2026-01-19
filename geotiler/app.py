@@ -19,8 +19,11 @@ Entry Point:
 
 import logging
 from contextlib import asynccontextmanager
+from pathlib import Path
 
 from fastapi import FastAPI
+from fastapi.staticfiles import StaticFiles
+from starlette.templating import Jinja2Templates
 
 from geotiler import __version__
 from geotiler.config import settings
@@ -253,6 +256,18 @@ def create_app() -> FastAPI:
         version=__version__,
         lifespan=lifespan,
     )
+
+    # =========================================================================
+    # Static Files & Templates
+    # =========================================================================
+    static_dir = Path(__file__).parent / "static"
+    templates_dir = Path(__file__).parent / "templates"
+
+    # Mount static files (CSS, JS)
+    app.mount("/static", StaticFiles(directory=static_dir), name="static")
+
+    # Configure Jinja2 templates (store in app.state for router access)
+    app.state.templates = Jinja2Templates(directory=templates_dir)
 
     # =========================================================================
     # Middleware (order matters - first added = outermost = runs first)

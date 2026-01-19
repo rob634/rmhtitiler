@@ -1,0 +1,12 @@
+{# Base template for documentation guide pages #}
+{# Extends base.html and adds the sidebar layout #}
+{% extends "base.html" %}
+
+{% block main_class %}layout-sidebar{% endblock %}
+
+{% block content %}
+{% include "components/guide_sidebar.html" %}
+<div class="content">
+    {% block guide_content %}{% endblock %}
+</div>
+{% endblock %}
