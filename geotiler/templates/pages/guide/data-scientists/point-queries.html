@@ -1,0 +1,99 @@
+{% extends "base_guide.html" %}
+
+{% block title %}Point Queries{% endblock %}
+
+{% block guide_content %}
+<h1>Point Queries</h1>
+<p class="subtitle">Extract values at specific coordinates</p>
+
+<p>The most common analysis pattern: "What's the value at this location?"</p>
+
+<h2>Basic Point Query</h2>
+
+<pre><span class="kw">import</span> requests
+
+<span class="cmt"># COG URL (can be Azure Blob, S3, or HTTP)</span>
+cog_url = <span class="str">"https://storage.../flood_depth.tif"</span>
+
+<span class="cmt"># Query point at longitude, latitude</span>
+response = requests.<span class="fn">get</span>(
+    <span class="str">"https://titiler/cog/point/29.8739,-1.9403"</span>,
+    params={<span class="str">"url"</span>: cog_url},
+    headers={<span class="str">"Authorization"</span>: <span class="str">f"Bearer </span>{token}<span class="str">"</span>}
+)
+
+data = response.<span class="fn">json</span>()
+<span class="fn">print</span>(<span class="str">f"Flood depth: </span>{data[<span class="str">'values'</span>][<span class="num">0</span>]}<span class="str"> meters"</span>)</pre>
+
+<h3>Response Format</h3>
+
+<pre>{
+  <span class="str">"coordinates"</span>: [<span class="num">29.8739</span>, <span class="num">-1.9403</span>],
+  <span class="str">"values"</span>: [<span class="num">2.5</span>],
+  <span class="str">"band_names"</span>: [<span class="str">"flood_depth"</span>]
+}</pre>
+
+<h2>Query Multiple Bands</h2>
+
+<p>For multi-band rasters (e.g., RGB or multi-spectral):</p>
+
+<pre>response = requests.<span class="fn">get</span>(
+    <span class="str">"https://titiler/cog/point/29.8739,-1.9403"</span>,
+    params={
+        <span class="str">"url"</span>: <span class="str">"https://storage.../sentinel2.tif"</span>,
+        <span class="str">"bidx"</span>: <span class="str">"1,2,3,4"</span>  <span class="cmt"># Request specific bands</span>
+    }
+)
+
+data = response.<span class="fn">json</span>()
+<span class="cmt"># values = [R, G, B, NIR]</span></pre>
+
+<h2>XArray Point Queries</h2>
+
+<p>For Zarr/NetCDF multidimensional data:</p>
+
+<pre>response = requests.<span class="fn">get</span>(
+    <span class="str">"https://titiler/xarray/point/29.8739,-1.9403"</span>,
+    params={
+        <span class="str">"url"</span>: <span class="str">"https://storage.../climate.zarr"</span>,
+        <span class="str">"variable"</span>: <span class="str">"temperature"</span>,
+        <span class="str">"datetime"</span>: <span class="str">"2024-01-15"</span>
+    }
+)
+
+data = response.<span class="fn">json</span>()
+<span class="fn">print</span>(<span class="str">f"Temperature: </span>{data[<span class="str">'values'</span>][<span class="num">0</span>]}<span class="str">K"</span>)</pre>
+
+<h2>Error Handling</h2>
+
+<pre><span class="kw">import</span> requests
+
+<span class="kw">def</span> <span class="fn">query_point</span>(lon, lat, cog_url, token):
+    <span class="str">"""Query point with error handling."""</span>
+    <span class="kw">try</span>:
+        response = requests.<span class="fn">get</span>(
+            <span class="str">f"https://titiler/cog/point/</span>{lon}<span class="str">,</span>{lat}<span class="str">"</span>,
+            params={<span class="str">"url"</span>: cog_url},
+            headers={<span class="str">"Authorization"</span>: <span class="str">f"Bearer </span>{token}<span class="str">"</span>},
+            timeout=<span class="num">30</span>
+        )
+        response.<span class="fn">raise_for_status</span>()
+        <span class="kw">return</span> response.<span class="fn">json</span>()
+
+    <span class="kw">except</span> requests.exceptions.HTTPError <span class="kw">as</span> e:
+        <span class="kw">if</span> e.response.status_code == <span class="num">401</span>:
+            <span class="fn">print</span>(<span class="str">"Token expired - refresh from browser"</span>)
+        <span class="kw">elif</span> e.response.status_code == <span class="num">404</span>:
+            <span class="fn">print</span>(<span class="str">"Point outside raster bounds"</span>)
+        <span class="kw">raise</span></pre>
+
+<div class="callout callout-info">
+    <strong>Tip</strong>
+    For querying many points, see <a href="/guide/data-scientists/batch-queries">Batch Queries</a> for efficient async patterns.
+</div>
+
+<div class="guide-footer">
+    <a href="/guide/data-scientists/">Previous: Overview</a> |
+    <a href="/guide/data-scientists/batch-queries">Next: Batch Queries</a>
+</div>
+{% endblock %}

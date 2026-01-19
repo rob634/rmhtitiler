@@ -1,0 +1,121 @@
+{% extends "base_guide.html" %}
+
+{% block title %}MapLibre Tiles{% endblock %}
+
+{% block guide_content %}
+<h1>MapLibre Tiles</h1>
+<p class="subtitle">Display raster imagery in MapLibre GL JS</p>
+
+<h2>Setup</h2>
+
+<p>Include MapLibre GL JS in your HTML:</p>
+
+<pre><span class="cmt">&lt;!-- CSS --&gt;</span>
+&lt;link href=<span class="str">"https://unpkg.com/maplibre-gl/dist/maplibre-gl.css"</span> rel=<span class="str">"stylesheet"</span> /&gt;
+
+<span class="cmt">&lt;!-- JavaScript --&gt;</span>
+&lt;script src=<span class="str">"https://unpkg.com/maplibre-gl/dist/maplibre-gl.js"</span>&gt;&lt;/script&gt;
+
+<span class="cmt">&lt;!-- Map container --&gt;</span>
+&lt;div id=<span class="str">"map"</span> style=<span class="str">"width: 100%; height: 100vh;"</span>&gt;&lt;/div&gt;</pre>
+
+<h2>Display a COG</h2>
+
+<pre><span class="kw">const</span> cogUrl = <span class="str">'https://storage.../flood_depth.tif'</span>;
+
+<span class="kw">const</span> map = <span class="kw">new</span> maplibregl.<span class="fn">Map</span>({
+  container: <span class="str">'map'</span>,
+  style: {
+    version: <span class="num">8</span>,
+    sources: {
+      <span class="str">'basemap'</span>: {
+        type: <span class="str">'raster'</span>,
+        tiles: [<span class="str">'https://tile.openstreetmap.org/{z}/{x}/{y}.png'</span>],
+        tileSize: <span class="num">256</span>,
+        attribution: <span class="str">'&copy; OpenStreetMap'</span>
+      },
+      <span class="str">'flood'</span>: {
+        type: <span class="str">'raster'</span>,
+        tiles: [
+          <span class="str">`https://titiler/cog/tiles/WebMercatorQuad/{z}/{x}/{y}.png?url=</span>${<span class="fn">encodeURIComponent</span>(cogUrl)}<span class="str">`</span>
+        ],
+        tileSize: <span class="num">256</span>
+      }
+    },
+    layers: [
+      { id: <span class="str">'basemap'</span>, type: <span class="str">'raster'</span>, source: <span class="str">'basemap'</span> },
+      { id: <span class="str">'flood'</span>, type: <span class="str">'raster'</span>, source: <span class="str">'flood'</span>, paint: { <span class="str">'raster-opacity'</span>: <span class="num">0.7</span> } }
+    ]
+  },
+  center: [<span class="num">29.8</span>, -<span class="num">2.0</span>],
+  zoom: <span class="num">8</span>
+});</pre>
+
+<h2>Using TileJSON</h2>
+
+<p>Let the server provide bounds and attribution:</p>
+
+<pre><span class="cmt">// Fetch TileJSON first</span>
+<span class="kw">const</span> cogUrl = <span class="str">'https://storage.../flood_depth.tif'</span>;
+<span class="kw">const</span> tilejsonUrl = <span class="str">`https://titiler/cog/WebMercatorQuad/tilejson.json?url=</span>${<span class="fn">encodeURIComponent</span>(cogUrl)}<span class="str">`</span>;
+
+<span class="fn">fetch</span>(tilejsonUrl)
+  .<span class="fn">then</span>(r => r.<span class="fn">json</span>())
+  .<span class="fn">then</span>(tilejson => {
+    <span class="cmt">// Add source using TileJSON</span>
+    map.<span class="fn">addSource</span>(<span class="str">'flood'</span>, {
+      type: <span class="str">'raster'</span>,
+      tiles: tilejson.tiles,
+      bounds: tilejson.bounds,
+      minzoom: tilejson.minzoom,
+      maxzoom: tilejson.maxzoom
+    });
+
+    map.<span class="fn">addLayer</span>({
+      id: <span class="str">'flood-layer'</span>,
+      type: <span class="str">'raster'</span>,
+      source: <span class="str">'flood'</span>
+    });
+
+    <span class="cmt">// Zoom to data bounds</span>
+    map.<span class="fn">fitBounds</span>(tilejson.bounds);
+  });</pre>
+
+<h2>Styling with Colormap</h2>
+
+<p>Apply a colormap to single-band data:</p>
+
+<pre><span class="kw">const</span> tileUrl = <span class="str">`https://titiler/cog/tiles/WebMercatorQuad/{z}/{x}/{y}.png`</span> +
+  <span class="str">`?url=</span>${<span class="fn">encodeURIComponent</span>(cogUrl)}<span class="str">`</span> +
+  <span class="str">`&colormap_name=viridis`</span> +
+  <span class="str">`&rescale=0,10`</span>;  <span class="cmt">// Min/max values</span>
+
+map.<span class="fn">addSource</span>(<span class="str">'flood'</span>, {
+  type: <span class="str">'raster'</span>,
+  tiles: [tileUrl],
+  tileSize: <span class="num">256</span>
+});</pre>
+
+<h2>Click to Query</h2>
+
+<p>Get pixel values on click:</p>
+
+<pre>map.<span class="fn">on</span>(<span class="str">'click'</span>, <span class="kw">async</span> (e) => {
+  <span class="kw">const</span> { lng, lat } = e.lngLat;
+
+  <span class="kw">const</span> response = <span class="kw">await</span> <span class="fn">fetch</span>(
+    <span class="str">`https://titiler/cog/point/</span>${lng}<span class="str">,</span>${lat}<span class="str">?url=</span>${<span class="fn">encodeURIComponent</span>(cogUrl)}<span class="str">`</span>
+  );
+  <span class="kw">const</span> data = <span class="kw">await</span> response.<span class="fn">json</span>();
+
+  <span class="kw">new</span> maplibregl.<span class="fn">Popup</span>()
+    .<span class="fn">setLngLat</span>([lng, lat])
+    .<span class="fn">setHTML</span>(<span class="str">`&lt;strong&gt;Value:&lt;/strong&gt; </span>${data.values[<span class="num">0</span>].<span class="fn">toFixed</span>(<span class="num">2</span>)}<span class="str">`</span>)
+    .<span class="fn">addTo</span>(map);
+});</pre>
+
+<div class="guide-footer">
+    <a href="/guide/web-developers/">Previous: Overview</a> |
+    <a href="/guide/web-developers/vector-features">Next: Vector Features</a>
+</div>
+{% endblock %}

@@ -1,0 +1,143 @@
+{# Health fragment for HTMX auto-refresh #}
+
+{# Status Banner #}
+<div class="status-banner">
+    <div class="status-banner-header">
+        <div class="status-banner-title">
+            System Status:
+            <span class="badge badge-{{ health.status }}">
+                {{ health.status }}
+            </span>
+        </div>
+        <label class="auto-refresh-label">
+            <input type="checkbox" id="auto-refresh" checked onchange="toggleAutoRefresh()">
+            Auto-refresh (30s)
+            <span class="htmx-indicator spinner"></span>
+        </label>
+    </div>
+    <div class="stats-row">
+        <div class="stat-item">
+            <div class="stat-value">{{ version }}</div>
+            <div class="stat-label">Version</div>
+        </div>
+        <div class="stat-item">
+            <div class="stat-value">{{ "%.0f"|format(health.hardware.ram_utilization_percent|default(0)) }}%</div>
+            <div class="stat-label">Memory</div>
+        </div>
+        <div class="stat-item">
+            <div class="stat-value">{{ "%.0f"|format(health.hardware.cpu_utilization_percent|default(0)) }}%</div>
+            <div class="stat-label">CPU</div>
+        </div>
+    </div>
+</div>
+
+{# Issues Section #}
+{% if health.issues %}
+<div class="issues-section">
+    <div class="issues-header">Issues Detected</div>
+    <ul class="issues-list">
+        {% for issue in health.issues %}
+        <li>{{ issue }}</li>
+        {% endfor %}
+    </ul>
+</div>
+{% endif %}
+
+{# Services Grid #}
+<div class="section-header">Services</div>
+<div class="cards-grid">
+    {% for name, data in health.services.items() %}
+    {% set landing_pages = {'cog': '/cog/', 'xarray': '/xarray/', 'pgstac': '/searches/', 'tipg': '/vector', 'stac_api': '/stac/'} %}
+    {% set link = landing_pages.get(name) %}
+
+    {% if link and data.available %}
+    <a href="{{ link }}" class="card card-link">
+    {% else %}
+    <div class="card">
+    {% endif %}
+        <div class="card-header">
+            <span class="card-title">{{ name.upper().replace('_', ' ') }}</span>
+            <span class="badge badge-{{ data.status }}">{{ data.status }}</span>
+        </div>
+        <div class="card-description">{{ data.description }}</div>
+        {% if data.endpoints %}
+        <div class="card-endpoints"><code>{{ data.endpoints[0] }}</code></div>
+        {% elif data.disabled_reason %}
+        <div class="card-endpoints" style="color: var(--ds-gray);">{{ data.disabled_reason }}</div>
+        {% endif %}
+    {% if link and data.available %}
+    </a>
+    {% else %}
+    </div>
+    {% endif %}
+    {% endfor %}
+</div>
+
+{# Dependencies Grid #}
+<div class="section-header">Dependencies</div>
+<div class="cards-grid">
+    {% for name, data in health.dependencies.items() %}
+    {% set status_class = 'dep-ok' if data.status == 'ok' else ('dep-warning' if data.status == 'warning' else 'dep-fail') %}
+    {% set pretty_names = {'database': 'Database', 'storage_oauth': 'Storage OAuth', 'postgres_oauth': 'PostgreSQL OAuth'} %}
+
+    <div class="dep-card {{ status_class }}">
+        <div class="dep-header">
+            <span class="dep-name">{{ pretty_names.get(name, name) }}</span>
+            <span class="badge badge-{{ data.status }}">{{ data.status }}</span>
+        </div>
+        <div class="dep-detail">
+            {% if name == 'database' and data.ping_time_ms %}
+                {{ "%.0f"|format(data.ping_time_ms) }}ms ping
+            {% elif data.expires_in_seconds %}
+                {% if data.expires_in_seconds > 3600 %}
+                    {{ (data.expires_in_seconds // 3600)|int }}h {{ ((data.expires_in_seconds % 3600) // 60)|int }}m TTL
+                {% elif data.expires_in_seconds > 60 %}
+                    {{ (data.expires_in_seconds // 60)|int }}m TTL
+                {% else %}
+                    {{ data.expires_in_seconds }}s TTL
+                {% endif %}
+            {% elif data.note %}
+                {{ data.note }}
+            {% elif data.error %}
+                {{ data.error[:40] }}{% if data.error|length > 40 %}...{% endif %}
+            {% endif %}
+        </div>
+    </div>
+    {% endfor %}
+</div>
+
+{# Configuration Section #}
+<div class="section-header">Configuration</div>
+<div class="config-grid">
+    {% set config = health.config %}
+    <div class="config-item">
+        <span class="config-label">Azure Auth:</span>
+        <span class="config-value {{ 'config-on' if config.azure_auth_enabled else 'config-off' }}">
+            {{ 'ON' if config.azure_auth_enabled else 'OFF' }}
+        </span>
+    </div>
+    <div class="config-item">
+        <span class="config-label">Local Mode:</span>
+        <span class="config-value {{ 'config-on' if config.local_mode else 'config-off' }}">
+            {{ 'ON' if config.local_mode else 'OFF' }}
+        </span>
+    </div>
+    <div class="config-item">
+        <span class="config-label">TiPG:</span>
+        <span class="config-value {{ 'config-on' if config.tipg_enabled else 'config-off' }}">
+            {{ 'ON' if config.tipg_enabled else 'OFF' }}
+        </span>
+    </div>
+    <div class="config-item">
+        <span class="config-label">STAC API:</span>
+        <span class="config-value {{ 'config-on' if config.stac_api_enabled else 'config-off' }}">
+            {{ 'ON' if config.stac_api_enabled else 'OFF' }}
+        </span>
+    </div>
+    <div class="config-item">
+        <span class="config-label">Planetary Computer:</span>
+        <span class="config-value {{ 'config-on' if config.planetary_computer_enabled else 'config-off' }}">
+            {{ 'ON' if config.planetary_computer_enabled else 'OFF' }}
+        </span>
+    </div>
+</div>

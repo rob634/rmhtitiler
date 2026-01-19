@@ -1,0 +1,88 @@
+{% extends "base_guide.html" %}
+
+{% block title %}Documentation{% endblock %}
+
+{% block guide_content %}
+<h1>Documentation</h1>
+<p class="subtitle">Guides and tutorials for the geotiler API</p>
+
+<div class="card-grid">
+    <a href="/guide/authentication" class="card-link">
+        <div class="card">
+            <h3>Authentication</h3>
+            <p>How to authenticate API requests using your browser token</p>
+        </div>
+    </a>
+    <a href="/guide/quick-start" class="card-link">
+        <div class="card">
+            <h3>Quick Start</h3>
+            <p>Make your first API call in under 5 minutes</p>
+        </div>
+    </a>
+</div>
+
+<h2>Choose Your Path</h2>
+
+<div class="card-grid">
+    <a href="/guide/data-scientists/" class="card-link">
+        <div class="card">
+            <h3>Data Scientists</h3>
+            <p>Query geospatial data from Jupyter notebooks. Extract point values, run batch queries, search STAC catalogs.</p>
+        </div>
+    </a>
+    <a href="/guide/web-developers/" class="card-link">
+        <div class="card">
+            <h3>Web Developers</h3>
+            <p>Build maps with MapLibre GL JS. Display raster tiles, query vector features, integrate with web apps.</p>
+        </div>
+    </a>
+</div>
+
+<h2>API Reference</h2>
+
+<div class="card-grid">
+    <a href="/docs" class="card-link">
+        <div class="card">
+            <h3>Swagger UI</h3>
+            <p>Interactive API documentation with try-it-out functionality</p>
+        </div>
+    </a>
+    <a href="/redoc" class="card-link">
+        <div class="card">
+            <h3>ReDoc</h3>
+            <p>Clean, readable API reference documentation</p>
+        </div>
+    </a>
+</div>
+
+<h2>Endpoint Explorers</h2>
+
+<p>Interactive landing pages for each API component:</p>
+
+<table>
+    <tr>
+        <th>Endpoint</th>
+        <th>Description</th>
+    </tr>
+    <tr>
+        <td><a href="/cog/">/cog/</a></td>
+        <td>Cloud Optimized GeoTIFF tiles, info, and statistics</td>
+    </tr>
+    <tr>
+        <td><a href="/xarray/">/xarray/</a></td>
+        <td>Zarr and NetCDF multidimensional data</td>
+    </tr>
+    <tr>
+        <td><a href="/searches/">/searches/</a></td>
+        <td>pgSTAC dynamic mosaic searches</td>
+    </tr>
+    <tr>
+        <td><a href="/vector">/vector</a></td>
+        <td>TiPG OGC Features + Vector Tiles</td>
+    </tr>
+    <tr>
+        <td><a href="/stac/">/stac/</a></td>
+        <td>STAC catalog explorer with map interface</td>
+    </tr>
+</table>
+{% endblock %}

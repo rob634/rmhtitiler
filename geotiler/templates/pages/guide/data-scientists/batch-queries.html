@@ -1,0 +1,96 @@
+{% extends "base_guide.html" %}
+
+{% block title %}Batch Queries{% endblock %}
+
+{% block guide_content %}
+<h1>Batch Queries</h1>
+<p class="subtitle">Query multiple points efficiently</p>
+
+<p>When you need to query hundreds or thousands of points, use async requests for better performance.</p>
+
+<h2>Async Batch Query</h2>
+
+<pre><span class="kw">import</span> asyncio
+<span class="kw">import</span> aiohttp
+
+<span class="kw">async def</span> <span class="fn">query_point</span>(session, lon, lat, cog_url, token):
+    <span class="str">"""Query a single point asynchronously."""</span>
+    url = <span class="str">f"https://titiler/cog/point/</span>{lon}<span class="str">,</span>{lat}<span class="str">"</span>
+    headers = {<span class="str">"Authorization"</span>: <span class="str">f"Bearer </span>{token}<span class="str">"</span>}
+
+    <span class="kw">async with</span> session.<span class="fn">get</span>(url, params={<span class="str">"url"</span>: cog_url}, headers=headers) <span class="kw">as</span> resp:
+        data = <span class="kw">await</span> resp.<span class="fn">json</span>()
+        <span class="kw">return</span> {
+            <span class="str">"lon"</span>: lon,
+            <span class="str">"lat"</span>: lat,
+            <span class="str">"value"</span>: data[<span class="str">"values"</span>][<span class="num">0</span>]
+        }
+
+<span class="kw">async def</span> <span class="fn">query_many_points</span>(points, cog_url, token):
+    <span class="str">"""Query multiple points concurrently."""</span>
+    <span class="kw">async with</span> aiohttp.<span class="fn">ClientSession</span>() <span class="kw">as</span> session:
+        tasks = [
+            <span class="fn">query_point</span>(session, p[<span class="num">0</span>], p[<span class="num">1</span>], cog_url, token)
+            <span class="kw">for</span> p <span class="kw">in</span> points
+        ]
+        <span class="kw">return await</span> asyncio.<span class="fn">gather</span>(*tasks)
+
+<span class="cmt"># Example: Query 100 points</span>
+points = [(29.8 + i*<span class="num">0.01</span>, -<span class="num">2.0</span> + i*<span class="num">0.01</span>) <span class="kw">for</span> i <span class="kw">in</span> <span class="fn">range</span>(<span class="num">100</span>)]
+
+results = asyncio.<span class="fn">run</span>(
+    <span class="fn">query_many_points</span>(points, cog_url, token)
+)
+
+<span class="kw">for</span> r <span class="kw">in</span> results[:<span class="num">5</span>]:
+    <span class="fn">print</span>(<span class="str">f"</span>{r[<span class="str">'lon'</span>]}<span class="str">, </span>{r[<span class="str">'lat'</span>]}<span class="str">: </span>{r[<span class="str">'value'</span>]}<span class="str">"</span>)</pre>
+
+<h2>With Rate Limiting</h2>
+
+<p>For very large batch queries, add rate limiting to avoid overwhelming the server:</p>
+
+<pre><span class="kw">import</span> asyncio
+<span class="kw">from</span> asyncio <span class="kw">import</span> Semaphore
+
+<span class="kw">async def</span> <span class="fn">query_with_limit</span>(semaphore, session, lon, lat, cog_url, token):
+    <span class="str">"""Rate-limited point query."""</span>
+    <span class="kw">async with</span> semaphore:  <span class="cmt"># Limit concurrent requests</span>
+        <span class="kw">return await</span> <span class="fn">query_point</span>(session, lon, lat, cog_url, token)
+
+<span class="kw">async def</span> <span class="fn">query_many_points_limited</span>(points, cog_url, token, max_concurrent=<span class="num">20</span>):
+    <span class="str">"""Query points with concurrency limit."""</span>
+    semaphore = <span class="fn">Semaphore</span>(max_concurrent)
+
+    <span class="kw">async with</span> aiohttp.<span class="fn">ClientSession</span>() <span class="kw">as</span> session:
+        tasks = [
+            <span class="fn">query_with_limit</span>(semaphore, session, p[<span class="num">0</span>], p[<span class="num">1</span>], cog_url, token)
+            <span class="kw">for</span> p <span class="kw">in</span> points
+        ]
+        <span class="kw">return await</span> asyncio.<span class="fn">gather</span>(*tasks)
+
+<span class="cmt"># Query 1000 points, max 20 concurrent</span>
+results = asyncio.<span class="fn">run</span>(
+    <span class="fn">query_many_points_limited</span>(points, cog_url, token, max_concurrent=<span class="num">20</span>)
+)</pre>
+
+<h2>Converting to DataFrame</h2>
+
+<pre><span class="kw">import</span> pandas <span class="kw">as</span> pd
+
+<span class="cmt"># Convert results to DataFrame</span>
+df = pd.<span class="fn">DataFrame</span>(results)
+<span class="fn">print</span>(df.<span class="fn">head</span>())
+
+<span class="cmt"># Save to CSV</span>
+df.<span class="fn">to_csv</span>(<span class="str">"flood_depths.csv"</span>, index=<span class="kw">False</span>)</pre>
+
+<div class="callout callout-warning">
+    <strong>Performance Tip</strong>
+    For very large datasets (10,000+ points), consider using the custom batch API endpoint (coming soon) which processes points server-side.
+</div>
+
+<div class="guide-footer">
+    <a href="/guide/data-scientists/point-queries">Previous: Point Queries</a> |
+    <a href="/guide/data-scientists/stac-search">Next: STAC Search</a>
+</div>
+{% endblock %}

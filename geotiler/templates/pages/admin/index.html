@@ -1,0 +1,28 @@
+{% extends "base.html" %}
+{% from "components/macros.html" import status_badge, service_card, dependency_card %}
+
+{% block title %}Admin Console{% endblock %}
+
+{% block head %}
+<script src="https://unpkg.com/htmx.org@1.9.10"></script>
+{% endblock %}
+
+{% block content %}
+<div class="container">
+    <div id="health-content"
+         hx-get="/_health-fragment"
+         hx-trigger="load, every 30s [document.getElementById('auto-refresh').checked]"
+         hx-swap="innerHTML"
+         hx-indicator=".htmx-indicator">
+        {% include "pages/admin/_health_fragment.html" %}
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+    function toggleAutoRefresh() {
+        console.log('Auto-refresh:', document.getElementById('auto-refresh').checked);
+    }
+</script>
+{% endblock %}

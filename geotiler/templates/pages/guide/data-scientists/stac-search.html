@@ -1,0 +1,105 @@
+{% extends "base_guide.html" %}
+
+{% block title %}STAC Search{% endblock %}
+
+{% block guide_content %}
+<h1>STAC Search</h1>
+<p class="subtitle">Find data by location, time, and properties</p>
+
+<p>STAC (SpatioTemporal Asset Catalog) provides a standard way to search for geospatial data.</p>
+
+<h2>Basic Search</h2>
+
+<pre><span class="kw">import</span> requests
+
+<span class="cmt"># Search for items in a bounding box</span>
+response = requests.<span class="fn">get</span>(
+    <span class="str">"https://titiler/stac/search"</span>,
+    params={
+        <span class="str">"collections"</span>: <span class="str">"flood-risk"</span>,
+        <span class="str">"bbox"</span>: <span class="str">"29,-3,31,-1"</span>,  <span class="cmt"># minx,miny,maxx,maxy</span>
+        <span class="str">"limit"</span>: <span class="num">10</span>
+    }
+)
+
+results = response.<span class="fn">json</span>()
+<span class="fn">print</span>(<span class="str">f"Found </span>{len(results[<span class="str">'features'</span>])}<span class="str"> items"</span>)</pre>
+
+<h2>Search with Time Filter</h2>
+
+<pre><span class="cmt"># Search by date range</span>
+response = requests.<span class="fn">get</span>(
+    <span class="str">"https://titiler/stac/search"</span>,
+    params={
+        <span class="str">"collections"</span>: <span class="str">"sentinel-2"</span>,
+        <span class="str">"bbox"</span>: <span class="str">"29,-3,31,-1"</span>,
+        <span class="str">"datetime"</span>: <span class="str">"2024-01-01/2024-06-30"</span>,
+        <span class="str">"limit"</span>: <span class="num">20</span>
+    }
+)</pre>
+
+<h2>Using pystac-client</h2>
+
+<p>For advanced searches, use the <code>pystac-client</code> library:</p>
+
+<pre><span class="kw">from</span> pystac_client <span class="kw">import</span> Client
+
+<span class="cmt"># Connect to STAC API</span>
+client = Client.<span class="fn">open</span>(<span class="str">"https://titiler/stac"</span>)
+
+<span class="cmt"># Search with filters</span>
+search = client.<span class="fn">search</span>(
+    collections=[<span class="str">"flood-risk"</span>],
+    bbox=[<span class="num">29</span>, -<span class="num">3</span>, <span class="num">31</span>, -<span class="num">1</span>],
+    datetime=<span class="str">"2024-01-01/2024-12-31"</span>,
+    max_items=<span class="num">100</span>
+)
+
+<span class="cmt"># Iterate through results</span>
+<span class="kw">for</span> item <span class="kw">in</span> search.<span class="fn">items</span>():
+    <span class="fn">print</span>(<span class="str">f"</span>{item.id}<span class="str">: </span>{item.datetime}<span class="str">"</span>)
+
+    <span class="cmt"># Get COG asset URL</span>
+    cog_url = item.assets[<span class="str">"data"</span>].href
+    <span class="fn">print</span>(<span class="str">f"  Asset: </span>{cog_url}<span class="str">"</span>)</pre>
+
+<h2>List Collections</h2>
+
+<pre><span class="cmt"># Get all available collections</span>
+response = requests.<span class="fn">get</span>(<span class="str">"https://titiler/stac/collections"</span>)
+collections = response.<span class="fn">json</span>()[<span class="str">"collections"</span>]
+
+<span class="kw">for</span> col <span class="kw">in</span> collections:
+    <span class="fn">print</span>(<span class="str">f"</span>{col[<span class="str">'id'</span>]}<span class="str">: </span>{col.get(<span class="str">'description'</span>, <span class="str">''</span>)[:50]}<span class="str">"</span>)</pre>
+
+<h2>From Search to Tiles</h2>
+
+<p>Once you find data, you can visualize it directly:</p>
+
+<pre><span class="cmt"># Search for an item</span>
+results = requests.<span class="fn">get</span>(<span class="str">"https://titiler/stac/search"</span>, params={
+    <span class="str">"collections"</span>: <span class="str">"flood-risk"</span>,
+    <span class="str">"limit"</span>: <span class="num">1</span>
+}).<span class="fn">json</span>()
+
+item = results[<span class="str">"features"</span>][<span class="num">0</span>]
+cog_url = item[<span class="str">"assets"</span>][<span class="str">"data"</span>][<span class="str">"href"</span>]
+
+<span class="cmt"># Get TileJSON for visualization</span>
+tilejson = requests.<span class="fn">get</span>(
+    <span class="str">"https://titiler/cog/WebMercatorQuad/tilejson.json"</span>,
+    params={<span class="str">"url"</span>: cog_url}
+).<span class="fn">json</span>()
+
+<span class="fn">print</span>(<span class="str">f"Tile URL: </span>{tilejson[<span class="str">'tiles'</span>][<span class="num">0</span>]}<span class="str">"</span>)</pre>
+
+<div class="callout callout-info">
+    <strong>Interactive Explorer</strong>
+    Use the <a href="/stac/">STAC Explorer</a> to browse collections and items visually with a map interface.
+</div>
+
+<div class="guide-footer">
+    <a href="/guide/data-scientists/batch-queries">Previous: Batch Queries</a> |
+    <a href="/guide/data-scientists/">Back to Overview</a>
+</div>
+{% endblock %}

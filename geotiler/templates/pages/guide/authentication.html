@@ -1,0 +1,116 @@
+{% extends "base_guide.html" %}
+
+{% block title %}Authentication{% endblock %}
+
+{% block guide_content %}
+<h1>Authentication</h1>
+<p class="subtitle">How to authenticate API requests</p>
+
+<div class="callout callout-info">
+    <strong>Simple Rule</strong>
+    If you're in our tenant, you have access. No groups, no roles &mdash; tenant membership = data access.
+</div>
+
+<h2>Browser to Notebook Workflow</h2>
+
+<p>The most common pattern for data scientists: log in via browser, copy your token, use it in Python.</p>
+
+<ol class="steps">
+    <li>
+        <strong>Log in via browser</strong><br>
+        Navigate to the application and sign in with your organizational account (Entra ID).
+    </li>
+    <li>
+        <strong>Open Developer Tools</strong><br>
+        Press <code>F12</code> or right-click and select "Inspect" to open browser dev tools.
+    </li>
+    <li>
+        <strong>Find your token</strong><br>
+        Go to the <strong>Application</strong> tab, then look in <strong>Cookies</strong> or <strong>Local Storage</strong> for a token (usually named <code>access_token</code> or <code>id_token</code>).
+    </li>
+    <li>
+        <strong>Copy the token value</strong><br>
+        Copy the entire token string (it starts with <code>eyJ...</code>).
+    </li>
+</ol>
+
+<h2>Using Your Token in Python</h2>
+
+<pre><span class="kw">import</span> requests
+
+<span class="cmt"># Your token from browser dev tools</span>
+token = <span class="str">"eyJ0eXAiOiJKV1QiLCJhbGciOi..."</span>
+
+<span class="cmt"># Make authenticated request</span>
+response = requests.<span class="fn">get</span>(
+    <span class="str">"https://your-titiler-instance/cog/info"</span>,
+    params={<span class="str">"url"</span>: <span class="str">"https://storage.../file.tif"</span>},
+    headers={<span class="str">"Authorization"</span>: <span class="str">f"Bearer </span>{token}<span class="str">"</span>}
+)
+
+data = response.<span class="fn">json</span>()
+<span class="fn">print</span>(data)</pre>
+
+<h3>Using Environment Variables (Recommended)</h3>
+
+<p>For security, store your token in an environment variable instead of hardcoding it:</p>
+
+<pre><span class="kw">import</span> os
+<span class="kw">import</span> requests
+
+<span class="cmt"># Set in terminal: export GEOTILER_TOKEN="eyJ..."</span>
+token = os.environ.<span class="fn">get</span>(<span class="str">"GEOTILER_TOKEN"</span>)
+
+<span class="kw">if not</span> token:
+    <span class="kw">raise</span> <span class="fn">ValueError</span>(<span class="str">"Set GEOTILER_TOKEN environment variable"</span>)
+
+response = requests.<span class="fn">get</span>(
+    <span class="str">"https://your-titiler-instance/cog/info"</span>,
+    params={<span class="str">"url"</span>: <span class="str">"https://storage.../file.tif"</span>},
+    headers={<span class="str">"Authorization"</span>: <span class="str">f"Bearer </span>{token}<span class="str">"</span>}
+)</pre>
+
+<h2>Token Expiration</h2>
+
+<p>Tokens typically expire after 1-8 hours. When you receive a <code>401 Unauthorized</code> error:</p>
+
+<ol>
+    <li>Return to your browser</li>
+    <li>Refresh the page (this may auto-renew your token)</li>
+    <li>Copy the new token from dev tools</li>
+</ol>
+
+<h2>Troubleshooting</h2>
+
+<table>
+    <tr>
+        <th>Error</th>
+        <th>Cause</th>
+        <th>Solution</th>
+    </tr>
+    <tr>
+        <td><code>401 Unauthorized</code></td>
+        <td>Token expired or invalid</td>
+        <td>Get a fresh token from browser</td>
+    </tr>
+    <tr>
+        <td><code>403 Forbidden</code></td>
+        <td>Token valid but no access</td>
+        <td>Check with admin about permissions</td>
+    </tr>
+    <tr>
+        <td>Invalid token format</td>
+        <td>Copy/paste error</td>
+        <td>Re-copy token, check for whitespace</td>
+    </tr>
+</table>
+
+<h2>For Web Applications</h2>
+
+<p>Internal web applications authenticate via Entra ID app registration. The same simple rule applies: if the app is in our tenant, it has access. Configuration is handled by the platform team.</p>
+
+<div class="guide-footer">
+    <a href="/guide/">Back to Documentation</a> |
+    <a href="/guide/quick-start">Next: Quick Start</a>
+</div>
+{% endblock %}

@@ -1,0 +1,99 @@
+{% extends "base_guide.html" %}
+
+{% block title %}Data Scientists Guide{% endblock %}
+
+{% block guide_content %}
+<h1>Data Scientists Guide</h1>
+<p class="subtitle">Query geospatial data from Jupyter notebooks</p>
+
+<div class="callout callout-success">
+    <strong>Key Concept</strong>
+    Compute goes to data. No more downloading 50GB files &mdash; use HTTP range requests to read only what you need.
+</div>
+
+<h2>What You Can Do</h2>
+
+<div class="card-grid">
+    <a href="/guide/data-scientists/point-queries" class="card-link">
+        <div class="card">
+            <h3>Point Queries</h3>
+            <p>Extract values at specific coordinates from any COG or Zarr dataset</p>
+        </div>
+    </a>
+    <a href="/guide/data-scientists/batch-queries" class="card-link">
+        <div class="card">
+            <h3>Batch Queries</h3>
+            <p>Query multiple points efficiently with async requests</p>
+        </div>
+    </a>
+    <a href="/guide/data-scientists/stac-search" class="card-link">
+        <div class="card">
+            <h3>STAC Search</h3>
+            <p>Search the catalog by location, time, and properties</p>
+        </div>
+    </a>
+</div>
+
+<h2>Available Endpoints</h2>
+
+<table>
+    <tr>
+        <th>Task</th>
+        <th>Endpoint</th>
+        <th>Description</th>
+    </tr>
+    <tr>
+        <td>Get metadata</td>
+        <td><code>GET /cog/info</code></td>
+        <td>Bounds, CRS, bands, dtype</td>
+    </tr>
+    <tr>
+        <td>Point value</td>
+        <td><code>GET /cog/point/{lon},{lat}</code></td>
+        <td>Pixel value at coordinate</td>
+    </tr>
+    <tr>
+        <td>Statistics</td>
+        <td><code>GET /cog/statistics</code></td>
+        <td>Min, max, mean, std for bands</td>
+    </tr>
+    <tr>
+        <td>List variables</td>
+        <td><code>GET /xarray/variables</code></td>
+        <td>Variables in Zarr/NetCDF</td>
+    </tr>
+    <tr>
+        <td>Search catalog</td>
+        <td><code>GET /stac/search</code></td>
+        <td>Find items by bbox, time, properties</td>
+    </tr>
+</table>
+
+<h2>Example Workflow</h2>
+
+<pre><span class="kw">import</span> requests
+
+<span class="cmt"># 1. Search for data</span>
+search = requests.<span class="fn">get</span>(<span class="str">"https://titiler/stac/search"</span>, params={
+    <span class="str">"collections"</span>: <span class="str">"flood-risk"</span>,
+    <span class="str">"bbox"</span>: <span class="str">"29,-3,31,-1"</span>,
+    <span class="str">"limit"</span>: <span class="num">10</span>
+}).<span class="fn">json</span>()
+
+<span class="cmt"># 2. Get COG URL from first result</span>
+item = search[<span class="str">"features"</span>][<span class="num">0</span>]
+cog_url = item[<span class="str">"assets"</span>][<span class="str">"data"</span>][<span class="str">"href"</span>]
+
+<span class="cmt"># 3. Query point value</span>
+point = requests.<span class="fn">get</span>(
+    <span class="str">"https://titiler/cog/point/29.87,-1.94"</span>,
+    params={<span class="str">"url"</span>: cog_url}
+).<span class="fn">json</span>()
+
+<span class="fn">print</span>(<span class="str">f"Flood depth: </span>{point[<span class="str">'values'</span>][<span class="num">0</span>]}<span class="str">m"</span>)</pre>
+
+<div class="guide-footer">
+    <a href="/guide/">Back to Documentation</a> |
+    <a href="/guide/data-scientists/point-queries">Next: Point Queries</a>
+</div>
+{% endblock %}

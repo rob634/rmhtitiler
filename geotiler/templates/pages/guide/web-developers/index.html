@@ -1,0 +1,91 @@
+{% extends "base_guide.html" %}
+
+{% block title %}Web Developers Guide{% endblock %}
+
+{% block guide_content %}
+<h1>Web Developers Guide</h1>
+<p class="subtitle">Build maps with MapLibre GL JS</p>
+
+<div class="callout callout-success">
+    <strong>Key Benefit</strong>
+    MapLibre GL JS is 30kb vs 800kb for proprietary SDKs. Standards-based skills are portable.
+</div>
+
+<h2>What You Can Build</h2>
+
+<div class="card-grid">
+    <a href="/guide/web-developers/maplibre-tiles" class="card-link">
+        <div class="card">
+            <h3>Raster Tile Maps</h3>
+            <p>Display COG imagery as XYZ tiles with dynamic styling</p>
+        </div>
+    </a>
+    <a href="/guide/web-developers/vector-features" class="card-link">
+        <div class="card">
+            <h3>Vector Features</h3>
+            <p>Query and display PostGIS data as GeoJSON or vector tiles</p>
+        </div>
+    </a>
+</div>
+
+<h2>Quick Example</h2>
+
+<pre><span class="cmt">// MapLibre GL JS - Display COG tiles</span>
+<span class="kw">const</span> map = <span class="kw">new</span> maplibregl.<span class="fn">Map</span>({
+  container: <span class="str">'map'</span>,
+  style: {
+    version: <span class="num">8</span>,
+    sources: {
+      <span class="str">'flood'</span>: {
+        type: <span class="str">'raster'</span>,
+        tiles: [
+          <span class="str">'https://titiler/cog/tiles/WebMercatorQuad/{z}/{x}/{y}?url=...'</span>
+        ],
+        tileSize: <span class="num">256</span>
+      }
+    },
+    layers: [{
+      id: <span class="str">'flood-layer'</span>,
+      type: <span class="str">'raster'</span>,
+      source: <span class="str">'flood'</span>
+    }]
+  },
+  center: [<span class="num">29.8</span>, -<span class="num">2.0</span>],
+  zoom: <span class="num">8</span>
+});</pre>
+
+<h2>Available Tile Endpoints</h2>
+
+<table>
+    <tr>
+        <th>Endpoint</th>
+        <th>Format</th>
+        <th>Use Case</th>
+    </tr>
+    <tr>
+        <td><code>/cog/tiles/{tms}/{z}/{x}/{y}</code></td>
+        <td>PNG/WebP</td>
+        <td>Raster imagery (COGs)</td>
+    </tr>
+    <tr>
+        <td><code>/xarray/tiles/{tms}/{z}/{x}/{y}</code></td>
+        <td>PNG/WebP</td>
+        <td>Zarr/NetCDF data</td>
+    </tr>
+    <tr>
+        <td><code>/searches/{id}/tiles/{tms}/{z}/{x}/{y}</code></td>
+        <td>PNG/WebP</td>
+        <td>STAC search mosaics</td>
+    </tr>
+    <tr>
+        <td><code>/vector/collections/{id}/tiles/{tms}/{z}/{x}/{y}</code></td>
+        <td>MVT</td>
+        <td>Vector tiles from PostGIS</td>
+    </tr>
+</table>
+
+<div class="guide-footer">
+    <a href="/guide/">Back to Documentation</a> |
+    <a href="/guide/web-developers/maplibre-tiles">Next: MapLibre Tiles</a>
+</div>
+{% endblock %}

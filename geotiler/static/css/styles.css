@@ -872,6 +872,248 @@ tr:hover {
 }
 
 /* ==========================================================================
+   Admin Dashboard
+   ========================================================================== */
+
+.status-banner {
+    background: var(--ds-white);
+    border-radius: var(--radius-lg);
+    padding: 20px 25px;
+    margin-bottom: 25px;
+    border-left: 4px solid var(--ds-blue-primary);
+    box-shadow: var(--shadow-sm);
+}
+
+.status-banner-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 15px;
+}
+
+.status-banner-title {
+    font-size: 18px;
+    font-weight: 700;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+}
+
+.auto-refresh-label {
+    font-size: 12px;
+    color: var(--ds-gray);
+    display: flex;
+    align-items: center;
+    gap: 5px;
+    cursor: pointer;
+}
+
+.stats-row {
+    display: flex;
+    gap: 40px;
+    flex-wrap: wrap;
+}
+
+.stat-item {
+    text-align: center;
+}
+
+.stat-value {
+    font-size: 20px;
+    font-weight: 700;
+    color: var(--ds-navy);
+}
+
+.stat-label {
+    font-size: 11px;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    color: var(--ds-gray);
+}
+
+.section-header {
+    font-size: 16px;
+    font-weight: 700;
+    color: var(--ds-navy);
+    margin-bottom: 15px;
+    padding-bottom: 8px;
+    border-bottom: 2px solid var(--ds-gray-light);
+}
+
+.cards-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+    gap: 15px;
+    margin-bottom: 25px;
+}
+
+.card-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+    margin-bottom: 8px;
+}
+
+.card-description {
+    font-size: 12px;
+    color: var(--ds-gray);
+    margin-bottom: 10px;
+    line-height: 1.4;
+}
+
+.card-endpoints {
+    font-size: 11px;
+    color: var(--ds-gray);
+}
+
+.card-endpoints code {
+    background: var(--ds-gray-light);
+    padding: 2px 5px;
+    border-radius: 3px;
+    font-family: monospace;
+}
+
+/* Dependency cards */
+.dep-card {
+    background: var(--ds-white);
+    border-radius: var(--radius-md);
+    padding: 15px 18px;
+    border-left: 4px solid var(--ds-gray-light);
+    box-shadow: var(--shadow-sm);
+}
+
+.dep-card.dep-ok {
+    border-left-color: var(--ds-status-healthy);
+}
+
+.dep-card.dep-warning {
+    border-left-color: var(--ds-status-warning);
+}
+
+.dep-card.dep-fail {
+    border-left-color: var(--ds-status-error);
+}
+
+.dep-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 5px;
+}
+
+.dep-name {
+    font-weight: 600;
+    font-size: 13px;
+}
+
+.dep-detail {
+    font-size: 12px;
+    color: var(--ds-gray);
+}
+
+/* Config section */
+.config-grid {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 20px;
+    background: var(--ds-white);
+    border-radius: var(--radius-md);
+    padding: 18px;
+    box-shadow: var(--shadow-sm);
+}
+
+.config-item {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.config-label {
+    font-size: 12px;
+    color: var(--ds-gray);
+}
+
+.config-value {
+    font-size: 12px;
+    font-weight: 600;
+}
+
+.config-on {
+    color: var(--ds-status-healthy);
+}
+
+.config-off {
+    color: var(--ds-gray);
+}
+
+/* Issues section */
+.issues-section {
+    background: var(--ds-status-error-bg);
+    border-radius: var(--radius-md);
+    padding: 18px;
+    margin-bottom: 25px;
+    border-left: 4px solid var(--ds-status-error);
+}
+
+.issues-header {
+    font-weight: 700;
+    color: var(--ds-status-error);
+    margin-bottom: 10px;
+}
+
+.issues-list {
+    list-style: none;
+}
+
+.issues-list li {
+    font-size: 13px;
+    color: var(--ds-status-error);
+    padding: 4px 0;
+}
+
+.issues-list li::before {
+    content: "\26A0";
+    margin-right: 8px;
+}
+
+.spinner {
+    width: 16px;
+    height: 16px;
+    border: 2px solid var(--ds-gray-light);
+    border-top-color: var(--ds-blue-primary);
+    border-radius: 50%;
+    animation: spin 0.8s linear infinite;
+}
+
+@keyframes spin {
+    to { transform: rotate(360deg); }
+}
+
+/* ==========================================================================
+   Documentation Guide
+   ========================================================================== */
+
+.guide-footer {
+    text-align: center;
+    padding: 30px 0;
+    margin-top: 40px;
+    border-top: 1px solid var(--ds-gray-light);
+    color: var(--ds-gray);
+}
+
+.guide-footer a {
+    margin: 0 5px;
+}
+
+/* Syntax highlighting for code blocks */
+.kw { color: #569cd6; }
+.str { color: #ce9178; }
+.num { color: #b5cea8; }
+.cmt { color: #6a9955; }
+.fn { color: #dcdcaa; }
+.var { color: #9cdcfe; }
+
+/* ==========================================================================
    Utility Classes
    ========================================================================== */
 .text-center { text-align: center; }

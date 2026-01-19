@@ -1,0 +1,135 @@
+{% extends "base_guide.html" %}
+
+{% block title %}Vector Features{% endblock %}
+
+{% block guide_content %}
+<h1>Vector Features</h1>
+<p class="subtitle">Query and display PostGIS data with TiPG</p>
+
+<p>TiPG provides OGC API Features and Vector Tiles for PostGIS tables.</p>
+
+<h2>List Collections</h2>
+
+<pre><span class="cmt">// Get available collections (tables)</span>
+<span class="fn">fetch</span>(<span class="str">'https://titiler/vector/collections'</span>)
+  .<span class="fn">then</span>(r => r.<span class="fn">json</span>())
+  .<span class="fn">then</span>(data => {
+    data.collections.<span class="fn">forEach</span>(col => {
+      console.<span class="fn">log</span>(col.id, col.title);
+    });
+  });</pre>
+
+<h2>Query Features (GeoJSON)</h2>
+
+<pre><span class="cmt">// Get features from a collection</span>
+<span class="kw">const</span> params = <span class="kw">new</span> <span class="fn">URLSearchParams</span>({
+  limit: <span class="num">100</span>,
+  bbox: <span class="str">'29,-3,31,-1'</span>
+});
+
+<span class="fn">fetch</span>(<span class="str">`https://titiler/vector/collections/admin_boundaries/items?</span>${params}<span class="str">`</span>)
+  .<span class="fn">then</span>(r => r.<span class="fn">json</span>())
+  .<span class="fn">then</span>(geojson => {
+    console.<span class="fn">log</span>(<span class="str">`Found </span>${geojson.features.length}<span class="str"> features`</span>);
+  });</pre>
+
+<h2>Display as GeoJSON Layer</h2>
+
+<pre><span class="cmt">// Add GeoJSON source</span>
+map.<span class="fn">addSource</span>(<span class="str">'boundaries'</span>, {
+  type: <span class="str">'geojson'</span>,
+  data: <span class="str">'https://titiler/vector/collections/admin_boundaries/items?limit=1000'</span>
+});
+
+<span class="cmt">// Add fill layer</span>
+map.<span class="fn">addLayer</span>({
+  id: <span class="str">'boundaries-fill'</span>,
+  type: <span class="str">'fill'</span>,
+  source: <span class="str">'boundaries'</span>,
+  paint: {
+    <span class="str">'fill-color'</span>: <span class="str">'#088'</span>,
+    <span class="str">'fill-opacity'</span>: <span class="num">0.3</span>
+  }
+});
+
+<span class="cmt">// Add outline layer</span>
+map.<span class="fn">addLayer</span>({
+  id: <span class="str">'boundaries-line'</span>,
+  type: <span class="str">'line'</span>,
+  source: <span class="str">'boundaries'</span>,
+  paint: {
+    <span class="str">'line-color'</span>: <span class="str">'#088'</span>,
+    <span class="str">'line-width'</span>: <span class="num">2</span>
+  }
+});</pre>
+
+<h2>Display as Vector Tiles</h2>
+
+<p>For large datasets, use vector tiles for better performance:</p>
+
+<pre><span class="cmt">// Add vector tile source</span>
+map.<span class="fn">addSource</span>(<span class="str">'boundaries'</span>, {
+  type: <span class="str">'vector'</span>,
+  tiles: [
+    <span class="str">'https://titiler/vector/collections/admin_boundaries/tiles/WebMercatorQuad/{z}/{x}/{y}'</span>
+  ]
+});
+
+<span class="cmt">// Add layer (note source-layer)</span>
+map.<span class="fn">addLayer</span>({
+  id: <span class="str">'boundaries-fill'</span>,
+  type: <span class="str">'fill'</span>,
+  source: <span class="str">'boundaries'</span>,
+  <span class="str">'source-layer'</span>: <span class="str">'default'</span>,  <span class="cmt">// TiPG default layer name</span>
+  paint: {
+    <span class="str">'fill-color'</span>: <span class="str">'#088'</span>,
+    <span class="str">'fill-opacity'</span>: <span class="num">0.3</span>
+  }
+});</pre>
+
+<h2>Filter Features</h2>
+
+<p>Use CQL2 filters for server-side filtering:</p>
+
+<pre><span class="cmt">// Filter by property</span>
+<span class="kw">const</span> filter = <span class="fn">encodeURIComponent</span>(<span class="str">'population > 100000'</span>);
+
+<span class="fn">fetch</span>(<span class="str">`https://titiler/vector/collections/cities/items?filter=</span>${filter}<span class="str">&filter-lang=cql2-text`</span>)
+  .<span class="fn">then</span>(r => r.<span class="fn">json</span>())
+  .<span class="fn">then</span>(geojson => {
+    console.<span class="fn">log</span>(<span class="str">`Found </span>${geojson.features.length}<span class="str"> cities with pop > 100k`</span>);
+  });</pre>
+
+<h2>Click to Query</h2>
+
+<pre>map.<span class="fn">on</span>(<span class="str">'click'</span>, <span class="str">'boundaries-fill'</span>, (e) => {
+  <span class="kw">const</span> feature = e.features[<span class="num">0</span>];
+
+  <span class="kw">new</span> maplibregl.<span class="fn">Popup</span>()
+    .<span class="fn">setLngLat</span>(e.lngLat)
+    .<span class="fn">setHTML</span>(<span class="str">`
+      &lt;strong&gt;</span>${feature.properties.name}<span class="str">&lt;/strong&gt;&lt;br&gt;
+      Population: </span>${feature.properties.population.<span class="fn">toLocaleString</span>()}<span class="str">
+    `</span>)
+    .<span class="fn">addTo</span>(map);
+});
+
+<span class="cmt">// Change cursor on hover</span>
+map.<span class="fn">on</span>(<span class="str">'mouseenter'</span>, <span class="str">'boundaries-fill'</span>, () => {
+  map.<span class="fn">getCanvas</span>().style.cursor = <span class="str">'pointer'</span>;
+});
+
+map.<span class="fn">on</span>(<span class="str">'mouseleave'</span>, <span class="str">'boundaries-fill'</span>, () => {
+  map.<span class="fn">getCanvas</span>().style.cursor = <span class="str">''</span>;
+});</pre>
+
+<div class="callout callout-info">
+    <strong>Explore Interactively</strong>
+    Visit the <a href="/vector">TiPG landing page</a> to browse available collections and their schemas.
+</div>
+
+<div class="guide-footer">
+    <a href="/guide/web-developers/maplibre-tiles">Previous: MapLibre Tiles</a> |
+    <a href="/guide/web-developers/">Back to Overview</a>
+</div>
+{% endblock %}
