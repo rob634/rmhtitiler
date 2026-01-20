@@ -7,6 +7,7 @@ Supports three authentication modes:
 3. managed_identity - OAuth token via Managed Identity
 """
 
+import asyncio
 import logging
 from datetime import datetime, timezone
 from typing import Optional
@@ -210,7 +211,7 @@ def build_database_url(password: str, search_path: Optional[str] = None) -> str:
 
 def refresh_postgres_token() -> Optional[str]:
     """
-    Force refresh of PostgreSQL OAuth token.
+    Force refresh of PostgreSQL OAuth token (sync version).
 
     Only applicable when using managed_identity auth mode.
 
@@ -233,3 +234,33 @@ def refresh_postgres_token() -> Optional[str]:
     except Exception as e:
         logger.error(f"PostgreSQL token refresh failed: {e}")
         return None
+
+
+# =============================================================================
+# Async Wrappers
+# =============================================================================
+
+
+async def get_postgres_credential_async() -> Optional[str]:
+    """
+    Async wrapper for get_postgres_credential().
+
+    Runs the blocking Azure SDK token acquisition in a thread pool
+    to avoid blocking the asyncio event loop.
+
+    Returns:
+        Password or OAuth token for PostgreSQL connection.
+    """
+    return await asyncio.to_thread(get_postgres_credential)
+
+
+async def refresh_postgres_token_async() -> Optional[str]:
+    """
+    Force refresh of PostgreSQL OAuth token (async version).
+
+    Runs in thread pool to avoid blocking the event loop.
+
+    Returns:
+        New OAuth token if successful, None if not using MI or refresh fails.
+    """
+    return await asyncio.to_thread(refresh_postgres_token)

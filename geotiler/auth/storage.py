@@ -5,6 +5,7 @@ Handles OAuth token acquisition for Azure Blob Storage using Managed Identity
 or Azure CLI credentials. Configures GDAL and fsspec for authenticated access.
 """
 
+import asyncio
 import os
 import logging
 from datetime import datetime, timezone
@@ -81,6 +82,19 @@ def get_storage_oauth_token() -> Optional[str]:
             logger.error("  - Verify RBAC role: Storage Blob Data Reader")
         logger.error("=" * 60)
         raise
+
+
+async def get_storage_oauth_token_async() -> Optional[str]:
+    """
+    Async wrapper for get_storage_oauth_token().
+
+    Runs the blocking Azure SDK token acquisition in a thread pool
+    to avoid blocking the asyncio event loop.
+
+    Returns:
+        OAuth bearer token for Azure Storage, or None if auth is disabled.
+    """
+    return await asyncio.to_thread(get_storage_oauth_token)
 
 
 def configure_gdal_auth(token: str) -> None:
@@ -162,7 +176,7 @@ def initialize_storage_auth() -> Optional[str]:
 
 def refresh_storage_token() -> Optional[str]:
     """
-    Force refresh of storage OAuth token.
+    Force refresh of storage OAuth token (sync version).
 
     Used by background refresh task to proactively update tokens.
 
@@ -183,3 +197,15 @@ def refresh_storage_token() -> Optional[str]:
     except Exception as e:
         logger.error(f"Storage token refresh failed: {e}")
         return None
+
+
+async def refresh_storage_token_async() -> Optional[str]:
+    """
+    Force refresh of storage OAuth token (async version).
+
+    Runs in thread pool to avoid blocking the event loop.
+
+    Returns:
+        New OAuth token if successful, None otherwise.
+    """
+    return await asyncio.to_thread(refresh_storage_token)

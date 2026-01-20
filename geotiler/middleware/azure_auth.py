@@ -11,7 +11,7 @@ from starlette.middleware.base import BaseHTTPMiddleware
 
 from geotiler.config import settings
 from geotiler.auth.storage import (
-    get_storage_oauth_token,
+    get_storage_oauth_token_async,
     configure_gdal_auth,
     configure_fsspec_auth,
 )
@@ -26,6 +26,9 @@ class AzureAuthMiddleware(BaseHTTPMiddleware):
     Configures authentication for:
     - GDAL: AZURE_STORAGE_ACCOUNT + AZURE_STORAGE_ACCESS_TOKEN (for /vsiaz/ COG access)
     - fsspec/adlfs: AZURE_STORAGE_ACCOUNT_NAME (for abfs:// Zarr access)
+
+    Note: Token acquisition uses asyncio.to_thread() to avoid blocking the event loop
+    when the Azure SDK makes HTTP calls to acquire/refresh tokens.
     """
 
     async def dispatch(self, request: Request, call_next):
@@ -34,7 +37,8 @@ class AzureAuthMiddleware(BaseHTTPMiddleware):
         if settings.use_azure_auth and settings.azure_storage_account:
             try:
                 # Get OAuth token (uses cache if valid)
-                token = get_storage_oauth_token()
+                # Runs in thread pool to avoid blocking event loop during token refresh
+                token = await get_storage_oauth_token_async()
 
                 if token:
                     # Configure GDAL for COG access via /vsiaz/

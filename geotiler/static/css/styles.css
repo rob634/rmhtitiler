@@ -931,6 +931,118 @@ tr:hover {
     color: var(--ds-gray);
 }
 
+/* ==========================================================================
+   Resource Cards (Hardware/Environment Dashboard)
+   ========================================================================== */
+.resources-section {
+    background: var(--ds-white);
+    border-radius: var(--radius-lg);
+    padding: 20px;
+    margin-bottom: 25px;
+    box-shadow: var(--shadow-sm);
+}
+
+.resources-section h3 {
+    font-size: 14px;
+    font-weight: 700;
+    color: var(--ds-navy);
+    margin-bottom: 15px;
+    padding-bottom: 8px;
+    border-bottom: 1px solid var(--ds-gray-light);
+}
+
+.resource-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+    gap: 12px;
+}
+
+.resource-card {
+    background: var(--ds-bg);
+    border: 1px solid var(--ds-gray-light);
+    border-radius: var(--radius-md);
+    padding: 14px;
+    display: flex;
+    gap: 12px;
+    transition: border-color 0.2s;
+}
+
+.resource-card:hover {
+    border-color: var(--ds-blue-primary);
+}
+
+.resource-icon {
+    font-size: 24px;
+    line-height: 1;
+    flex-shrink: 0;
+}
+
+.resource-details {
+    flex: 1;
+    min-width: 0;
+}
+
+.resource-label {
+    font-size: 11px;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    color: var(--ds-gray);
+    margin-bottom: 2px;
+}
+
+.resource-value {
+    font-size: 15px;
+    font-weight: 700;
+    color: var(--ds-navy);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.resource-sub {
+    font-size: 11px;
+    color: var(--ds-gray);
+    margin-top: 2px;
+}
+
+/* Utilization Bars */
+.utilization-bar {
+    height: 6px;
+    background: var(--ds-gray-light);
+    border-radius: 3px;
+    overflow: hidden;
+    margin: 6px 0 4px 0;
+}
+
+.utilization-fill {
+    height: 100%;
+    border-radius: 3px;
+    transition: width 0.5s ease, background 0.3s ease;
+}
+
+.utilization-fill.level-ok {
+    background: var(--ds-success);
+}
+
+.utilization-fill.level-warning {
+    background: var(--ds-warning);
+}
+
+.utilization-fill.level-critical {
+    background: var(--ds-error);
+}
+
+/* Resource card variants */
+.resource-card.resource-wide {
+    grid-column: span 2;
+}
+
+@media (max-width: 600px) {
+    .resource-card.resource-wide {
+        grid-column: span 1;
+    }
+}
+
 .section-header {
     font-size: 16px;
     font-weight: 700;

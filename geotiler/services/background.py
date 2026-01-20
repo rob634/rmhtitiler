@@ -1,5 +1,9 @@
 """
 Background services for token refresh and maintenance tasks.
+
+All token refresh operations use async wrappers that run blocking Azure SDK
+calls in a thread pool via asyncio.to_thread(), ensuring the event loop
+remains responsive during token acquisition.
 """
 
 import asyncio
@@ -7,8 +11,8 @@ import logging
 from typing import TYPE_CHECKING
 
 from geotiler.config import settings, BACKGROUND_REFRESH_INTERVAL_SECS
-from geotiler.auth.storage import refresh_storage_token
-from geotiler.auth.postgres import refresh_postgres_token, build_database_url
+from geotiler.auth.storage import refresh_storage_token_async
+from geotiler.auth.postgres import refresh_postgres_token_async, build_database_url
 from geotiler.routers.vector import refresh_tipg_pool
 
 if TYPE_CHECKING:
@@ -32,6 +36,9 @@ async def token_refresh_background_task():
 
     Refreshes both Storage and PostgreSQL tokens to prevent expiration.
     Runs every 45 minutes by default.
+
+    All token refresh calls use asyncio.to_thread() internally to avoid
+    blocking the event loop during Azure SDK HTTP operations.
     """
     while True:
         await asyncio.sleep(BACKGROUND_REFRESH_INTERVAL_SECS)
@@ -41,10 +48,10 @@ async def token_refresh_background_task():
         logger.info("=" * 60)
 
         # ====================================================================
-        # Refresh Storage Token
+        # Refresh Storage Token (async - runs in thread pool)
         # ====================================================================
         if settings.use_azure_auth and settings.azure_storage_account:
-            refresh_storage_token()
+            await refresh_storage_token_async()
 
         # ====================================================================
         # Refresh PostgreSQL Token (if using managed_identity)
@@ -65,9 +72,13 @@ async def _refresh_postgres_with_pool_recreation():
     recreate both connection pools with the new token:
     - titiler-pgstac pool (psycopg, app.state.dbpool)
     - TiPG pool (asyncpg, app.state.pool)
+
+    Token refresh runs in thread pool via asyncio.to_thread() to avoid
+    blocking the event loop during Azure SDK operations.
     """
     try:
-        new_token = refresh_postgres_token()
+        # Refresh token (runs in thread pool)
+        new_token = await refresh_postgres_token_async()
         if not new_token:
             logger.warning("PostgreSQL token refresh returned no token")
             return

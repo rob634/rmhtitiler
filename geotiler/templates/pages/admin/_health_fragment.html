@@ -31,6 +31,104 @@
     </div>
 </div>
 
+{# Runtime Environment Resources #}
+{% set hw = health.hardware %}
+{% set ram_pct = hw.ram_utilization_percent|default(0) %}
+{% set cpu_pct = hw.cpu_utilization_percent|default(0) %}
+{% set ram_level = 'level-critical' if ram_pct >= 90 else ('level-warning' if ram_pct >= 75 else 'level-ok') %}
+{% set cpu_level = 'level-critical' if cpu_pct >= 90 else ('level-warning' if cpu_pct >= 70 else 'level-ok') %}
+<div class="resources-section">
+    <h3>Runtime Environment</h3>
+    <div class="resource-grid">
+        {# Azure Site #}
+        <div class="resource-card">
+            <div class="resource-icon">☁️</div>
+            <div class="resource-details">
+                <div class="resource-label">Azure Site</div>
+                <div class="resource-value">{{ hw.azure_site_name|default('local') }}</div>
+                <div class="resource-sub">
+                    {{ hw.azure_sku|default('Dev') }}
+                    {% if hw.azure_instance_id %} · {{ hw.azure_instance_id }}{% endif %}
+                </div>
+            </div>
+        </div>
+
+        {# CPU #}
+        <div class="resource-card">
+            <div class="resource-icon">⚡</div>
+            <div class="resource-details">
+                <div class="resource-label">CPU</div>
+                <div class="resource-value">{{ hw.cpu_count|default('?') }} cores</div>
+                <div class="utilization-bar">
+                    <div class="utilization-fill {{ cpu_level }}" style="width: {{ [cpu_pct, 100]|min }}%;"></div>
+                </div>
+                <div class="resource-sub">{{ "%.1f"|format(cpu_pct) }}% utilized</div>
+            </div>
+        </div>
+
+        {# Memory #}
+        <div class="resource-card">
+            <div class="resource-icon">💾</div>
+            <div class="resource-details">
+                <div class="resource-label">Memory</div>
+                <div class="resource-value">{{ hw.total_ram_gb|default('?') }} GB total</div>
+                <div class="utilization-bar">
+                    <div class="utilization-fill {{ ram_level }}" style="width: {{ [ram_pct, 100]|min }}%;"></div>
+                </div>
+                <div class="resource-sub">
+                    {% if hw.available_ram_mb %}
+                        {{ "%.1f"|format(hw.available_ram_mb / 1024) }} GB available
+                    {% else %}
+                        {{ "%.1f"|format(100 - ram_pct) }}% free
+                    {% endif %}
+                </div>
+            </div>
+        </div>
+
+        {# Process Memory #}
+        <div class="resource-card">
+            <div class="resource-icon">📊</div>
+            <div class="resource-details">
+                <div class="resource-label">Process Memory</div>
+                <div class="resource-value">
+                    {% if hw.process_rss_mb %}
+                        {% if hw.process_rss_mb >= 1024 %}
+                            {{ "%.2f"|format(hw.process_rss_mb / 1024) }} GB
+                        {% else %}
+                            {{ "%.0f"|format(hw.process_rss_mb) }} MB
+                        {% endif %}
+                    {% else %}
+                        N/A
+                    {% endif %}
+                </div>
+                <div class="resource-sub">RSS (resident set size)</div>
+            </div>
+        </div>
+
+        {# Platform #}
+        <div class="resource-card">
+            <div class="resource-icon">🖥️</div>
+            <div class="resource-details">
+                <div class="resource-label">Platform</div>
+                <div class="resource-value">{{ hw.platform|default('unknown') }}</div>
+                <div class="resource-sub">Python {{ hw.python_version|default('?') }}</div>
+            </div>
+        </div>
+
+        {# Region #}
+        {% if hw.azure_region and hw.azure_region != 'unknown' %}
+        <div class="resource-card">
+            <div class="resource-icon">🌍</div>
+            <div class="resource-details">
+                <div class="resource-label">Region</div>
+                <div class="resource-value">{{ hw.azure_region }}</div>
+                <div class="resource-sub">Azure deployment region</div>
+            </div>
+        </div>
+        {% endif %}
+    </div>
+</div>
+
 {# Issues Section #}
 {% if health.issues %}
 <div class="issues-section">
