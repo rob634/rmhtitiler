@@ -28,25 +28,38 @@ logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/vector", tags=["Diagnostics"])
 
 
-async def _run_query(pool, query: str, *args) -> list[dict]:
-    """Run a query and return results as list of dicts."""
+async def _run_query(pool, query: str, *args) -> tuple[list[dict], Optional[str]]:
+    """
+    Run a query and return results as list of dicts with error info.
+
+    Returns:
+        Tuple of (results, error). On success: ([rows], None). On failure: ([], error_message).
+
+    Note: Future enhancement could return a QueryResult dataclass with success, data,
+    error, and metadata fields (Option C) for richer error context and query timing.
+    """
     try:
         async with pool.acquire() as conn:
             rows = await conn.fetch(query, *args)
-            return [dict(row) for row in rows]
+            return [dict(row) for row in rows], None
     except Exception as e:
         logger.error(f"Query failed: {e}")
-        return []
+        return [], str(e)
 
 
-async def _run_query_single(pool, query: str, *args) -> Any:
-    """Run a query and return single value."""
+async def _run_query_single(pool, query: str, *args) -> tuple[Any, Optional[str]]:
+    """
+    Run a query and return single value with error info.
+
+    Returns:
+        Tuple of (value, error). On success: (value, None). On failure: (None, error_message).
+    """
     try:
         async with pool.acquire() as conn:
-            return await conn.fetchval(query, *args)
+            return await conn.fetchval(query, *args), None
     except Exception as e:
         logger.error(f"Query failed: {e}")
-        return None
+        return None, str(e)
 
 
 @router.get("/diagnostics")
@@ -97,11 +110,15 @@ async def tipg_diagnostics(request: Request):
     # ==========================================================================
     # CONNECTION INFO
     # ==========================================================================
-    try:
-        current_user = await _run_query_single(pool, "SELECT current_user")
-        search_path = await _run_query_single(pool, "SHOW search_path")
-        db_name = await _run_query_single(pool, "SELECT current_database()")
+    current_user, user_err = await _run_query_single(pool, "SELECT current_user")
+    search_path, path_err = await _run_query_single(pool, "SHOW search_path")
+    db_name, db_err = await _run_query_single(pool, "SELECT current_database()")
 
+    conn_error = user_err or path_err or db_err
+    if conn_error:
+        diagnostics["connection"] = {"error": conn_error}
+        issues.append(f"Connection query failed: {conn_error}")
+    else:
         diagnostics["connection"] = {
             "pool_exists": True,
             "pool_size": pool.get_size(),
@@ -110,38 +127,33 @@ async def tipg_diagnostics(request: Request):
             "current_database": db_name,
             "search_path": search_path,
         }
-    except Exception as e:
-        diagnostics["connection"] = {"error": str(e)}
-        issues.append(f"Connection query failed: {e}")
 
     # ==========================================================================
     # POSTGIS STATUS
     # ==========================================================================
-    try:
-        postgis_info = await _run_query(
-            pool,
-            """
-            SELECT extname, extversion
-            FROM pg_extension
-            WHERE extname IN ('postgis', 'postgis_topology', 'postgis_raster')
-            """
-        )
+    postgis_info, postgis_err = await _run_query(
+        pool,
+        """
+        SELECT extname, extversion
+        FROM pg_extension
+        WHERE extname IN ('postgis', 'postgis_topology', 'postgis_raster')
+        """
+    )
 
-        if postgis_info:
-            postgis_dict = {row["extname"]: row["extversion"] for row in postgis_info}
-            diagnostics["postgis"] = {
-                "installed": "postgis" in postgis_dict,
-                "extensions": postgis_dict,
-            }
-            if "postgis" not in postgis_dict:
-                issues.append("PostGIS extension not installed - geometry columns won't be recognized")
-        else:
-            diagnostics["postgis"] = {"installed": False, "extensions": {}}
-            issues.append("PostGIS extension not installed - run: CREATE EXTENSION postgis;")
-
-    except Exception as e:
-        diagnostics["postgis"] = {"error": str(e)}
-        issues.append(f"PostGIS check failed: {e}")
+    if postgis_err:
+        diagnostics["postgis"] = {"error": postgis_err}
+        issues.append(f"PostGIS check failed: {postgis_err}")
+    elif postgis_info:
+        postgis_dict = {row["extname"]: row["extversion"] for row in postgis_info}
+        diagnostics["postgis"] = {
+            "installed": "postgis" in postgis_dict,
+            "extensions": postgis_dict,
+        }
+        if "postgis" not in postgis_dict:
+            issues.append("PostGIS extension not installed - geometry columns won't be recognized")
+    else:
+        diagnostics["postgis"] = {"installed": False, "extensions": {}}
+        issues.append("PostGIS extension not installed - run: CREATE EXTENSION postgis;")
 
     # ==========================================================================
     # SCHEMA DIAGNOSTICS (for each configured schema)
@@ -153,25 +165,26 @@ async def tipg_diagnostics(request: Request):
     # ==========================================================================
     # GLOBAL GEOMETRY_COLUMNS VIEW (all schemas)
     # ==========================================================================
-    try:
-        all_geometry_columns = await _run_query(
-            pool,
-            """
-            SELECT
-                f_table_schema as schema,
-                f_table_name as table_name,
-                f_geometry_column as geometry_column,
-                type as geometry_type,
-                srid
-            FROM public.geometry_columns
-            ORDER BY f_table_schema, f_table_name
-            LIMIT 100
-            """
-        )
+    all_geometry_columns, geom_cols_err = await _run_query(
+        pool,
+        """
+        SELECT
+            f_table_schema as schema,
+            f_table_name as table_name,
+            f_geometry_column as geometry_column,
+            type as geometry_type,
+            srid
+        FROM public.geometry_columns
+        ORDER BY f_table_schema, f_table_name
+        LIMIT 100
+        """
+    )
+    if geom_cols_err:
+        diagnostics["all_geometry_columns"] = {"error": geom_cols_err}
+        diagnostics["all_geometry_columns_count"] = 0
+    else:
         diagnostics["all_geometry_columns"] = all_geometry_columns
         diagnostics["all_geometry_columns_count"] = len(all_geometry_columns)
-    except Exception as e:
-        diagnostics["all_geometry_columns"] = {"error": str(e)}
 
     # ==========================================================================
     # COLLECTION CATALOG INFO
@@ -224,11 +237,16 @@ async def _diagnose_schema(pool, schema: str, issues: list) -> dict:
     }
 
     # Check if schema exists
-    schema_exists = await _run_query_single(
+    schema_exists, exists_err = await _run_query_single(
         pool,
         "SELECT EXISTS(SELECT 1 FROM information_schema.schemata WHERE schema_name = $1)",
         schema
     )
+    if exists_err:
+        schema_diag["error"] = exists_err
+        issues.append(f"Schema check failed for '{schema}': {exists_err}")
+        return schema_diag
+
     schema_diag["exists"] = schema_exists
 
     if not schema_exists:
@@ -236,11 +254,16 @@ async def _diagnose_schema(pool, schema: str, issues: list) -> dict:
         return schema_diag
 
     # Check USAGE permission on schema
-    has_usage = await _run_query_single(
+    has_usage, usage_err = await _run_query_single(
         pool,
         "SELECT has_schema_privilege(current_user, $1, 'USAGE')",
         schema
     )
+    if usage_err:
+        schema_diag["error"] = usage_err
+        issues.append(f"Permission check failed for '{schema}': {usage_err}")
+        return schema_diag
+
     schema_diag["has_usage_permission"] = has_usage
 
     if not has_usage:
@@ -248,7 +271,7 @@ async def _diagnose_schema(pool, schema: str, issues: list) -> dict:
         return schema_diag
 
     # Count total tables in schema
-    table_count = await _run_query_single(
+    table_count, tc_err = await _run_query_single(
         pool,
         """
         SELECT COUNT(*) FROM information_schema.tables
@@ -257,9 +280,11 @@ async def _diagnose_schema(pool, schema: str, issues: list) -> dict:
         schema
     )
     schema_diag["tables_total"] = table_count or 0
+    if tc_err:
+        schema_diag["tables_total_error"] = tc_err
 
     # Count views in schema
-    view_count = await _run_query_single(
+    view_count, vc_err = await _run_query_single(
         pool,
         """
         SELECT COUNT(*) FROM information_schema.tables
@@ -268,9 +293,11 @@ async def _diagnose_schema(pool, schema: str, issues: list) -> dict:
         schema
     )
     schema_diag["views_total"] = view_count or 0
+    if vc_err:
+        schema_diag["views_total_error"] = vc_err
 
     # Raw query to geometry_columns - shows exactly what PostGIS sees
-    raw_geom_cols = await _run_query(
+    raw_geom_cols, raw_err = await _run_query(
         pool,
         """
         SELECT
@@ -285,10 +312,10 @@ async def _diagnose_schema(pool, schema: str, issues: list) -> dict:
         """,
         schema
     )
-    schema_diag["raw_geometry_columns"] = raw_geom_cols
+    schema_diag["raw_geometry_columns"] = raw_geom_cols if not raw_err else {"error": raw_err}
 
     # Get tables with geometry columns from geometry_columns view
-    geometry_tables = await _run_query(
+    geometry_tables, geom_err = await _run_query(
         pool,
         """
         SELECT
@@ -302,10 +329,12 @@ async def _diagnose_schema(pool, schema: str, issues: list) -> dict:
         """,
         schema
     )
+    if geom_err:
+        schema_diag["geometry_tables_error"] = geom_err
 
     # If geometry_columns is empty, try direct column check
-    if not geometry_tables:
-        geometry_tables = await _run_query(
+    if not geometry_tables and not geom_err:
+        geometry_tables, fallback_err = await _run_query(
             pool,
             """
             SELECT DISTINCT
@@ -323,6 +352,8 @@ async def _diagnose_schema(pool, schema: str, issues: list) -> dict:
             """,
             schema
         )
+        if fallback_err:
+            schema_diag["geometry_fallback_error"] = fallback_err
 
     schema_diag["tables_with_geometry"] = len(geometry_tables)
 
@@ -338,7 +369,7 @@ async def _diagnose_schema(pool, schema: str, issues: list) -> dict:
 
     for table in geometry_tables:
         table_name = table["table_name"]
-        can_select = await _run_query_single(
+        can_select, select_err = await _run_query_single(
             pool,
             "SELECT has_table_privilege(current_user, $1, 'SELECT')",
             f"{schema}.{table_name}"
@@ -349,13 +380,15 @@ async def _diagnose_schema(pool, schema: str, issues: list) -> dict:
             "geometry_column": table["geometry_column"],
             "geometry_type": table["geometry_type"],
             "srid": table["srid"],
-            "can_select": can_select,
+            "can_select": can_select if not select_err else None,
         }
+        if select_err:
+            table_info["permission_check_error"] = select_err
         tables_detail.append(table_info)
 
-        if can_select:
+        if can_select and not select_err:
             accessible_count += 1
-        else:
+        elif not select_err:
             issues.append(
                 f"No SELECT permission on {schema}.{table_name} - "
                 f"run: GRANT SELECT ON {schema}.{table_name} TO <user>;"
@@ -373,7 +406,7 @@ async def _diagnose_schema(pool, schema: str, issues: list) -> dict:
 
     # Get ALL tables AND views with potential geometry column info (for debugging)
     # This shows every table/view and what columns might be geometry-like
-    all_tables = await _run_query(
+    all_tables, all_tables_err = await _run_query(
         pool,
         """
         SELECT
@@ -403,6 +436,8 @@ async def _diagnose_schema(pool, schema: str, issues: list) -> dict:
         """,
         schema
     )
+    if all_tables_err:
+        schema_diag["all_tables_error"] = all_tables_err
 
     # Build detailed table list with geometry column match status
     expected_col = settings.ogc_geometry_column
@@ -494,25 +529,34 @@ async def verbose_diagnostics(
     # ==========================================================================
     # CONNECTION INFO (same as rmhgeoapi)
     # ==========================================================================
-    try:
-        result["connection"] = {
-            "current_user": await _run_query_single(pool, "SELECT current_user"),
-            "current_database": await _run_query_single(pool, "SELECT current_database()"),
-            "search_path": await _run_query_single(pool, "SHOW search_path"),
-            "server_version": await _run_query_single(pool, "SHOW server_version"),
-            "postgis_version": await _run_query_single(pool, "SELECT PostGIS_Version()"),
-        }
-    except Exception as e:
-        result["connection"] = {"error": str(e)}
+    current_user, u_err = await _run_query_single(pool, "SELECT current_user")
+    current_db, db_err = await _run_query_single(pool, "SELECT current_database()")
+    search_path, sp_err = await _run_query_single(pool, "SHOW search_path")
+    server_version, sv_err = await _run_query_single(pool, "SHOW server_version")
+    postgis_version, pv_err = await _run_query_single(pool, "SELECT PostGIS_Version()")
+
+    result["connection"] = {
+        "current_user": current_user if not u_err else {"error": u_err},
+        "current_database": current_db if not db_err else {"error": db_err},
+        "search_path": search_path if not sp_err else {"error": sp_err},
+        "server_version": server_version if not sv_err else {"error": sv_err},
+        "postgis_version": postgis_version if not pv_err else {"error": pv_err},
+    }
 
     # ==========================================================================
     # SCHEMA EXISTS CHECK (rmhgeoapi style - pg_namespace)
     # ==========================================================================
-    schema_exists = await _run_query_single(
+    schema_exists, exists_err = await _run_query_single(
         pool,
         "SELECT EXISTS(SELECT 1 FROM pg_namespace WHERE nspname = $1)",
         schema
     )
+    if exists_err:
+        result["schema_info"]["exists"] = {"error": exists_err}
+        result["status"] = "error"
+        result["error"] = f"Schema check failed: {exists_err}"
+        return result
+
     result["schema_info"]["exists"] = schema_exists
 
     if not schema_exists:
@@ -523,7 +567,7 @@ async def verbose_diagnostics(
     # ==========================================================================
     # ALL TABLES IN SCHEMA (rmhgeoapi: information_schema.tables)
     # ==========================================================================
-    all_tables = await _run_query(
+    all_tables, tables_err = await _run_query(
         pool,
         """
         SELECT table_name, table_type
@@ -534,6 +578,8 @@ async def verbose_diagnostics(
         """,
         schema
     )
+    if tables_err:
+        result["schema_info"]["tables_error"] = tables_err
     result["schema_info"]["tables"] = [t["table_name"] for t in all_tables]
     result["schema_info"]["table_count"] = len(all_tables)
 
@@ -541,7 +587,7 @@ async def verbose_diagnostics(
     # ROW COUNTS (rmhgeoapi: pg_stat_user_tables)
     # ==========================================================================
     if include_row_counts:
-        row_counts = await _run_query(
+        row_counts, rc_err = await _run_query(
             pool,
             """
             SELECT relname, n_live_tup, n_dead_tup, last_vacuum, last_autovacuum
@@ -551,20 +597,23 @@ async def verbose_diagnostics(
             """,
             schema
         )
-        result["schema_info"]["row_counts"] = {
-            r["relname"]: {
-                "live_rows": r["n_live_tup"],
-                "dead_rows": r["n_dead_tup"],
-                "last_vacuum": str(r["last_vacuum"]) if r["last_vacuum"] else None,
+        if rc_err:
+            result["schema_info"]["row_counts_error"] = rc_err
+        else:
+            result["schema_info"]["row_counts"] = {
+                r["relname"]: {
+                    "live_rows": r["n_live_tup"],
+                    "dead_rows": r["n_dead_tup"],
+                    "last_vacuum": str(r["last_vacuum"]) if r["last_vacuum"] else None,
+                }
+                for r in row_counts
             }
-            for r in row_counts
-        }
 
     # ==========================================================================
     # GEOMETRY_COLUMNS - THE KEY QUERY (rmhgeoapi style)
     # This is the exact query rmhgeoapi uses to discover tables
     # ==========================================================================
-    geometry_columns = await _run_query(
+    geometry_columns, gc_err = await _run_query(
         pool,
         """
         SELECT
@@ -579,6 +628,8 @@ async def verbose_diagnostics(
         """,
         schema
     )
+    if gc_err:
+        result["geometry_columns_error"] = gc_err
     result["geometry_columns_raw"] = geometry_columns
     result["geometry_columns_count"] = len(geometry_columns)
 
@@ -604,7 +655,7 @@ async def verbose_diagnostics(
             table_info["srid"] = geom_entry["srid"]
 
         # Get primary key
-        pk_info = await _run_query(
+        pk_info, pk_err = await _run_query(
             pool,
             """
             SELECT a.attname as column_name
@@ -615,12 +666,14 @@ async def verbose_diagnostics(
             """,
             f"{schema}.{table_name}"
         )
+        if pk_err:
+            table_info["primary_key_error"] = pk_err
         table_info["primary_key"] = [p["column_name"] for p in pk_info] if pk_info else None
         table_info["has_primary_key"] = len(pk_info) > 0
 
         # Get columns (if requested)
         if include_columns:
-            columns = await _run_query(
+            columns, col_err = await _run_query(
                 pool,
                 """
                 SELECT
@@ -635,6 +688,8 @@ async def verbose_diagnostics(
                 """,
                 schema, table_name
             )
+            if col_err:
+                table_info["columns_error"] = col_err
             table_info["columns"] = columns
 
             # Check for geometry-like columns
@@ -645,12 +700,14 @@ async def verbose_diagnostics(
             ]
 
         # Check SELECT permission
-        can_select = await _run_query_single(
+        can_select, sel_err = await _run_query_single(
             pool,
             "SELECT has_table_privilege(current_user, $1, 'SELECT')",
             f"{schema}.{table_name}"
         )
-        table_info["can_select"] = can_select
+        if sel_err:
+            table_info["can_select_error"] = sel_err
+        table_info["can_select"] = can_select if not sel_err else None
 
         result["tables"][table_name] = table_info
 
@@ -659,7 +716,7 @@ async def verbose_diagnostics(
     # ==========================================================================
 
     # Query 1: Direct geometry_columns (no schema filter)
-    all_geom = await _run_query(
+    all_geom, ag_err = await _run_query(
         pool,
         """
         SELECT f_table_schema, f_table_name, f_geometry_column, type, srid
@@ -668,10 +725,10 @@ async def verbose_diagnostics(
         LIMIT 50
         """
     )
-    result["comparison_queries"]["geometry_columns_all_schemas"] = all_geom
+    result["comparison_queries"]["geometry_columns_all_schemas"] = all_geom if not ag_err else {"error": ag_err}
 
     # Query 2: Check pg_type for geometry type
-    geom_type = await _run_query(
+    geom_type, gt_err = await _run_query(
         pool,
         """
         SELECT typname, typnamespace::regnamespace as schema
@@ -679,10 +736,10 @@ async def verbose_diagnostics(
         WHERE typname IN ('geometry', 'geography')
         """
     )
-    result["comparison_queries"]["geometry_types_registered"] = geom_type
+    result["comparison_queries"]["geometry_types_registered"] = geom_type if not gt_err else {"error": gt_err}
 
     # Query 3: Check if geometry_columns is a view or table
-    geom_view_check = await _run_query(
+    geom_view_check, gv_err = await _run_query(
         pool,
         """
         SELECT table_schema, table_name, table_type
@@ -690,10 +747,10 @@ async def verbose_diagnostics(
         WHERE table_name = 'geometry_columns'
         """
     )
-    result["comparison_queries"]["geometry_columns_object_type"] = geom_view_check
+    result["comparison_queries"]["geometry_columns_object_type"] = geom_view_check if not gv_err else {"error": gv_err}
 
     # Query 4: Raw pg_attribute check for geometry columns
-    raw_geom_attrs = await _run_query(
+    raw_geom_attrs, rga_err = await _run_query(
         pool,
         """
         SELECT
@@ -715,10 +772,10 @@ async def verbose_diagnostics(
         """,
         schema
     )
-    result["comparison_queries"]["pg_attribute_geometry_columns"] = raw_geom_attrs
+    result["comparison_queries"]["pg_attribute_geometry_columns"] = raw_geom_attrs if not rga_err else {"error": rga_err}
 
     # Query 5: Check constraints on geometry columns
-    geom_constraints = await _run_query(
+    geom_constraints, gc_err2 = await _run_query(
         pool,
         """
         SELECT
@@ -736,7 +793,7 @@ async def verbose_diagnostics(
         """,
         schema
     )
-    result["comparison_queries"]["table_constraints"] = geom_constraints
+    result["comparison_queries"]["table_constraints"] = geom_constraints if not gc_err2 else {"error": gc_err2}
 
     # ==========================================================================
     # SUMMARY
@@ -773,49 +830,52 @@ async def verbose_diagnostics(
     # ==========================================================================
     # PERMISSION DIAGNOSTICS - Check what user can actually see
     # ==========================================================================
-    try:
-        # Tables visible via information_schema (requires SELECT privilege)
-        visible_tables = await _run_query(
-            pool,
-            """
-            SELECT table_name
-            FROM information_schema.tables
-            WHERE table_schema = $1 AND table_type = 'BASE TABLE'
-            ORDER BY table_name
-            """,
-            schema
-        )
+    # Tables visible via information_schema (requires SELECT privilege)
+    visible_tables, vt_err = await _run_query(
+        pool,
+        """
+        SELECT table_name
+        FROM information_schema.tables
+        WHERE table_schema = $1 AND table_type = 'BASE TABLE'
+        ORDER BY table_name
+        """,
+        schema
+    )
 
-        # All tables in pg_class (system catalog, no privilege filter)
-        all_pg_tables = await _run_query(
-            pool,
-            """
-            SELECT c.relname as table_name
-            FROM pg_class c
-            JOIN pg_namespace n ON c.relnamespace = n.oid
-            WHERE n.nspname = $1 AND c.relkind = 'r'
-            ORDER BY c.relname
-            """,
-            schema
-        )
+    # All tables in pg_class (system catalog, no privilege filter)
+    all_pg_tables, apt_err = await _run_query(
+        pool,
+        """
+        SELECT c.relname as table_name
+        FROM pg_class c
+        JOIN pg_namespace n ON c.relnamespace = n.oid
+        WHERE n.nspname = $1 AND c.relkind = 'r'
+        ORDER BY c.relname
+        """,
+        schema
+    )
 
+    if vt_err or apt_err:
+        result["permissions"] = {"error": vt_err or apt_err}
+    else:
         # Check SELECT privilege on each table
         permission_check = []
         for t in all_pg_tables:
             table_name = t["table_name"]
-            has_select = await _run_query_single(
+            has_select, hs_err = await _run_query_single(
                 pool,
                 "SELECT has_table_privilege(current_user, $1, 'SELECT')",
                 f"{schema}.{table_name}"
             )
             permission_check.append({
                 "table": table_name,
-                "has_select": has_select,
+                "has_select": has_select if not hs_err else None,
+                "has_select_error": hs_err if hs_err else None,
                 "visible_in_info_schema": table_name in [v["table_name"] for v in visible_tables]
             })
 
-        # Get role grants for the schema
-        schema_grants = await _run_query(
+        # Get role grants for the schema (not critical, ignore errors)
+        schema_grants, sg_err = await _run_query(
             pool,
             """
             SELECT grantee, privilege_type
@@ -827,59 +887,61 @@ async def verbose_diagnostics(
             , schema
         )
 
+        perm_user, pu_err = await _run_query_single(pool, "SELECT current_user")
+
         result["permissions"] = {
-            "current_user": await _run_query_single(pool, "SELECT current_user"),
+            "current_user": perm_user if not pu_err else {"error": pu_err},
             "tables_in_pg_class": len(all_pg_tables),
             "tables_visible_in_info_schema": len(visible_tables),
             "tables_with_select": sum(1 for p in permission_check if p["has_select"]),
             "permission_details": permission_check,
             "missing_select": [
                 p["table"] for p in permission_check
-                if not p["has_select"]
+                if not p["has_select"] and not p.get("has_select_error")
             ],
         }
 
         # Add summary of the permission issue
         if result["permissions"]["tables_in_pg_class"] != result["permissions"]["tables_visible_in_info_schema"]:
             result["permissions"]["issue"] = (
-                f"User '{result['permissions']['current_user']}' can see "
+                f"User '{perm_user}' can see "
                 f"{result['permissions']['tables_in_pg_class']} tables in pg_class but only "
                 f"{result['permissions']['tables_visible_in_info_schema']} in information_schema. "
                 f"Missing SELECT on: {result['permissions']['missing_select']}"
             )
 
-    except Exception as e:
-        result["permissions"] = {"error": str(e)}
-
     # ==========================================================================
     # GEOMETRY REGISTRATION DIAGNOSTICS
     # ==========================================================================
-    try:
-        # Compare pg_attribute (actual columns) vs geometry_columns (PostGIS registry)
-        pg_attr_geom = await _run_query(
-            pool,
-            """
-            SELECT c.relname as table_name
-            FROM pg_class c
-            JOIN pg_namespace ns ON c.relnamespace = ns.oid
-            JOIN pg_attribute a ON a.attrelid = c.oid
-            JOIN pg_type t ON a.atttypid = t.oid
-            WHERE ns.nspname = $1
-            AND c.relkind = 'r'
-            AND a.attnum > 0
-            AND NOT a.attisdropped
-            AND t.typname IN ('geometry', 'geography')
-            ORDER BY c.relname
-            """,
-            schema
-        )
-        tables_with_geom_attr = [t["table_name"] for t in pg_attr_geom]
+    # Compare pg_attribute (actual columns) vs geometry_columns (PostGIS registry)
+    pg_attr_geom, pag_err = await _run_query(
+        pool,
+        """
+        SELECT c.relname as table_name
+        FROM pg_class c
+        JOIN pg_namespace ns ON c.relnamespace = ns.oid
+        JOIN pg_attribute a ON a.attrelid = c.oid
+        JOIN pg_type t ON a.atttypid = t.oid
+        WHERE ns.nspname = $1
+        AND c.relkind = 'r'
+        AND a.attnum > 0
+        AND NOT a.attisdropped
+        AND t.typname IN ('geometry', 'geography')
+        ORDER BY c.relname
+        """,
+        schema
+    )
 
-        geom_cols_registered = await _run_query(
-            pool,
-            "SELECT f_table_name FROM geometry_columns WHERE f_table_schema = $1",
-            schema
-        )
+    geom_cols_registered, gcr_err = await _run_query(
+        pool,
+        "SELECT f_table_name FROM geometry_columns WHERE f_table_schema = $1",
+        schema
+    )
+
+    if pag_err or gcr_err:
+        result["geometry_registration"] = {"error": pag_err or gcr_err}
+    else:
+        tables_with_geom_attr = [t["table_name"] for t in pg_attr_geom]
         tables_registered = [t["f_table_name"] for t in geom_cols_registered]
 
         # Find tables with geometry column but NOT registered
@@ -898,33 +960,32 @@ async def verbose_diagnostics(
                 for t in not_registered
             ]
 
-    except Exception as e:
-        result["geometry_registration"] = {"error": str(e)}
-
     # ==========================================================================
     # SELECT ATTEMPT DIAGNOSTICS - Actually try to SELECT from each table
     # This captures real permission errors for service requests
     # ==========================================================================
-    try:
-        # Get all tables from pg_class (includes ones we can't SELECT from)
-        all_pg_tables = await _run_query(
-            pool,
-            """
-            SELECT c.relname as table_name
-            FROM pg_class c
-            JOIN pg_namespace n ON c.relnamespace = n.oid
-            WHERE n.nspname = $1 AND c.relkind = 'r'
-            ORDER BY c.relname
-            """,
-            schema
-        )
+    # Get all tables from pg_class (includes ones we can't SELECT from)
+    select_pg_tables, spt_err = await _run_query(
+        pool,
+        """
+        SELECT c.relname as table_name
+        FROM pg_class c
+        JOIN pg_namespace n ON c.relnamespace = n.oid
+        WHERE n.nspname = $1 AND c.relkind = 'r'
+        ORDER BY c.relname
+        """,
+        schema
+    )
 
+    if spt_err:
+        result["select_attempts"] = {"error": spt_err}
+    else:
         select_attempts = []
-        for t in all_pg_tables:
-            table_name = t["table_name"]
-            full_table = f"{schema}.{table_name}"
+        for t in select_pg_tables:
+            tbl_name = t["table_name"]
+            full_table = f"{schema}.{tbl_name}"
             attempt = {
-                "table": table_name,
+                "table": tbl_name,
                 "full_name": full_table,
                 "can_select": False,
                 "error": None,
@@ -935,7 +996,7 @@ async def verbose_diagnostics(
                 # Try to actually SELECT from the table
                 async with pool.acquire() as conn:
                     # Use LIMIT 1 to minimize data transfer
-                    row = await conn.fetchrow(f'SELECT 1 FROM "{schema}"."{table_name}" LIMIT 1')
+                    row = await conn.fetchrow(f'SELECT 1 FROM "{schema}"."{tbl_name}" LIMIT 1')
                     attempt["can_select"] = True
                     attempt["row_sample"] = "OK - SELECT succeeded"
             except Exception as select_error:
@@ -968,34 +1029,32 @@ async def verbose_diagnostics(
 
         # Generate fix SQL for permission issues
         if permission_denied:
-            current_user = await _run_query_single(pool, "SELECT current_user")
-            fix_lines = [
-                f"-- Fix SELECT permissions for {current_user} in {schema} schema",
-                f"-- Run this SQL as database administrator",
-                f"-- Service Request Evidence: {len(permission_denied)} tables returned 'permission denied'",
-                "",
-            ]
-            for a in permission_denied:
-                fix_lines.append(f"GRANT SELECT ON {a['full_name']} TO {current_user};")
+            fix_user, fu_err = await _run_query_single(pool, "SELECT current_user")
+            if not fu_err:
+                fix_lines = [
+                    f"-- Fix SELECT permissions for {fix_user} in {schema} schema",
+                    f"-- Run this SQL as database administrator",
+                    f"-- Service Request Evidence: {len(permission_denied)} tables returned 'permission denied'",
+                    "",
+                ]
+                for a in permission_denied:
+                    fix_lines.append(f"GRANT SELECT ON {a['full_name']} TO {fix_user};")
 
-            fix_lines.extend([
-                "",
-                "-- To automatically grant SELECT on future tables:",
-                f"ALTER DEFAULT PRIVILEGES IN SCHEMA {schema} GRANT SELECT ON TABLES TO {current_user};",
-            ])
+                fix_lines.extend([
+                    "",
+                    "-- To automatically grant SELECT on future tables:",
+                    f"ALTER DEFAULT PRIVILEGES IN SCHEMA {schema} GRANT SELECT ON TABLES TO {fix_user};",
+                ])
 
-            result["select_attempts"]["fix_sql"] = "\n".join(fix_lines)
+                result["select_attempts"]["fix_sql"] = "\n".join(fix_lines)
 
-            # Add a clear summary for service request
-            result["select_attempts"]["service_request_summary"] = {
-                "issue": f"User '{current_user}' lacks SELECT permission on {len(permission_denied)} tables in schema '{schema}'",
-                "affected_tables": [a["table"] for a in permission_denied],
-                "sample_error": permission_denied[0]["error"] if permission_denied else None,
-                "resolution": f"Grant SELECT on listed tables to {current_user}",
-            }
-
-    except Exception as e:
-        result["select_attempts"] = {"error": str(e)}
+                # Add a clear summary for service request
+                result["select_attempts"]["service_request_summary"] = {
+                    "issue": f"User '{fix_user}' lacks SELECT permission on {len(permission_denied)} tables in schema '{schema}'",
+                    "affected_tables": [a["table"] for a in permission_denied],
+                    "sample_error": permission_denied[0]["error"] if permission_denied else None,
+                    "resolution": f"Grant SELECT on listed tables to {fix_user}",
+                }
 
     return result
 
@@ -1030,7 +1089,7 @@ async def table_diagnostics(
     }
 
     # Check if table exists
-    exists = await _run_query_single(
+    exists, exists_err = await _run_query_single(
         pool,
         """
         SELECT EXISTS(
@@ -1040,6 +1099,11 @@ async def table_diagnostics(
         """,
         schema, table_name
     )
+    if exists_err:
+        result["status"] = "error"
+        result["error"] = f"Table check failed: {exists_err}"
+        return result
+
     result["exists"] = exists
 
     if not exists:
@@ -1048,7 +1112,7 @@ async def table_diagnostics(
         return result
 
     # Get all columns
-    columns = await _run_query(
+    columns, col_err = await _run_query(
         pool,
         """
         SELECT
@@ -1066,6 +1130,8 @@ async def table_diagnostics(
         """,
         schema, table_name
     )
+    if col_err:
+        result["columns_error"] = col_err
     result["columns"] = columns
     result["column_count"] = len(columns)
 
@@ -1074,7 +1140,7 @@ async def table_diagnostics(
     result["geometry_columns"] = geom_cols
 
     # Check geometry_columns view
-    in_geom_view = await _run_query(
+    in_geom_view, igv_err = await _run_query(
         pool,
         """
         SELECT f_geometry_column, type, srid, coord_dimension
@@ -1083,11 +1149,13 @@ async def table_diagnostics(
         """,
         schema, table_name
     )
+    if igv_err:
+        result["geometry_columns_view_error"] = igv_err
     result["in_geometry_columns_view"] = in_geom_view
     result["registered_with_postgis"] = len(in_geom_view) > 0
 
     # Get primary key
-    pk = await _run_query(
+    pk, pk_err = await _run_query(
         pool,
         """
         SELECT a.attname as column_name
@@ -1097,10 +1165,12 @@ async def table_diagnostics(
         """,
         full_name
     )
+    if pk_err:
+        result["primary_key_error"] = pk_err
     result["primary_key"] = [p["column_name"] for p in pk] if pk else None
 
     # Get all indexes
-    indexes = await _run_query(
+    indexes, idx_err = await _run_query(
         pool,
         """
         SELECT
@@ -1114,11 +1184,13 @@ async def table_diagnostics(
         """,
         full_name
     )
+    if idx_err:
+        result["indexes_error"] = idx_err
     result["indexes"] = indexes
     result["has_spatial_index"] = any("gist" in str(idx.get("index_type", "")).lower() for idx in indexes)
 
     # Get constraints
-    constraints = await _run_query(
+    constraints, con_err = await _run_query(
         pool,
         """
         SELECT
@@ -1130,43 +1202,51 @@ async def table_diagnostics(
         """,
         full_name
     )
+    if con_err:
+        result["constraints_error"] = con_err
     result["constraints"] = constraints
 
     # Check permissions
+    select_perm, sp_err = await _run_query_single(pool, "SELECT has_table_privilege(current_user, $1, 'SELECT')", full_name)
+    insert_perm, ip_err = await _run_query_single(pool, "SELECT has_table_privilege(current_user, $1, 'INSERT')", full_name)
+    update_perm, up_err = await _run_query_single(pool, "SELECT has_table_privilege(current_user, $1, 'UPDATE')", full_name)
+    delete_perm, dp_err = await _run_query_single(pool, "SELECT has_table_privilege(current_user, $1, 'DELETE')", full_name)
+
     result["permissions"] = {
-        "select": await _run_query_single(pool, "SELECT has_table_privilege(current_user, $1, 'SELECT')", full_name),
-        "insert": await _run_query_single(pool, "SELECT has_table_privilege(current_user, $1, 'INSERT')", full_name),
-        "update": await _run_query_single(pool, "SELECT has_table_privilege(current_user, $1, 'UPDATE')", full_name),
-        "delete": await _run_query_single(pool, "SELECT has_table_privilege(current_user, $1, 'DELETE')", full_name),
+        "select": select_perm if not sp_err else {"error": sp_err},
+        "insert": insert_perm if not ip_err else {"error": ip_err},
+        "update": update_perm if not up_err else {"error": up_err},
+        "delete": delete_perm if not dp_err else {"error": dp_err},
     }
 
     # Row count
-    row_count = await _run_query_single(
+    row_count, rc_err = await _run_query_single(
         pool,
         "SELECT n_live_tup FROM pg_stat_user_tables WHERE schemaname = $1 AND relname = $2",
         schema, table_name
     )
+    if rc_err:
+        result["row_count_error"] = rc_err
     result["approximate_row_count"] = row_count
 
     # Sample data (first row)
-    try:
-        sample = await _run_query(
-            pool,
-            f'SELECT * FROM "{schema}"."{table_name}" LIMIT 1'
-        )
-        if sample:
-            # Convert geometry to text for display
-            sample_row = {}
-            for key, value in sample[0].items():
-                if hasattr(value, '__geo_interface__'):
-                    sample_row[key] = "<geometry>"
-                elif isinstance(value, bytes):
-                    sample_row[key] = f"<binary {len(value)} bytes>"
-                else:
-                    sample_row[key] = str(value) if value is not None else None
-            result["sample_row"] = sample_row
-    except Exception as e:
-        result["sample_row"] = {"error": str(e)}
+    sample, sample_err = await _run_query(
+        pool,
+        f'SELECT * FROM "{schema}"."{table_name}" LIMIT 1'
+    )
+    if sample_err:
+        result["sample_row"] = {"error": sample_err}
+    elif sample:
+        # Convert geometry to text for display
+        sample_row = {}
+        for key, value in sample[0].items():
+            if hasattr(value, '__geo_interface__'):
+                sample_row[key] = "<geometry>"
+            elif isinstance(value, bytes):
+                sample_row[key] = f"<binary {len(value)} bytes>"
+            else:
+                sample_row[key] = str(value) if value is not None else None
+        result["sample_row"] = sample_row
 
     # Diagnosis
     issues = []
@@ -1178,7 +1258,7 @@ async def table_diagnostics(
         issues.append("No primary key - TiPG may require a primary key")
     if not result["has_spatial_index"]:
         issues.append("No spatial (GIST) index - queries may be slow")
-    if not result["permissions"]["select"]:
+    if not result["permissions"].get("select") or isinstance(result["permissions"]["select"], dict):
         issues.append("Current user cannot SELECT from this table")
 
     result["issues"] = issues if issues else None
