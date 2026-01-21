@@ -33,7 +33,7 @@ async def admin_console(request: Request):
     Auto-refreshes every 30 seconds via HTMX.
     """
     response = Response()
-    health_data = await get_health_data(response)
+    health_data = await get_health_data(request, response)
 
     context = get_template_context(request, health=health_data, nav_active="/")
     return templates.TemplateResponse("pages/admin/index.html", context)
@@ -48,7 +48,7 @@ async def health_fragment(request: Request):
     Called every 30 seconds when auto-refresh is enabled.
     """
     response = Response()
-    health_data = await get_health_data(response)
+    health_data = await get_health_data(request, response)
 
     context = get_template_context(request, health=health_data)
     return templates.TemplateResponse("pages/admin/_health_fragment.html", context)
