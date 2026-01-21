@@ -2,76 +2,105 @@
 Database connection helpers and health check utilities.
 
 Provides database ping functionality for health probes and
-manages the app state reference for database access.
+manages database pool access via explicit dependency injection.
 
 All ping functions have async versions that use asyncio.to_thread()
 to avoid blocking the event loop during database operations.
+
+Note: No module-level mutable state - all state accessed via Request or app parameter.
 """
 
 import asyncio
 import time
 import logging
-from typing import Tuple, Optional
+from typing import Tuple, Optional, TYPE_CHECKING
 
 from psycopg_pool import ConnectionPool
 from starlette.datastructures import State
 
 from geotiler.auth.cache import db_error_cache
 
+if TYPE_CHECKING:
+    from fastapi import FastAPI
+    from starlette.requests import Request
+
 logger = logging.getLogger(__name__)
 
-# Reference to FastAPI app.state, set during startup
-_app_state: Optional[State] = None
+
+# =============================================================================
+# State Access Functions (no globals - use Request or app parameter)
+# =============================================================================
 
 
-def set_app_state(state: State) -> None:
+def get_app_state_from_request(request: "Request") -> State:
     """
-    Set the app state reference for database access.
-
-    Called during application startup to provide access to app.state.dbpool.
+    Get app state from request (for FastAPI dependency injection).
 
     Args:
-        state: FastAPI app.state object.
-    """
-    global _app_state
-    _app_state = state
-    logger.debug("Database service app state configured")
-
-
-def get_app_state() -> Optional[State]:
-    """
-    Get the FastAPI app state.
+        request: FastAPI/Starlette Request object.
 
     Returns:
-        FastAPI app.state if available, None otherwise.
+        FastAPI app.state object.
     """
-    return _app_state
+    return request.app.state
 
 
-def get_db_pool() -> Optional[ConnectionPool]:
+def get_app_state_from_app(app: "FastAPI") -> State:
     """
-    Get the database connection pool.
+    Get app state from app instance (for non-request contexts).
+
+    Args:
+        app: FastAPI application instance.
+
+    Returns:
+        FastAPI app.state object.
+    """
+    return app.state
+
+
+def get_db_pool_from_request(request: "Request") -> Optional[ConnectionPool]:
+    """
+    Get database pool from request (for FastAPI dependency injection).
+
+    Args:
+        request: FastAPI/Starlette Request object.
 
     Returns:
         Database pool if available, None otherwise.
     """
-    if not _app_state:
-        return None
-    return getattr(_app_state, "dbpool", None)
+    return getattr(request.app.state, "dbpool", None)
 
 
-def ping_database() -> Tuple[bool, Optional[str]]:
+def get_db_pool_from_app(app: "FastAPI") -> Optional[ConnectionPool]:
     """
-    Ping database and return status.
+    Get database pool from app instance (for non-request contexts).
 
-    Performs a simple SELECT 1 query to verify database connectivity.
-    Updates error cache for health reporting.
+    Args:
+        app: FastAPI application instance.
+
+    Returns:
+        Database pool if available, None otherwise.
+    """
+    return getattr(app.state, "dbpool", None)
+
+
+# =============================================================================
+# Core Ping Implementation (takes pool directly - no global state)
+# =============================================================================
+
+
+def _ping_database_impl(pool: Optional[ConnectionPool]) -> Tuple[bool, Optional[str]]:
+    """
+    Ping database using provided pool.
+
+    Internal implementation - use ping_database_async() for request handlers.
+
+    Args:
+        pool: Database connection pool.
 
     Returns:
         Tuple of (success: bool, error_message: Optional[str])
     """
-    pool = get_db_pool()
-
     if not pool:
         return False, "pool not initialized"
 
@@ -86,17 +115,20 @@ def ping_database() -> Tuple[bool, Optional[str]]:
         return False, type(e).__name__
 
 
-def ping_database_with_timing() -> Tuple[bool, Optional[str], Optional[float]]:
+def _ping_database_with_timing_impl(
+    pool: Optional[ConnectionPool],
+) -> Tuple[bool, Optional[str], Optional[float]]:
     """
-    Ping database and return status with timing.
+    Ping database with timing using provided pool.
 
-    Like ping_database() but also returns the ping duration in milliseconds.
+    Internal implementation - use ping_database_with_timing_async() for request handlers.
+
+    Args:
+        pool: Database connection pool.
 
     Returns:
         Tuple of (success: bool, error_message: Optional[str], ping_time_ms: Optional[float])
     """
-    pool = get_db_pool()
-
     if not pool:
         return False, "pool not initialized", None
 
@@ -114,58 +146,54 @@ def ping_database_with_timing() -> Tuple[bool, Optional[str], Optional[float]]:
         return False, type(e).__name__, ping_ms
 
 
-def is_database_ready() -> bool:
-    """
-    Check if database is ready for queries.
-
-    Simple boolean check for readiness probes.
-
-    Returns:
-        True if database is accessible, False otherwise.
-    """
-    success, _ = ping_database()
-    return success
-
-
 # =============================================================================
-# Async Versions (use asyncio.to_thread to avoid blocking event loop)
+# Async Versions for Request Handlers (use asyncio.to_thread)
 # =============================================================================
 
 
-async def ping_database_async() -> Tuple[bool, Optional[str]]:
+async def ping_database_async(request: "Request") -> Tuple[bool, Optional[str]]:
     """
-    Ping database and return status (async version).
+    Ping database and return status (async version for request handlers).
 
-    Runs the blocking database ping in a thread pool to avoid
-    blocking the event loop during health checks.
+    Extracts pool from request and runs the blocking ping in a thread pool.
+
+    Args:
+        request: FastAPI/Starlette Request object.
 
     Returns:
         Tuple of (success: bool, error_message: Optional[str])
     """
-    return await asyncio.to_thread(ping_database)
+    pool = get_db_pool_from_request(request)
+    return await asyncio.to_thread(_ping_database_impl, pool)
 
 
-async def ping_database_with_timing_async() -> Tuple[bool, Optional[str], Optional[float]]:
+async def ping_database_with_timing_async(
+    request: "Request",
+) -> Tuple[bool, Optional[str], Optional[float]]:
     """
-    Ping database and return status with timing (async version).
+    Ping database with timing (async version for request handlers).
 
-    Runs the blocking database ping in a thread pool to avoid
-    blocking the event loop during health checks.
+    Extracts pool from request and runs the blocking ping in a thread pool.
+
+    Args:
+        request: FastAPI/Starlette Request object.
 
     Returns:
         Tuple of (success: bool, error_message: Optional[str], ping_time_ms: Optional[float])
     """
-    return await asyncio.to_thread(ping_database_with_timing)
+    pool = get_db_pool_from_request(request)
+    return await asyncio.to_thread(_ping_database_with_timing_impl, pool)
 
 
-async def is_database_ready_async() -> bool:
+async def is_database_ready_async(request: "Request") -> bool:
     """
     Check if database is ready for queries (async version).
 
-    Runs the blocking check in a thread pool.
+    Args:
+        request: FastAPI/Starlette Request object.
 
     Returns:
         True if database is accessible, False otherwise.
     """
-    success, _ = await ping_database_async()
+    success, _ = await ping_database_async(request)
     return success

@@ -93,13 +93,20 @@ class TiPGStartupState:
         }
 
 
-# Module-level singleton
-tipg_startup_state = TiPGStartupState()
+# Note: TiPG state is stored in app.state.tipg_state (no module-level globals)
 
 
-def get_tipg_startup_state() -> TiPGStartupState:
-    """Get the TiPG startup state for diagnostics."""
-    return tipg_startup_state
+def get_tipg_startup_state_from_app(app: "FastAPI") -> Optional[TiPGStartupState]:
+    """
+    Get TiPG startup state from app (for non-request contexts).
+
+    Args:
+        app: FastAPI application instance.
+
+    Returns:
+        TiPGStartupState if initialized, None otherwise.
+    """
+    return getattr(app.state, "tipg_state", None)
 
 
 def get_tipg_postgres_settings(schemas: list[str] | None = None) -> TiPGPostgresSettings:
@@ -159,6 +166,9 @@ async def initialize_tipg(app: "FastAPI") -> None:
     """
     logger.info(f"Initializing TiPG: schemas={settings.tipg_schema_list} prefix={settings.tipg_router_prefix}")
 
+    # Initialize TiPG state tracking (stored in app.state, not module global)
+    app.state.tipg_state = TiPGStartupState()
+
     try:
         # Build schemas list for search_path
         schemas = settings.tipg_schema_list.copy()
@@ -206,7 +216,7 @@ async def initialize_tipg(app: "FastAPI") -> None:
         search_path = ",".join(search_path_schemas)
 
         # Record successful startup
-        tipg_startup_state.record_success(
+        app.state.tipg_state.record_success(
             init_type="startup",
             schemas=schemas,
             collection_count=collection_count,
@@ -218,7 +228,7 @@ async def initialize_tipg(app: "FastAPI") -> None:
 
     except Exception as e:
         # Record failed startup
-        tipg_startup_state.record_failure(init_type="startup", error=str(e))
+        app.state.tipg_state.record_failure(init_type="startup", error=str(e))
 
         logger.error("=" * 60)
         logger.error("TIPG INITIALIZATION FAILED")
@@ -302,7 +312,7 @@ async def refresh_tipg_pool(app: "FastAPI") -> None:
             search_path_schemas.append("public")
         search_path = ",".join(search_path_schemas)
 
-        tipg_startup_state.record_success(
+        app.state.tipg_state.record_success(
             init_type="refresh",
             schemas=schemas,
             collection_count=collection_count,
@@ -313,7 +323,8 @@ async def refresh_tipg_pool(app: "FastAPI") -> None:
         logger.info(f"TiPG pool refresh complete - {collection_count} collections")
 
     except Exception as e:
-        tipg_startup_state.record_failure(init_type="refresh", error=str(e))
+        if hasattr(app.state, "tipg_state"):
+            app.state.tipg_state.record_failure(init_type="refresh", error=str(e))
         logger.error(f"TiPG pool refresh failed: {e}")
 
 

@@ -21,7 +21,7 @@ import os
 import logging
 from typing import Optional, Tuple
 
-from fastapi import APIRouter, Response
+from fastapi import APIRouter, Request, Response
 
 from geotiler import __version__
 from geotiler.config import settings, READYZ_MIN_TTL_SECS
@@ -34,8 +34,8 @@ from geotiler.auth.cache import (
 from geotiler.services.database import (
     ping_database_async,
     ping_database_with_timing_async,
-    get_db_pool,
-    get_app_state,
+    get_db_pool_from_request,
+    get_app_state_from_request,
 )
 
 logger = logging.getLogger(__name__)
@@ -61,7 +61,7 @@ async def liveness():
 
 
 @router.get("/readyz")
-async def readiness(response: Response):
+async def readiness(request: Request, response: Response):
     """
     Kubernetes-style readiness probe.
 
@@ -81,7 +81,7 @@ async def readiness(response: Response):
     issues = []
 
     # Check 1: Database connection (async to avoid blocking event loop)
-    db_ok, db_error = await ping_database_async()
+    db_ok, db_error = await ping_database_async(request)
     if not db_ok:
         ready = False
         issues.append(f"database: {db_error}")
@@ -109,7 +109,7 @@ async def readiness(response: Response):
 
 
 @router.get("/health")
-async def health(response: Response):
+async def health(request: Request, response: Response):
     """
     Full health check with diagnostic details for monitoring and debugging.
 
@@ -135,8 +135,8 @@ async def health(response: Response):
     # =========================================================================
 
     # Database connection (async to avoid blocking event loop)
-    db_ok, db_error, ping_ms = await ping_database_with_timing_async()
-    pool_exists = get_db_pool() is not None
+    db_ok, db_error, ping_ms = await ping_database_with_timing_async(request)
+    pool_exists = get_db_pool_from_request(request) is not None
 
     dependencies["database"] = {
         "status": "ok" if db_ok else "fail",
@@ -259,7 +259,7 @@ async def health(response: Response):
     # TiPG (OGC Features + Vector Tiles)
     tipg_ok = False
     if settings.enable_tipg:
-        app_state = get_app_state()
+        app_state = get_app_state_from_request(request)
         tipg_pool = getattr(app_state, "pool", None) if app_state else None
         tipg_catalog = getattr(app_state, "collection_catalog", None) if app_state else None
 

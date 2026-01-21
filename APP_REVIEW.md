@@ -17,7 +17,7 @@
 - **Good Documentation**: Detailed deployment guides, API reference, implementation docs
 
 ### Areas for Improvement
-- **12 issues identified, 9 resolved, 1 not applicable** (2 remaining: 0 High, 1 Medium, 1 Low severity)
+- **12 issues identified, 10 resolved, 1 not applicable** (1 remaining: 0 High, 0 Medium, 1 Low severity)
 - **UI technical debt**: ✅ Resolved via Jinja2 migration (CSS consolidated, URLs configurable)
 - **Async patterns**: ✅ Fixed - Token acquisition now uses `asyncio.to_thread()`
 - **Error handling**: ✅ Fixed - Diagnostics now surface query errors instead of swallowing
@@ -68,23 +68,34 @@ The architecture is solid overall, with proper lifespan management, health endpo
 
 ---
 
-### 2. Global Mutable State Singletons
+### 2. ~~Global Mutable State Singletons~~ ✅ RESOLVED
 
-**Severity:** Medium
-**Locations:**
-- `geotiler/services/background.py:20` - `_app: "FastAPI" = None`
-- `geotiler/services/database.py:17` - `_app_state: Optional[Any] = None`
-- `geotiler/routers/vector.py:97` - `tipg_startup_state = TiPGStartupState()`
+**Status:** Fixed on 2026-01-21
 
-**Explanation:**
-Multiple modules use module-level global variables that are mutated at runtime. This pattern creates several problems:
+**Resolution:** Refactored all module-level mutable globals to use explicit dependency injection:
 
-1. **Testing difficulty** - Unit tests can't run in isolation because global state persists between tests
-2. **Hidden dependencies** - Functions depend on global state being set correctly by other code
-3. **Race conditions** - In multi-worker deployments, each worker has its own copy, but within a worker, concurrent requests could see inconsistent state
-4. **Initialization order** - Code must be called in a specific order or it fails silently
+1. **`background.py`**: Removed `_app` global, `token_refresh_background_task()` now receives `app` as explicit parameter
+2. **`database.py`**: Removed `_app_state` global, converted to `get_app_state_from_request(request)` and `get_db_pool_from_request(request)` functions
+3. **`vector.py`**: Moved `tipg_startup_state` to `app.state.tipg_state`, created `get_tipg_startup_state_from_app(app)` accessor
 
-A better approach would be dependency injection via FastAPI's dependency system or storing state exclusively in `app.state`.
+**Pattern Used:**
+```python
+# For request handlers - use Request object
+def get_db_pool_from_request(request: Request) -> Optional[ConnectionPool]:
+    return getattr(request.app.state, "dbpool", None)
+
+# For non-request contexts - pass app explicitly
+def get_db_pool_from_app(app: FastAPI) -> Optional[ConnectionPool]:
+    return getattr(app.state, "dbpool", None)
+```
+
+**Files Modified:**
+- `geotiler/services/background.py` - Removed `_app` global, pass app to background task
+- `geotiler/services/database.py` - Removed `_app_state` global, added `*_from_request()` and `*_from_app()` functions
+- `geotiler/routers/vector.py` - Store TiPG state in `app.state.tipg_state`
+- `geotiler/app.py` - Removed `set_app_state()` call
+- `geotiler/routers/health.py` - Updated to use new dependency functions
+- `geotiler/routers/diagnostics.py` - Updated to use new dependency functions
 
 ---
 
@@ -314,7 +325,7 @@ The codebase demonstrates several good practices worth preserving:
 | # | Issue | Severity | Effort to Fix | Impact |
 |---|-------|----------|---------------|--------|
 | 1 | ~~Sync blocking in async~~ | ~~**High**~~ | ✅ Fixed | ~~Event loop blocking~~ |
-| 2 | Global mutable state | Medium | High | Testing, race conditions |
+| 2 | ~~Global mutable state~~ | ~~Medium~~ | ✅ Fixed | ~~Testing, race conditions~~ |
 | 3 | ~~Environment mutation~~ | ~~Medium~~ | ⊘ N/A | ~~Race conditions~~ |
 | 4 | ~~Threading lock in async~~ | ~~Medium~~ | ✅ Fixed | ~~Potential deadlocks~~ |
 | 5 | ~~CORS misconfiguration~~ | ~~Medium~~ | ✅ Fixed | ~~Security~~ |
@@ -337,7 +348,7 @@ Based on severity and effort, suggested order of fixes:
 3. ~~**Error swallowing** (#6)~~ ✅ Fixed - Returns `(result, error)` tuples, surfaces errors in API
 4. ~~**Threading lock** (#4)~~ ✅ Fixed - Added `asyncio.Lock` for async callers
 5. ~~**Environment mutation** (#3)~~ ⊘ N/A - Single-tenant, no race condition possible
-6. **Global mutable state** (#2) - Recommended for handoff readiness
+6. ~~**Global mutable state** (#2)~~ ✅ Fixed - Explicit dependency injection
 7. ~~**CSS duplication** (#8)~~ ✅ Fixed - Jinja2 templates with shared CSS
 8. ~~**Hardcoded URLs** (#11)~~ ✅ Fixed - Configurable via environment
 
@@ -1665,25 +1676,23 @@ rmhtitiler (v0.7.14.0)
 
 ## Next Steps / Recommended Plan
 
-### Completed (6 of 12)
+### Completed (10 of 12)
 1. ~~**Complete Jinja2 migration**~~ ✅ DONE - All pages migrated
 2. ~~**Fix sync blocking (#1)**~~ ✅ DONE - Uses `asyncio.to_thread()` for Azure SDK calls
 3. ~~**Fix error swallowing (#6)**~~ ✅ DONE - Returns `(result, error)` tuples
 4. ~~**Externalize sample URLs (#11)**~~ ✅ DONE - Completed via Jinja2 migration
 5. ~~**Fix threading lock (#4)**~~ ✅ DONE - Added `asyncio.Lock` for async callers
 6. ~~**Fix CORS (#5)**~~ ✅ DONE - Removed, handled by infrastructure
+7. ~~**Refactor global state (#2)**~~ ✅ DONE - Explicit dependency injection
+8. ~~**Reduce logging noise (#10)**~~ ✅ DONE - Verbose logs moved to DEBUG level
+9. ~~**Mixed sync/async DB (#9)**~~ ✅ DONE - Async wrappers with `asyncio.to_thread()`
+10. ~~**Add proper type annotations (#12)**~~ ✅ DONE - Added State and ConnectionPool types
 
 ### Short-term (Next Sprint)
-7. **Update WIKI.md version** - Change 0.3.1 to 0.7.16.0
-
-### Medium-term (Backlog)
-8. **Refactor global state (#2)** - Use FastAPI dependency injection (recommended for handoff)
-9. **Break up verbose_diagnostics (#7)** - Split into smaller testable functions
+11. **Update WIKI.md version** - Change 0.3.1 to 0.7.16.0
 
 ### Low Priority (Tech Debt Cleanup)
-10. **Add proper type annotations (#12)**
-11. **Reduce logging noise (#10)** - Move verbose logs to DEBUG level
-12. **Mixed sync/async DB (#9)** - Consider unifying on async pool
+12. **Break up verbose_diagnostics (#7)** - Split into smaller testable functions
 
 ---
 
@@ -1708,7 +1717,7 @@ rmhtitiler (v0.7.14.0)
 
 ## Implementation Plan: Global Mutable State Refactor (#2)
 
-**Status:** TODO
+**Status:** ✅ COMPLETE (2026-01-21)
 **Priority:** Medium (recommended for handoff readiness)
 **Effort:** ~2-3 hours
 **Goal:** Eliminate module-level mutable globals, use explicit dependency injection

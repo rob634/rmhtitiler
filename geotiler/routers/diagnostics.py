@@ -20,8 +20,8 @@ from typing import Any, Optional
 from fastapi import APIRouter, Request, Query
 
 from geotiler.config import settings
-from geotiler.services.database import get_app_state
-from geotiler.routers.vector import get_tipg_startup_state
+from geotiler.services.database import get_app_state_from_request
+from geotiler.routers.vector import get_tipg_startup_state_from_app
 
 logger = logging.getLogger(__name__)
 
@@ -81,7 +81,7 @@ async def tipg_diagnostics(request: Request):
     Returns:
         Detailed diagnostic report with issues identified.
     """
-    app_state = get_app_state()
+    app_state = get_app_state_from_request(request)
     pool = getattr(app_state, "pool", None) if app_state else None
 
     if not pool:
@@ -92,7 +92,7 @@ async def tipg_diagnostics(request: Request):
         }
 
     # Get startup state
-    startup_state = get_tipg_startup_state()
+    startup_state = get_tipg_startup_state_from_app(request.app)
 
     diagnostics = {
         "status": "ok",
@@ -506,7 +506,7 @@ async def verbose_diagnostics(
     Returns:
         Comprehensive database state for comparison with rmhgeoapi.
     """
-    app_state = get_app_state()
+    app_state = get_app_state_from_request(request)
     pool = getattr(app_state, "pool", None) if app_state else None
 
     if not pool:
@@ -1074,7 +1074,7 @@ async def table_diagnostics(
         Comprehensive table metadata including all columns, constraints,
         geometry registration status, and permissions.
     """
-    app_state = get_app_state()
+    app_state = get_app_state_from_request(request)
     pool = getattr(app_state, "pool", None) if app_state else None
 
     if not pool:

@@ -31,7 +31,6 @@ from geotiler.middleware.azure_auth import AzureAuthMiddleware
 from geotiler.infrastructure.middleware import RequestTimingMiddleware
 from geotiler.routers import health, planetary_computer, admin, vector, stac, diagnostics
 from geotiler.routers import cog_landing, xarray_landing, searches_landing, stac_explorer, docs_guide
-from geotiler.services.database import set_app_state
 from geotiler.services.background import start_token_refresh
 from geotiler.auth.storage import initialize_storage_auth
 from geotiler.auth.postgres import get_postgres_credential, build_database_url
@@ -84,9 +83,6 @@ async def lifespan(app: FastAPI):
     # Start background token refresh
     if settings.use_azure_auth:
         start_token_refresh(app)
-
-    # Set app state reference for health checks
-    set_app_state(app.state)
 
     logger.info(f"Startup complete: geotiler v{__version__}")
 
