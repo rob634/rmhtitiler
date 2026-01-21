@@ -17,7 +17,7 @@
 - **Good Documentation**: Detailed deployment guides, API reference, implementation docs
 
 ### Areas for Improvement
-- **12 issues identified, 6 resolved, 1 not applicable** (5 remaining: 0 High, 1 Medium, 4 Low severity)
+- **12 issues identified, 7 resolved, 1 not applicable** (4 remaining: 0 High, 1 Medium, 3 Low severity)
 - **UI technical debt**: ✅ Resolved via Jinja2 migration (CSS consolidated, URLs configurable)
 - **Async patterns**: ✅ Fixed - Token acquisition now uses `asyncio.to_thread()`
 - **Error handling**: ✅ Fixed - Diagnostics now surface query errors instead of swallowing
@@ -257,25 +257,27 @@ Consider:
 
 ---
 
-### 12. Missing Type Annotations
+### 12. ~~Missing Type Annotations~~ ✅ RESOLVED
 
-**Severity:** Low
-**Location:** `geotiler/services/database.py:17, 44`
+**Status:** Fixed on 2026-01-21
+
+**Resolution:** Added proper type annotations to `geotiler/services/database.py`:
 
 ```python
-_app_state: Optional[Any] = None
+from psycopg_pool import ConnectionPool
+from starlette.datastructures import State
 
-def get_db_pool() -> Optional[Any]:
+_app_state: Optional[State] = None
+
+def get_db_pool() -> Optional[ConnectionPool]:
 ```
 
-**Explanation:**
-Using `Any` as a type annotation provides no type safety - it's essentially opting out of type checking. This makes it harder for IDEs to provide autocomplete and for type checkers to catch bugs.
+This provides:
+- IDE autocomplete for `State` and `ConnectionPool` methods
+- Type checker catches errors at development time
+- Self-documenting code for future maintainers
 
-The actual types are known:
-- `_app_state` is `starlette.datastructures.State`
-- `get_db_pool()` returns `psycopg_pool.ConnectionPool`
-
-Adding proper types improves code documentation and catches errors at development time rather than runtime.
+**Note:** `planetary_computer.py` still uses `Any` for `PlanetaryComputerCredentialProvider` - this is intentional because the type is conditionally imported and may not exist at runtime.
 
 ---
 
@@ -310,7 +312,7 @@ The codebase demonstrates several good practices worth preserving:
 | 9 | Mixed sync/async DB | Low | Medium | Consistency |
 | 10 | Excessive logging | Low | Low | Log noise |
 | 11 | ~~Hardcoded URLs~~ | ~~Low~~ | ✅ Fixed | ~~Brittleness~~ |
-| 12 | Missing types | Low | Low | Type safety |
+| 12 | ~~Missing types~~ | ~~Low~~ | ✅ Fixed | ~~Type safety~~ |
 
 ---
 

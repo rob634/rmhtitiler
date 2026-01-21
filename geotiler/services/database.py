@@ -7,17 +7,20 @@ manages the app state reference for database access.
 
 import time
 import logging
-from typing import Tuple, Optional, Any
+from typing import Tuple, Optional
+
+from psycopg_pool import ConnectionPool
+from starlette.datastructures import State
 
 from geotiler.auth.cache import db_error_cache
 
 logger = logging.getLogger(__name__)
 
 # Reference to FastAPI app.state, set during startup
-_app_state: Optional[Any] = None
+_app_state: Optional[State] = None
 
 
-def set_app_state(state: Any) -> None:
+def set_app_state(state: State) -> None:
     """
     Set the app state reference for database access.
 
@@ -31,7 +34,7 @@ def set_app_state(state: Any) -> None:
     logger.debug("Database service app state configured")
 
 
-def get_app_state() -> Optional[Any]:
+def get_app_state() -> Optional[State]:
     """
     Get the FastAPI app state.
 
@@ -41,7 +44,7 @@ def get_app_state() -> Optional[Any]:
     return _app_state
 
 
-def get_db_pool() -> Optional[Any]:
+def get_db_pool() -> Optional[ConnectionPool]:
     """
     Get the database connection pool.
 
