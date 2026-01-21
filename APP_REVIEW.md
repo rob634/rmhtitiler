@@ -1,8 +1,8 @@
 # Application Review - rmhtitiler
 
-**Review Date:** 2026-01-18
+**Review Date:** 2026-01-18 (Updated 2026-01-21)
 **Reviewer:** Claude Code Analysis
-**Version Reviewed:** 0.7.14.0
+**Version Reviewed:** 0.7.16.0
 
 ---
 
@@ -17,9 +17,10 @@
 - **Good Documentation**: Detailed deployment guides, API reference, implementation docs
 
 ### Areas for Improvement
-- **12 issues identified, 4 resolved** (8 remaining: 0 High, 4 Medium, 4 Low severity)
+- **12 issues identified, 6 resolved, 1 not applicable** (5 remaining: 0 High, 1 Medium, 4 Low severity)
 - **UI technical debt**: ✅ Resolved via Jinja2 migration (CSS consolidated, URLs configurable)
 - **Async patterns**: ✅ Fixed - Token acquisition now uses `asyncio.to_thread()`
+- **Error handling**: ✅ Fixed - Diagnostics now surface query errors instead of swallowing
 
 ### Current Focus
 Jinja2 UI refactoring is **COMPLETE** (all 8 phases done). This addresses CSS duplication (#8) and hardcoded URLs (#11).
@@ -87,47 +88,50 @@ A better approach would be dependency injection via FastAPI's dependency system 
 
 ---
 
-### 3. Environment Variable Mutation
+### 3. ~~Environment Variable Mutation~~ ⊘ WON'T FIX
 
-**Severity:** Medium
-**Location:** `geotiler/auth/storage.py:101-102`
+**Status:** Not applicable for single-tenant deployment
 
-```python
-os.environ["AZURE_STORAGE_ACCOUNT"] = settings.azure_storage_account
-os.environ["AZURE_STORAGE_ACCESS_TOKEN"] = token
-```
+**Location:** `geotiler/auth/storage.py:115-116`
 
-**Explanation:**
-Directly mutating `os.environ` is a global side effect that affects all code in the process. This is problematic because:
+**Original Concern:** Mutating `os.environ` could cause race conditions if multiple requests wrote different values simultaneously.
 
-1. **Process-wide impact** - All threads and async tasks see the same environment
-2. **Race conditions** - If two requests try to configure different storage accounts simultaneously, they'll overwrite each other
-3. **No cleanup** - Old values persist if not explicitly removed
-4. **Testing pollution** - Environment changes leak between tests
+**Why It's Safe:**
+This application is single-tenant - all requests use the same Azure Storage account and the same cached MI token. The "race condition" would only be two requests writing identical values, which is harmless.
 
-For GDAL specifically, consider using `rasterio.Env()` context managers which provide thread-local configuration, or pass credentials via the URL/path itself.
+Additionally:
+- Token refresh is coordinated via `asyncio.Lock` (no thundering herd)
+- Python string assignment is atomic (GIL)
+- GDAL reads happen after token is set
+
+**If Multi-Tenant Were Needed:** Would use `rasterio.Env()` context managers for thread-local GDAL configuration. Not required for current architecture.
 
 ---
 
-### 4. Threading Lock in Async Code
+### 4. ~~Threading Lock in Async Code~~ ✅ RESOLVED
 
-**Severity:** Medium
-**Location:** `geotiler/auth/cache.py:34`
+**Status:** Fixed on 2026-01-21
 
+**Resolution:** Added `asyncio.Lock` to `TokenCache` for async callers. The cache now supports both:
+- **Async access** (preferred): Uses `async_lock` property with unlocked methods
+- **Sync access** (startup): Uses `threading.Lock` for initialization before event loop
+
+**Files Modified:**
+- `geotiler/auth/cache.py` - Added `_async_lock` field and `*_unlocked()` methods
+- `geotiler/auth/storage.py` - Async functions now use `async with cache.async_lock:`
+- `geotiler/auth/postgres.py` - Async functions now use `async with cache.async_lock:`
+
+**Pattern:**
 ```python
-@dataclass
-class TokenCache:
-    _lock: Lock = field(default_factory=Lock, repr=False)
+async with storage_token_cache.async_lock:
+    cached = storage_token_cache.get_if_valid_unlocked(min_ttl_seconds=300)
+    if cached:
+        return cached
+    token, expires_at = await asyncio.to_thread(_acquire_token)
+    storage_token_cache.set_unlocked(token, expires_at)
 ```
 
-**Explanation:**
-The `TokenCache` class uses `threading.Lock` for synchronization, but the application is primarily async. While this works because the lock operations are very fast (just reading/writing memory), there are subtle issues:
-
-1. **Blocking potential** - If any operation inside the lock becomes slow, it blocks the event loop
-2. **Inconsistent model** - Mixing threading primitives with async code is confusing
-3. **Deadlock risk** - If async code yields while holding the lock and the same coroutine tries to reacquire it, deadlock occurs
-
-For async-first code, `asyncio.Lock` is the appropriate primitive. Alternatively, since Python's GIL makes simple attribute access atomic, the locks may be unnecessary for this use case.
+This prevents thundering herd on token refresh - only one coroutine acquires a new token; others wait and use the cached result.
 
 ---
 
@@ -143,33 +147,30 @@ The application no longer needs to manage cross-origin access since it runs behi
 
 ---
 
-### 6. Error Swallowing in Query Helpers
+### 6. ~~Error Swallowing in Query Helpers~~ ✅ RESOLVED
 
-**Severity:** Medium
-**Location:** `geotiler/routers/diagnostics.py:32-39`
+**Status:** Fixed on 2026-01-21
 
+**Resolution:** Changed `_run_query()` and `_run_query_single()` helpers to return `(result, error)` tuples instead of silently returning empty results. All ~50 call sites updated to handle errors and surface them in API responses.
+
+**Files Modified:**
+- `geotiler/routers/diagnostics.py` - Helper functions now return tuples, all call sites updated
+
+**Before:**
 ```python
-async def _run_query(pool, query: str, *args) -> list[dict]:
-    try:
-        async with pool.acquire() as conn:
-            rows = await conn.fetch(query, *args)
-            return [dict(row) for row in rows]
-    except Exception as e:
-        logger.error(f"Query failed: {e}")
-        return []  # Silent failure
+async def _run_query(...) -> list[dict]:
+    ...
+    return []  # Error swallowed - can't distinguish from "no rows"
 ```
 
-**Explanation:**
-Returning an empty list on query failure makes it impossible for callers to distinguish between "query succeeded but returned no rows" and "query failed completely." This leads to:
+**After:**
+```python
+async def _run_query(...) -> tuple[list[dict], Optional[str]]:
+    ...
+    return [], str(e)  # Error surfaced in API response
+```
 
-1. **Silent failures** - Errors are logged but not surfaced to users
-2. **Incorrect diagnostics** - A failed permission check looks like "no tables found"
-3. **Debugging difficulty** - Users see empty results with no indication something went wrong
-
-Better approaches:
-- Return `Optional[list[dict]]` with `None` indicating failure
-- Raise exceptions and let callers handle them
-- Return a result object with success/failure status
+Now users see actual errors (e.g., "permission denied") instead of misleading results (e.g., "PostGIS not installed").
 
 ---
 
@@ -300,10 +301,10 @@ The codebase demonstrates several good practices worth preserving:
 |---|-------|----------|---------------|--------|
 | 1 | ~~Sync blocking in async~~ | ~~**High**~~ | ✅ Fixed | ~~Event loop blocking~~ |
 | 2 | Global mutable state | Medium | High | Testing, race conditions |
-| 3 | Environment mutation | Medium | Medium | Race conditions |
-| 4 | Threading lock in async | Medium | Low | Potential deadlocks |
+| 3 | ~~Environment mutation~~ | ~~Medium~~ | ⊘ N/A | ~~Race conditions~~ |
+| 4 | ~~Threading lock in async~~ | ~~Medium~~ | ✅ Fixed | ~~Potential deadlocks~~ |
 | 5 | ~~CORS misconfiguration~~ | ~~Medium~~ | ✅ Fixed | ~~Security~~ |
-| 6 | Error swallowing | Medium | Low | Debugging difficulty |
+| 6 | ~~Error swallowing~~ | ~~Medium~~ | ✅ Fixed | ~~Debugging difficulty~~ |
 | 7 | God function | Low | Medium | Maintainability |
 | 8 | ~~CSS duplication~~ | ~~Low~~ | ✅ Fixed | ~~Maintainability~~ |
 | 9 | Mixed sync/async DB | Low | Medium | Consistency |
@@ -319,14 +320,14 @@ Based on severity and effort, suggested order of fixes:
 
 1. ~~**CORS misconfiguration** (#5)~~ ✅ Fixed - Removed, handled by infrastructure
 2. ~~**Sync blocking in async** (#1)~~ ✅ Fixed - Uses `asyncio.to_thread()` for Azure SDK calls
-3. **Error swallowing** (#6) - Improves debugging significantly
-4. **Threading lock** (#4) - Low effort, prevents subtle bugs
-5. **Environment mutation** (#3) - Medium effort, improves correctness
-6. **Global mutable state** (#2) - Larger refactor, but improves testability
+3. ~~**Error swallowing** (#6)~~ ✅ Fixed - Returns `(result, error)` tuples, surfaces errors in API
+4. ~~**Threading lock** (#4)~~ ✅ Fixed - Added `asyncio.Lock` for async callers
+5. ~~**Environment mutation** (#3)~~ ⊘ N/A - Single-tenant, no race condition possible
+6. **Global mutable state** (#2) - Recommended for handoff readiness
 7. ~~**CSS duplication** (#8)~~ ✅ Fixed - Jinja2 templates with shared CSS
 8. ~~**Hardcoded URLs** (#11)~~ ✅ Fixed - Configurable via environment
 
-Items 9, 10, 12 can be addressed opportunistically during other work.
+Items 7, 9, 10, 12 can be addressed opportunistically during other work.
 
 ---
 
@@ -1650,25 +1651,25 @@ rmhtitiler (v0.7.14.0)
 
 ## Next Steps / Recommended Plan
 
-### Immediate (Current Sprint)
+### Completed (6 of 12)
 1. ~~**Complete Jinja2 migration**~~ ✅ DONE - All pages migrated
-2. **Test deployment** - Verify migrated pages work in production
+2. ~~**Fix sync blocking (#1)**~~ ✅ DONE - Uses `asyncio.to_thread()` for Azure SDK calls
+3. ~~**Fix error swallowing (#6)**~~ ✅ DONE - Returns `(result, error)` tuples
+4. ~~**Externalize sample URLs (#11)**~~ ✅ DONE - Completed via Jinja2 migration
+5. ~~**Fix threading lock (#4)**~~ ✅ DONE - Added `asyncio.Lock` for async callers
+6. ~~**Fix CORS (#5)**~~ ✅ DONE - Removed, handled by infrastructure
 
 ### Short-term (Next Sprint)
-3. ~~**Fix sync blocking (#1)**~~ ✅ DONE - Uses `asyncio.to_thread()` for Azure SDK calls
-4. **Fix error swallowing (#6)** - Return `Optional[list]` instead of empty list on failure
-5. **Update WIKI.md version** - Change 0.3.1 to 0.7.14.0
+7. **Update WIKI.md version** - Change 0.3.1 to 0.7.16.0
 
 ### Medium-term (Backlog)
-6. **Replace threading.Lock with asyncio.Lock (#4)**
-7. **Refactor environment mutation (#3)** - Use `rasterio.Env()` context managers
-8. **Break up verbose_diagnostics (#7)** - Split into smaller testable functions
+8. **Refactor global state (#2)** - Use FastAPI dependency injection (recommended for handoff)
+9. **Break up verbose_diagnostics (#7)** - Split into smaller testable functions
 
 ### Low Priority (Tech Debt Cleanup)
-9. **Add proper type annotations (#12)**
-10. **Reduce logging noise (#10)** - Move verbose logs to DEBUG level
-11. ~~**Externalize sample URLs (#11)**~~ ✅ DONE - Completed via Jinja2 migration
-12. **Refactor global state (#2)** - Use FastAPI dependency injection
+10. **Add proper type annotations (#12)**
+11. **Reduce logging noise (#10)** - Move verbose logs to DEBUG level
+12. **Mixed sync/async DB (#9)** - Consider unifying on async pool
 
 ---
 
@@ -1686,5 +1687,314 @@ rmhtitiler (v0.7.14.0)
 
 ---
 
-**Last Updated:** 2026-01-18
-**Next Review:** After Jinja2 migration complete
+**Last Updated:** 2026-01-21
+**Next Review:** After global state refactor (#2)
+
+---
+
+## Implementation Plan: Global Mutable State Refactor (#2)
+
+**Status:** TODO
+**Priority:** Medium (recommended for handoff readiness)
+**Effort:** ~2-3 hours
+**Goal:** Eliminate module-level mutable globals, use explicit dependency injection
+
+### Why This Matters
+
+This refactor makes the codebase:
+1. **Self-documenting** - Function signatures show all dependencies
+2. **Testable** - No global state leaking between tests
+3. **Handoff-ready** - New developers understand code without tribal knowledge
+4. **Maintainable** - No hidden initialization order requirements
+
+### Current State (Problems)
+
+Three files use module-level mutable globals:
+
+```python
+# geotiler/services/background.py:20
+_app: "FastAPI" = None  # Set via set_app_reference()
+
+# geotiler/services/database.py:17
+_app_state: Optional[Any] = None  # Set via set_app_state()
+
+# geotiler/routers/vector.py:97
+tipg_startup_state = TiPGStartupState()  # Mutable singleton
+```
+
+### Target State (Solution)
+
+- No module-level mutable globals
+- All dependencies passed explicitly or via FastAPI's `Depends()`
+- State stored in `app.state` (FastAPI's blessed location)
+
+---
+
+### Phase 1: Refactor `background.py`
+
+**File:** `geotiler/services/background.py`
+
+**Current:**
+```python
+_app: "FastAPI" = None
+
+def set_app_reference(app: "FastAPI") -> None:
+    global _app
+    _app = app
+
+async def token_refresh_background_task():
+    while True:
+        await asyncio.sleep(BACKGROUND_REFRESH_INTERVAL_SECS)
+        if settings.use_azure_auth:
+            await refresh_storage_token_async()
+        if settings.postgres_auth_mode == "managed_identity":
+            await _refresh_postgres_with_pool_recreation()
+
+async def _refresh_postgres_with_pool_recreation():
+    if not _app:
+        logger.warning("App reference not set")
+        return
+    # ... uses _app
+```
+
+**Target:**
+```python
+# No globals!
+
+async def token_refresh_background_task(app: "FastAPI"):
+    """Background task - receives app explicitly."""
+    while True:
+        await asyncio.sleep(BACKGROUND_REFRESH_INTERVAL_SECS)
+        if settings.use_azure_auth:
+            await refresh_storage_token_async()
+        if settings.postgres_auth_mode == "managed_identity":
+            await _refresh_postgres_with_pool_recreation(app)
+
+async def _refresh_postgres_with_pool_recreation(app: "FastAPI"):
+    """Refresh pools - app is explicit parameter."""
+    # ... uses app parameter
+
+def start_token_refresh(app: "FastAPI") -> asyncio.Task:
+    """Start background task, passing app explicitly."""
+    task = asyncio.create_task(token_refresh_background_task(app))
+    return task
+```
+
+**Changes:**
+- [ ] Remove `_app` global variable
+- [ ] Remove `set_app_reference()` function
+- [ ] Add `app` parameter to `token_refresh_background_task()`
+- [ ] Add `app` parameter to `_refresh_postgres_with_pool_recreation()`
+- [ ] Update `start_token_refresh()` to pass app to task
+
+---
+
+### Phase 2: Refactor `database.py`
+
+**File:** `geotiler/services/database.py`
+
+**Current:**
+```python
+_app_state: Optional[Any] = None
+
+def set_app_state(state) -> None:
+    global _app_state
+    _app_state = state
+
+def get_app_state():
+    return _app_state
+
+def get_db_pool():
+    if not _app_state:
+        return None
+    return getattr(_app_state, "dbpool", None)
+```
+
+**Target:**
+```python
+# No globals!
+
+def get_app_state(request: Request):
+    """FastAPI dependency - get app state from request."""
+    return request.app.state
+
+def get_db_pool(request: Request):
+    """FastAPI dependency - get database pool."""
+    return getattr(request.app.state, "dbpool", None)
+
+# For non-request contexts (health checks, diagnostics):
+def get_db_pool_from_app(app: FastAPI):
+    """Get database pool from app instance."""
+    return getattr(app.state, "dbpool", None)
+```
+
+**Changes:**
+- [ ] Remove `_app_state` global variable
+- [ ] Remove `set_app_state()` function
+- [ ] Convert `get_app_state()` to FastAPI dependency (takes `Request`)
+- [ ] Convert `get_db_pool()` to FastAPI dependency
+- [ ] Add `get_db_pool_from_app()` for non-request contexts
+- [ ] Update all callers to use new signatures
+
+**Callers to Update:**
+- `geotiler/routers/health.py` - uses `get_db_pool()`
+- `geotiler/routers/diagnostics.py` - uses `get_app_state()`
+- Any other files importing from `database.py`
+
+---
+
+### Phase 3: Refactor `vector.py`
+
+**File:** `geotiler/routers/vector.py`
+
+**Current:**
+```python
+tipg_startup_state = TiPGStartupState()  # Module-level mutable
+
+async def startup_tipg(app: FastAPI):
+    tipg_startup_state.started = True
+    # ...
+```
+
+**Target:**
+```python
+# No module-level mutable state!
+
+async def startup_tipg(app: FastAPI):
+    """Initialize TiPG, store state in app.state."""
+    app.state.tipg = TiPGStartupState()
+    app.state.tipg.started = True
+    # ...
+
+def get_tipg_state(request: Request) -> TiPGStartupState:
+    """FastAPI dependency - get TiPG state."""
+    return getattr(request.app.state, "tipg", None)
+```
+
+**Changes:**
+- [ ] Remove `tipg_startup_state` module-level variable
+- [ ] Store TiPG state in `app.state.tipg` during startup
+- [ ] Add `get_tipg_state()` dependency for handlers that need it
+- [ ] Update `refresh_tipg_pool()` to take app parameter
+
+---
+
+### Phase 4: Update `app.py` Lifespan
+
+**File:** `geotiler/app.py`
+
+**Current:**
+```python
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    # ... setup ...
+    set_app_reference(app)  # Sets global
+    set_app_state(app.state)  # Sets global
+    background_task = start_token_refresh(app)
+    yield
+    # ... cleanup ...
+```
+
+**Target:**
+```python
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    # ... setup ...
+    # No more set_app_reference() or set_app_state() calls!
+    background_task = start_token_refresh(app)  # Pass app directly
+    yield
+    # ... cleanup ...
+```
+
+**Changes:**
+- [ ] Remove `set_app_reference(app)` call
+- [ ] Remove `set_app_state(app.state)` call
+- [ ] Verify all state is stored in `app.state`
+
+---
+
+### Phase 5: Update Imports and Callers
+
+Search for all usages of removed functions:
+
+```bash
+# Find all usages
+grep -r "set_app_reference" geotiler/
+grep -r "set_app_state" geotiler/
+grep -r "get_app_state" geotiler/
+grep -r "get_db_pool" geotiler/
+grep -r "tipg_startup_state" geotiler/
+```
+
+For each caller:
+- [ ] Update to use new dependency injection pattern
+- [ ] For request handlers: use `Depends(get_db_pool)`
+- [ ] For non-request code: pass `app` explicitly
+
+**Example handler update:**
+
+```python
+# Before
+@router.get("/health")
+async def health():
+    pool = get_db_pool()  # Uses global
+    # ...
+
+# After
+@router.get("/health")
+async def health(request: Request):
+    pool = get_db_pool(request)  # Explicit dependency
+    # ...
+
+# Or with Depends:
+@router.get("/health")
+async def health(pool = Depends(get_db_pool)):
+    # pool injected automatically
+    # ...
+```
+
+---
+
+### Phase 6: Testing & Verification
+
+- [ ] Run syntax check: `python -m py_compile geotiler/**/*.py`
+- [ ] Search for remaining globals: `grep -r "global " geotiler/`
+- [ ] Verify no `_app` or `_app_state` references remain
+- [ ] Test locally: `uvicorn geotiler.app:app --reload`
+- [ ] Test health endpoint: `curl localhost:8000/health`
+- [ ] Test background refresh logs (wait for refresh interval or reduce it temporarily)
+- [ ] Deploy to staging and verify
+
+---
+
+### Files Modified Summary
+
+| File | Changes |
+|------|---------|
+| `geotiler/services/background.py` | Remove `_app` global, add `app` params |
+| `geotiler/services/database.py` | Remove `_app_state` global, convert to deps |
+| `geotiler/routers/vector.py` | Move `tipg_startup_state` to `app.state` |
+| `geotiler/app.py` | Remove `set_*` calls |
+| `geotiler/routers/health.py` | Update to use dependencies |
+| `geotiler/routers/diagnostics.py` | Update to use dependencies |
+
+---
+
+### Success Criteria
+
+1. **No module-level mutable globals** - `grep -r "^_" geotiler/` shows no mutable state
+2. **No `global` keyword** - `grep -r "global " geotiler/` returns nothing
+3. **All tests pass** (if any exist)
+4. **Health endpoint works** - Returns valid JSON with database status
+5. **Background refresh works** - Logs show token refresh at interval
+6. **TiPG works** - `/vector/collections` returns data
+
+---
+
+### Rollback Plan
+
+If issues arise:
+1. `git stash` or `git checkout .` to revert changes
+2. Redeploy previous working version
+
+Keep changes atomic - commit after each phase works.

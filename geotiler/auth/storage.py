@@ -86,15 +86,75 @@ def get_storage_oauth_token() -> Optional[str]:
 
 async def get_storage_oauth_token_async() -> Optional[str]:
     """
-    Async wrapper for get_storage_oauth_token().
+    Get OAuth token for Azure Storage (async version).
 
-    Runs the blocking Azure SDK token acquisition in a thread pool
-    to avoid blocking the asyncio event loop.
+    Uses asyncio.Lock to coordinate concurrent callers and prevent
+    thundering herd on token refresh. Only one coroutine acquires
+    a new token; others wait and use the cached result.
 
     Returns:
         OAuth bearer token for Azure Storage, or None if auth is disabled.
     """
-    return await asyncio.to_thread(get_storage_oauth_token)
+    if not settings.use_azure_auth:
+        return None
+
+    async with storage_token_cache.async_lock:
+        # Check cache while holding async lock
+        cached = storage_token_cache.get_if_valid_unlocked(
+            min_ttl_seconds=TOKEN_REFRESH_BUFFER_SECS
+        )
+        if cached:
+            ttl = storage_token_cache.ttl_seconds_unlocked()
+            logger.debug(f"Using cached storage token, TTL: {ttl:.0f}s")
+            return cached
+
+        # Cache miss - acquire new token in thread pool
+        token, expires_at = await asyncio.to_thread(_acquire_storage_token)
+
+        if token and expires_at:
+            storage_token_cache.set_unlocked(token, expires_at)
+
+        return token
+
+
+def _acquire_storage_token() -> tuple[Optional[str], Optional[datetime]]:
+    """
+    Acquire token from Azure SDK (internal, runs in thread pool).
+
+    Returns:
+        Tuple of (token, expires_at) or (None, None) on failure.
+    """
+    logger.info("=" * 60)
+    logger.info("Acquiring Azure Storage OAuth token...")
+    logger.info(f"Mode: {'Local (Azure CLI)' if settings.local_mode else 'Production (Managed Identity)'}")
+    logger.info(f"Storage Account: {settings.azure_storage_account}")
+    logger.info("=" * 60)
+
+    try:
+        from azure.identity import DefaultAzureCredential
+
+        credential = DefaultAzureCredential()
+        token_response = credential.get_token(STORAGE_SCOPE)
+
+        access_token = token_response.token
+        expires_at = datetime.fromtimestamp(token_response.expires_on, tz=timezone.utc)
+
+        logger.info(f"Storage token acquired, expires: {expires_at.isoformat()}")
+        logger.info(f"Token length: {len(access_token)} characters")
+
+        return access_token, expires_at
+
+    except Exception as e:
+        logger.error("=" * 60)
+        logger.error("FAILED TO GET STORAGE OAUTH TOKEN")
+        logger.error("=" * 60)
+        logger.error(f"Error: {type(e).__name__}: {e}")
+        if settings.local_mode:
+            logger.error("  - Run: az login")
+        else:
+            logger.error("  - Verify Managed Identity is enabled")
+        logger.error("=" * 60)
+        raise
 
 
 def configure_gdal_auth(token: str) -> None:
@@ -203,9 +263,24 @@ async def refresh_storage_token_async() -> Optional[str]:
     """
     Force refresh of storage OAuth token (async version).
 
-    Runs in thread pool to avoid blocking the event loop.
+    Uses asyncio.Lock to coordinate with other async callers.
 
     Returns:
         New OAuth token if successful, None otherwise.
     """
-    return await asyncio.to_thread(refresh_storage_token)
+    logger.info("Refreshing Storage OAuth token (async)...")
+
+    async with storage_token_cache.async_lock:
+        # Invalidate cache to force new token
+        storage_token_cache.invalidate_unlocked()
+
+        try:
+            token, expires_at = await asyncio.to_thread(_acquire_storage_token)
+            if token and expires_at:
+                storage_token_cache.set_unlocked(token, expires_at)
+                configure_gdal_auth(token)
+                logger.info("Storage token refresh complete")
+            return token
+        except Exception as e:
+            logger.error(f"Storage token refresh failed: {e}")
+            return None

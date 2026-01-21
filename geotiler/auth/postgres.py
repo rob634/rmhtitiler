@@ -237,30 +237,132 @@ def refresh_postgres_token() -> Optional[str]:
 
 
 # =============================================================================
-# Async Wrappers
+# Async Wrappers (use asyncio.Lock for managed_identity mode)
 # =============================================================================
 
 
 async def get_postgres_credential_async() -> Optional[str]:
     """
-    Async wrapper for get_postgres_credential().
+    Get PostgreSQL credential (async version).
 
-    Runs the blocking Azure SDK token acquisition in a thread pool
-    to avoid blocking the asyncio event loop.
+    For managed_identity mode, uses asyncio.Lock to coordinate concurrent
+    callers and prevent thundering herd on token refresh.
 
     Returns:
         Password or OAuth token for PostgreSQL connection.
     """
-    return await asyncio.to_thread(get_postgres_credential)
+    mode = settings.postgres_auth_mode.lower()
+
+    # Password and key_vault modes don't need async coordination
+    if mode == "password":
+        return await asyncio.to_thread(_get_password_from_env)
+    elif mode == "key_vault":
+        return await asyncio.to_thread(_get_password_from_keyvault)
+    elif mode == "managed_identity":
+        return await _get_postgres_oauth_token_async()
+    else:
+        raise ValueError(f"Invalid POSTGRES_AUTH_MODE: {mode}")
+
+
+async def _get_postgres_oauth_token_async() -> str:
+    """
+    Get OAuth token for Azure PostgreSQL (async version).
+
+    Uses asyncio.Lock to coordinate concurrent callers.
+    """
+    async with postgres_token_cache.async_lock:
+        # Check cache while holding async lock
+        cached = postgres_token_cache.get_if_valid_unlocked(
+            min_ttl_seconds=TOKEN_REFRESH_BUFFER_SECS
+        )
+        if cached:
+            ttl = postgres_token_cache.ttl_seconds_unlocked()
+            logger.debug(f"Using cached PostgreSQL token, TTL: {ttl:.0f}s")
+            return cached
+
+        # Cache miss - acquire new token in thread pool
+        token, expires_at = await asyncio.to_thread(_acquire_postgres_token)
+
+        if token and expires_at:
+            postgres_token_cache.set_unlocked(token, expires_at)
+
+        return token
+
+
+def _acquire_postgres_token() -> tuple[Optional[str], Optional[datetime]]:
+    """
+    Acquire PostgreSQL OAuth token from Azure SDK (internal, runs in thread pool).
+
+    Returns:
+        Tuple of (token, expires_at) or raises exception on failure.
+    """
+    logger.info("=" * 60)
+    logger.info("Acquiring PostgreSQL OAuth token...")
+    logger.info(f"Mode: {'Local (Azure CLI)' if settings.local_mode else 'Production (Managed Identity)'}")
+    logger.info(f"PostgreSQL Host: {settings.postgres_host}")
+    logger.info(f"PostgreSQL User: {settings.postgres_user}")
+    logger.info("=" * 60)
+
+    try:
+        # Use user-assigned MI if client ID is set (production)
+        # Otherwise use DefaultAzureCredential (local dev with az login)
+        if settings.postgres_mi_client_id and not settings.local_mode:
+            from azure.identity import ManagedIdentityCredential
+            credential = ManagedIdentityCredential(client_id=settings.postgres_mi_client_id)
+            logger.info(f"Using user-assigned Managed Identity: {settings.postgres_mi_client_id}")
+        else:
+            from azure.identity import DefaultAzureCredential
+            credential = DefaultAzureCredential()
+            logger.info("Using DefaultAzureCredential")
+
+        token_response = credential.get_token(POSTGRES_SCOPE)
+
+        access_token = token_response.token
+        expires_at = datetime.fromtimestamp(token_response.expires_on, tz=timezone.utc)
+
+        logger.info(f"PostgreSQL token acquired, expires: {expires_at.isoformat()}")
+        logger.debug(f"Token length: {len(access_token)} characters")
+
+        return access_token, expires_at
+
+    except Exception as e:
+        logger.error("=" * 60)
+        logger.error("FAILED TO GET POSTGRESQL OAUTH TOKEN")
+        logger.error("=" * 60)
+        logger.error(f"Error: {type(e).__name__}: {e}")
+        if settings.local_mode:
+            logger.error("  - Run: az login")
+        else:
+            logger.error("  - Verify Managed Identity is assigned to App Service")
+        logger.error("=" * 60)
+        raise
 
 
 async def refresh_postgres_token_async() -> Optional[str]:
     """
     Force refresh of PostgreSQL OAuth token (async version).
 
-    Runs in thread pool to avoid blocking the event loop.
+    Uses asyncio.Lock to coordinate with other async callers.
 
     Returns:
         New OAuth token if successful, None if not using MI or refresh fails.
     """
-    return await asyncio.to_thread(refresh_postgres_token)
+    if settings.postgres_auth_mode != "managed_identity":
+        logger.debug("PostgreSQL token refresh skipped (not using managed_identity)")
+        return None
+
+    logger.info("Refreshing PostgreSQL OAuth token (async)...")
+
+    async with postgres_token_cache.async_lock:
+        # Invalidate cache to force new token
+        postgres_token_cache.invalidate_unlocked()
+
+        try:
+            token, expires_at = await asyncio.to_thread(_acquire_postgres_token)
+            if token and expires_at:
+                postgres_token_cache.set_unlocked(token, expires_at)
+                logger.info("PostgreSQL token refresh complete")
+            return token
+        except Exception as e:
+            logger.error(f"PostgreSQL token refresh failed: {e}")
+            return None

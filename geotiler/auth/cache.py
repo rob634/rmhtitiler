@@ -1,10 +1,16 @@
 """
-Thread-safe token caching with expiry tracking.
+Token caching with async-first design and sync fallback.
 
-Provides reusable cache classes for OAuth tokens and error tracking,
-eliminating duplicate cache implementations throughout the codebase.
+Provides reusable cache classes for OAuth tokens and error tracking.
+
+Architecture:
+- Primary access is async via asyncio.Lock (request handling)
+- Sync fallback with threading.Lock (startup initialization)
+- The async lock prevents concurrent token acquisitions in the event loop
+- The threading lock protects startup code that runs before the event loop
 """
 
+import asyncio
 from datetime import datetime, timezone
 from threading import Lock
 from typing import Optional
@@ -14,24 +20,35 @@ from dataclasses import dataclass, field
 @dataclass
 class TokenCache:
     """
-    Thread-safe cache for OAuth tokens with expiry tracking.
+    Async-aware cache for OAuth tokens with expiry tracking.
 
-    Usage:
-        cache = TokenCache()
+    Supports both async access (preferred, during request handling) and
+    sync access (startup initialization before event loop is running).
 
-        # Check for valid cached token
+    Async usage (preferred):
+        async with cache.async_lock:
+            token = cache.get_if_valid_unlocked(min_ttl_seconds=300)
+            if token:
+                return token
+            new_token = await acquire_token_async()
+            cache.set_unlocked(new_token, expires_at)
+
+    Sync usage (startup only):
         token = cache.get_if_valid(min_ttl_seconds=300)
-        if token:
-            return token
-
-        # Acquire new token and cache it
-        new_token, expires_at = acquire_token()
-        cache.set(new_token, expires_at)
+        if not token:
+            new_token = acquire_token()
+            cache.set(new_token, expires_at)
     """
 
     token: Optional[str] = None
     expires_at: Optional[datetime] = None
     _lock: Lock = field(default_factory=Lock, repr=False)
+    _async_lock: asyncio.Lock = field(default_factory=asyncio.Lock, repr=False)
+
+    @property
+    def async_lock(self) -> asyncio.Lock:
+        """Async lock for coordinating async callers."""
+        return self._async_lock
 
     def get_if_valid(self, min_ttl_seconds: int = 300) -> Optional[str]:
         """
@@ -95,6 +112,48 @@ class TokenCache:
             if not self.token or not self.expires_at:
                 return False
             return self.expires_at > datetime.now(timezone.utc)
+
+    # =========================================================================
+    # Unlocked methods for use with async_lock (caller holds the lock)
+    # =========================================================================
+
+    def get_if_valid_unlocked(self, min_ttl_seconds: int = 300) -> Optional[str]:
+        """
+        Return cached token if valid (caller must hold async_lock).
+
+        Args:
+            min_ttl_seconds: Minimum time-to-live required.
+
+        Returns:
+            Cached token if valid, None otherwise.
+        """
+        if not self.token or not self.expires_at:
+            return None
+        ttl = (self.expires_at - datetime.now(timezone.utc)).total_seconds()
+        if ttl > min_ttl_seconds:
+            return self.token
+        return None
+
+    def set_unlocked(self, token: str, expires_at: datetime) -> None:
+        """
+        Update cached token (caller must hold async_lock).
+
+        Args:
+            token: The OAuth token string.
+            expires_at: Token expiration time (must be timezone-aware).
+        """
+        self.token = token
+        self.expires_at = expires_at
+
+    def invalidate_unlocked(self) -> None:
+        """Force token refresh on next access (caller must hold async_lock)."""
+        self.expires_at = None
+
+    def ttl_seconds_unlocked(self) -> Optional[float]:
+        """Return seconds until expiry (caller must hold async_lock)."""
+        if not self.expires_at:
+            return None
+        return (self.expires_at - datetime.now(timezone.utc)).total_seconds()
 
     def get_status(self) -> dict:
         """
