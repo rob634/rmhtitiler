@@ -43,24 +43,17 @@ async def token_refresh_background_task():
     while True:
         await asyncio.sleep(BACKGROUND_REFRESH_INTERVAL_SECS)
 
-        logger.info("=" * 60)
-        logger.info("Background token refresh triggered")
-        logger.info("=" * 60)
+        logger.debug("Background token refresh triggered")
 
-        # ====================================================================
         # Refresh Storage Token (async - runs in thread pool)
-        # ====================================================================
         if settings.use_azure_auth and settings.azure_storage_account:
             await refresh_storage_token_async()
 
-        # ====================================================================
         # Refresh PostgreSQL Token (if using managed_identity)
-        # ====================================================================
         if settings.postgres_auth_mode == "managed_identity":
             await _refresh_postgres_with_pool_recreation()
 
-        logger.info(f"Next refresh in {BACKGROUND_REFRESH_INTERVAL_SECS // 60} minutes")
-        logger.info("=" * 60)
+        logger.debug(f"Background refresh complete, next in {BACKGROUND_REFRESH_INTERVAL_SECS // 60}m")
 
 
 async def _refresh_postgres_with_pool_recreation():
@@ -98,18 +91,14 @@ async def _refresh_postgres_with_pool_recreation():
 
         try:
             await close_db_connection(_app)
-            logger.info("Closed titiler-pgstac connection pool")
-
             db_settings = PostgresSettings(database_url=new_database_url)
             await connect_to_db(_app, settings=db_settings)
-            logger.info("titiler-pgstac pool recreated with fresh token")
+            logger.debug("titiler-pgstac pool recreated with fresh token")
 
         except Exception as pool_err:
             logger.error(f"Failed to recreate titiler-pgstac pool: {pool_err}")
 
-        # ====================================================================
-        # 2. Refresh TiPG pool (asyncpg, app.state.pool)
-        # ====================================================================
+        # Refresh TiPG pool (asyncpg, app.state.pool)
         if settings.enable_tipg:
             try:
                 await refresh_tipg_pool(_app)

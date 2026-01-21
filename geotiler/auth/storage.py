@@ -44,11 +44,8 @@ def get_storage_oauth_token() -> Optional[str]:
         return cached
 
     # Acquire new token
-    logger.info("=" * 60)
-    logger.info("Acquiring Azure Storage OAuth token...")
-    logger.info(f"Mode: {'Local (Azure CLI)' if settings.local_mode else 'Production (Managed Identity)'}")
-    logger.info(f"Storage Account: {settings.azure_storage_account}")
-    logger.info("=" * 60)
+    mode = "local" if settings.local_mode else "managed_identity"
+    logger.debug(f"Acquiring storage token: account={settings.azure_storage_account} mode={mode}")
 
     try:
         from azure.identity import DefaultAzureCredential
@@ -62,25 +59,16 @@ def get_storage_oauth_token() -> Optional[str]:
         # Cache the token
         storage_token_cache.set(access_token, expires_at)
 
-        logger.info(f"Storage token acquired, expires: {expires_at.isoformat()}")
-        logger.info(f"Token length: {len(access_token)} characters")
+        logger.info(f"Storage token acquired, expires={expires_at.isoformat()}")
 
         return access_token
 
     except Exception as e:
-        logger.error("=" * 60)
-        logger.error("FAILED TO GET STORAGE OAUTH TOKEN")
-        logger.error("=" * 60)
-        logger.error(f"Error: {type(e).__name__}: {e}")
-        logger.error("")
-        logger.error("Troubleshooting:")
+        logger.error(f"Storage token acquisition failed: {type(e).__name__}: {e}")
         if settings.local_mode:
-            logger.error("  - Run: az login")
-            logger.error("  - Verify: az account show")
+            logger.error("Troubleshooting: Run 'az login' and verify with 'az account show'")
         else:
-            logger.error("  - Verify Managed Identity is enabled on App Service")
-            logger.error("  - Verify RBAC role: Storage Blob Data Reader")
-        logger.error("=" * 60)
+            logger.error("Troubleshooting: Verify Managed Identity is enabled and has Storage Blob Data Reader role")
         raise
 
 
@@ -124,11 +112,8 @@ def _acquire_storage_token() -> tuple[Optional[str], Optional[datetime]]:
     Returns:
         Tuple of (token, expires_at) or (None, None) on failure.
     """
-    logger.info("=" * 60)
-    logger.info("Acquiring Azure Storage OAuth token...")
-    logger.info(f"Mode: {'Local (Azure CLI)' if settings.local_mode else 'Production (Managed Identity)'}")
-    logger.info(f"Storage Account: {settings.azure_storage_account}")
-    logger.info("=" * 60)
+    mode = "local" if settings.local_mode else "managed_identity"
+    logger.debug(f"Acquiring storage token: account={settings.azure_storage_account} mode={mode}")
 
     try:
         from azure.identity import DefaultAzureCredential
@@ -139,21 +124,16 @@ def _acquire_storage_token() -> tuple[Optional[str], Optional[datetime]]:
         access_token = token_response.token
         expires_at = datetime.fromtimestamp(token_response.expires_on, tz=timezone.utc)
 
-        logger.info(f"Storage token acquired, expires: {expires_at.isoformat()}")
-        logger.info(f"Token length: {len(access_token)} characters")
+        logger.info(f"Storage token acquired, expires={expires_at.isoformat()}")
 
         return access_token, expires_at
 
     except Exception as e:
-        logger.error("=" * 60)
-        logger.error("FAILED TO GET STORAGE OAUTH TOKEN")
-        logger.error("=" * 60)
-        logger.error(f"Error: {type(e).__name__}: {e}")
+        logger.error(f"Storage token acquisition failed: {type(e).__name__}: {e}")
         if settings.local_mode:
-            logger.error("  - Run: az login")
+            logger.error("Troubleshooting: Run 'az login'")
         else:
-            logger.error("  - Verify Managed Identity is enabled")
-        logger.error("=" * 60)
+            logger.error("Troubleshooting: Verify Managed Identity is enabled")
         raise
 
 
@@ -221,11 +201,8 @@ def initialize_storage_auth() -> Optional[str]:
         if token:
             configure_gdal_auth(token)
             configure_fsspec_auth()
-            logger.info("Storage OAuth authentication initialized successfully")
-            if settings.local_mode:
-                logger.info("Using Azure CLI credentials (az login)")
-            else:
-                logger.info("Using Managed Identity")
+            mode = "Azure CLI" if settings.local_mode else "Managed Identity"
+            logger.info(f"Storage auth initialized: account={settings.azure_storage_account} mode={mode}")
         return token
     except Exception as e:
         logger.error(f"Failed to initialize storage OAuth: {e}")
@@ -243,7 +220,7 @@ def refresh_storage_token() -> Optional[str]:
     Returns:
         New OAuth token if successful, None otherwise.
     """
-    logger.info("Refreshing Storage OAuth token...")
+    logger.debug("Refreshing storage token (sync)")
 
     # Invalidate cache to force new token
     storage_token_cache.invalidate()
@@ -252,7 +229,6 @@ def refresh_storage_token() -> Optional[str]:
         token = get_storage_oauth_token()
         if token:
             configure_gdal_auth(token)
-            logger.info("Storage token refresh complete")
         return token
     except Exception as e:
         logger.error(f"Storage token refresh failed: {e}")
@@ -268,7 +244,7 @@ async def refresh_storage_token_async() -> Optional[str]:
     Returns:
         New OAuth token if successful, None otherwise.
     """
-    logger.info("Refreshing Storage OAuth token (async)...")
+    logger.debug("Refreshing storage token (async)")
 
     async with storage_token_cache.async_lock:
         # Invalidate cache to force new token
@@ -279,7 +255,6 @@ async def refresh_storage_token_async() -> Optional[str]:
             if token and expires_at:
                 storage_token_cache.set_unlocked(token, expires_at)
                 configure_gdal_auth(token)
-                logger.info("Storage token refresh complete")
             return token
         except Exception as e:
             logger.error(f"Storage token refresh failed: {e}")

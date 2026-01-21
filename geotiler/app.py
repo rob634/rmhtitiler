@@ -69,12 +69,7 @@ async def lifespan(app: FastAPI):
     # =========================================================================
     # STARTUP
     # =========================================================================
-    logger.info("=" * 60)
-    logger.info(f"Starting geotiler v{__version__}")
-    logger.info("=" * 60)
-    logger.info(f"Local mode: {settings.local_mode}")
-    logger.info(f"Azure Storage auth: {settings.use_azure_auth}")
-    logger.info(f"PostgreSQL auth mode: {settings.postgres_auth_mode}")
+    logger.info(f"Starting geotiler v{__version__} (local_mode={settings.local_mode}, storage_auth={settings.use_azure_auth}, pg_auth={settings.postgres_auth_mode})")
 
     # Initialize database connection (titiler-pgstac)
     await _initialize_database(app)
@@ -93,9 +88,7 @@ async def lifespan(app: FastAPI):
     # Set app state reference for health checks
     set_app_state(app.state)
 
-    logger.info("=" * 60)
-    logger.info("Startup complete")
-    logger.info("=" * 60)
+    logger.info(f"Startup complete: geotiler v{__version__}")
 
     yield  # Application runs here
 

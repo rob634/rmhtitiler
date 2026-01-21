@@ -17,7 +17,7 @@
 - **Good Documentation**: Detailed deployment guides, API reference, implementation docs
 
 ### Areas for Improvement
-- **12 issues identified, 7 resolved, 1 not applicable** (4 remaining: 0 High, 1 Medium, 3 Low severity)
+- **12 issues identified, 8 resolved, 1 not applicable** (3 remaining: 0 High, 1 Medium, 2 Low severity)
 - **UI technical debt**: ✅ Resolved via Jinja2 migration (CSS consolidated, URLs configurable)
 - **Async patterns**: ✅ Fixed - Token acquisition now uses `asyncio.to_thread()`
 - **Error handling**: ✅ Fixed - Diagnostics now surface query errors instead of swallowing
@@ -223,29 +223,39 @@ The function exists because titiler-pgstac uses psycopg (sync) while TiPG uses a
 
 ---
 
-### 10. Excessive Logging Noise
+### 10. ~~Excessive Logging Noise~~ ✅ RESOLVED
 
-**Severity:** Low
-**Location:** Throughout codebase
+**Status:** Fixed on 2026-01-21
 
+**Resolution:** Cleaned up logging throughout the codebase:
+
+- Removed all banner-style logging (`"=" * 60`)
+- Moved verbose token acquisition details to DEBUG level
+- Converted multi-line log entries to single concise lines
+- Kept one INFO log per significant event (startup, token acquired)
+
+**Files Modified:**
+- `geotiler/auth/storage.py` - Token acquisition logs
+- `geotiler/auth/postgres.py` - Token acquisition logs
+- `geotiler/app.py` - Startup logs
+- `geotiler/services/background.py` - Background refresh logs
+- `geotiler/routers/stac.py` - STAC API initialization
+- `geotiler/routers/vector.py` - TiPG initialization
+
+**Before:**
 ```python
 logger.info("=" * 60)
 logger.info("Acquiring Azure Storage OAuth token...")
+logger.info(f"Mode: {mode}")
+logger.info(f"Storage Account: {account}")
 logger.info("=" * 60)
 ```
 
-**Explanation:**
-Banner-style logging with separator lines appears dozens of times throughout the codebase. While helpful during development and debugging, this creates problems in production:
-
-1. **Log volume** - Increases storage costs and makes log analysis slower
-2. **Signal-to-noise** - Important messages get lost in decorative banners
-3. **Parsing difficulty** - Multi-line log entries are harder to parse with log aggregators
-4. **Inconsistent levels** - Many INFO logs would be better as DEBUG
-
-Consider:
-- Moving verbose logs to DEBUG level
-- Using structured logging (JSON) for machine parsing
-- Reserving banners for truly exceptional events (startup/shutdown only)
+**After:**
+```python
+logger.debug(f"Acquiring storage token: account={account} mode={mode}")
+logger.info(f"Storage token acquired, expires={expires_at.isoformat()}")
+```
 
 ---
 
@@ -310,7 +320,7 @@ The codebase demonstrates several good practices worth preserving:
 | 7 | God function | Low | Medium | Maintainability |
 | 8 | ~~CSS duplication~~ | ~~Low~~ | ✅ Fixed | ~~Maintainability~~ |
 | 9 | Mixed sync/async DB | Low | Medium | Consistency |
-| 10 | Excessive logging | Low | Low | Log noise |
+| 10 | ~~Excessive logging~~ | ~~Low~~ | ✅ Fixed | ~~Log noise~~ |
 | 11 | ~~Hardcoded URLs~~ | ~~Low~~ | ✅ Fixed | ~~Brittleness~~ |
 | 12 | ~~Missing types~~ | ~~Low~~ | ✅ Fixed | ~~Type safety~~ |
 

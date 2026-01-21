@@ -157,11 +157,7 @@ async def initialize_tipg(app: "FastAPI") -> None:
     Args:
         app: FastAPI application instance.
     """
-    logger.info("=" * 60)
-    logger.info("Initializing TiPG (OGC Features + Vector Tiles)")
-    logger.info("=" * 60)
-    logger.info(f"Schemas to expose: {settings.tipg_schema_list}")
-    logger.info(f"Router prefix: {settings.tipg_router_prefix}")
+    logger.info(f"Initializing TiPG: schemas={settings.tipg_schema_list} prefix={settings.tipg_router_prefix}")
 
     try:
         # Build schemas list for search_path
@@ -170,7 +166,7 @@ async def initialize_tipg(app: "FastAPI") -> None:
         # Add pgstac schema if STAC API is enabled (stac-fastapi-pgstac needs it in search_path)
         if settings.enable_stac_api and "pgstac" not in schemas:
             schemas.append("pgstac")
-            logger.info("Added pgstac schema for STAC API support")
+            logger.debug("Added pgstac schema for STAC API support")
 
         # Get settings using our auth system (pass schemas for connection-level search_path)
         postgres_settings = get_tipg_postgres_settings(schemas=schemas)
@@ -178,7 +174,7 @@ async def initialize_tipg(app: "FastAPI") -> None:
 
         # Create asyncpg connection pool (schemas is required keyword arg)
         await tipg_connect_to_db(app, settings=postgres_settings, schemas=schemas)
-        logger.info(f"TiPG asyncpg connection pool created with schemas: {schemas}")
+        logger.debug(f"TiPG asyncpg pool created: schemas={schemas}")
 
         # Set up STAC API database aliases to share the pool
         # stac-fastapi-pgstac expects readpool/writepool and get_connection
@@ -186,11 +182,11 @@ async def initialize_tipg(app: "FastAPI") -> None:
             app.state.readpool = app.state.pool
             app.state.writepool = app.state.pool
             app.state.get_connection = stac_get_connection
-            logger.info("STAC API database aliases configured (shared pool)")
+            logger.debug("STAC API database aliases configured")
 
         # Register collections from PostGIS schemas
         await register_collection_catalog(app, db_settings=db_settings)
-        logger.info("TiPG collection catalog registered")
+        logger.debug("TiPG collection catalog registered")
 
         # Log discovered collections and record startup state
         collection_count = 0

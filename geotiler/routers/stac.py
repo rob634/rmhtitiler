@@ -55,10 +55,7 @@ def create_stac_api(app) -> StacApi:
     """
     global _stac_api
 
-    logger.info("=" * 60)
-    logger.info("Creating STAC API (stac-fastapi-pgstac)")
-    logger.info("=" * 60)
-    logger.info(f"Router prefix: {settings.stac_router_prefix}")
+    logger.info(f"Creating STAC API: prefix={settings.stac_router_prefix}")
 
     # Create request models with extensions
     extensions_for_models = [FilterExtension(), FieldsExtension(), SortExtension()]

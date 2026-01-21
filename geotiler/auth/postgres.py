@@ -72,11 +72,7 @@ def _get_password_from_keyvault() -> str:
     if not settings.key_vault_name:
         raise ValueError("KEY_VAULT_NAME environment variable not set")
 
-    logger.info("=" * 60)
-    logger.info("Retrieving PostgreSQL password from Key Vault")
-    logger.info(f"Key Vault: {settings.key_vault_name}")
-    logger.info(f"Secret Name: {settings.key_vault_secret_name}")
-    logger.info("=" * 60)
+    logger.debug(f"Retrieving password from Key Vault: vault={settings.key_vault_name} secret={settings.key_vault_secret_name}")
 
     try:
         from azure.identity import DefaultAzureCredential
@@ -90,22 +86,13 @@ def _get_password_from_keyvault() -> str:
         secret = client.get_secret(settings.key_vault_secret_name)
         password = secret.value
 
-        logger.info("Password retrieved from Key Vault successfully")
-        logger.debug(f"Password length: {len(password)} characters")
+        logger.info(f"Password retrieved from Key Vault: vault={settings.key_vault_name}")
 
         return password
 
     except Exception as e:
-        logger.error("=" * 60)
-        logger.error("FAILED TO RETRIEVE PASSWORD FROM KEY VAULT")
-        logger.error("=" * 60)
-        logger.error(f"Error: {type(e).__name__}: {e}")
-        logger.error("")
-        logger.error("Troubleshooting:")
-        logger.error("  - Verify Key Vault exists")
-        logger.error("  - Verify secret exists in Key Vault")
-        logger.error("  - Verify Managed Identity has 'Get' permission on secrets")
-        logger.error("=" * 60)
+        logger.error(f"Key Vault password retrieval failed: {type(e).__name__}: {e}")
+        logger.error("Troubleshooting: Verify Key Vault exists, secret exists, and MI has 'Get' permission")
         raise
 
 
@@ -129,12 +116,8 @@ def _get_postgres_oauth_token() -> str:
         return cached
 
     # Acquire new token
-    logger.info("=" * 60)
-    logger.info("Acquiring PostgreSQL OAuth token...")
-    logger.info(f"Mode: {'Local (Azure CLI)' if settings.local_mode else 'Production (Managed Identity)'}")
-    logger.info(f"PostgreSQL Host: {settings.postgres_host}")
-    logger.info(f"PostgreSQL User: {settings.postgres_user}")
-    logger.info("=" * 60)
+    mode = "local" if settings.local_mode else "managed_identity"
+    logger.debug(f"Acquiring PostgreSQL token: host={settings.postgres_host} user={settings.postgres_user} mode={mode}")
 
     try:
         # Use user-assigned MI if client ID is set (production)
@@ -142,11 +125,11 @@ def _get_postgres_oauth_token() -> str:
         if settings.postgres_mi_client_id and not settings.local_mode:
             from azure.identity import ManagedIdentityCredential
             credential = ManagedIdentityCredential(client_id=settings.postgres_mi_client_id)
-            logger.info(f"Using user-assigned Managed Identity: {settings.postgres_mi_client_id}")
+            logger.debug(f"Using user-assigned MI: {settings.postgres_mi_client_id}")
         else:
             from azure.identity import DefaultAzureCredential
             credential = DefaultAzureCredential()
-            logger.info("Using DefaultAzureCredential")
+            logger.debug("Using DefaultAzureCredential")
 
         token_response = credential.get_token(POSTGRES_SCOPE)
 
@@ -156,26 +139,16 @@ def _get_postgres_oauth_token() -> str:
         # Cache the token
         postgres_token_cache.set(access_token, expires_at)
 
-        logger.info(f"PostgreSQL token acquired, expires: {expires_at.isoformat()}")
-        logger.debug(f"Token length: {len(access_token)} characters")
+        logger.info(f"PostgreSQL token acquired, expires={expires_at.isoformat()}")
 
         return access_token
 
     except Exception as e:
-        logger.error("=" * 60)
-        logger.error("FAILED TO GET POSTGRESQL OAUTH TOKEN")
-        logger.error("=" * 60)
-        logger.error(f"Error: {type(e).__name__}: {e}")
-        logger.error("")
-        logger.error("Troubleshooting:")
+        logger.error(f"PostgreSQL token acquisition failed: {type(e).__name__}: {e}")
         if settings.local_mode:
-            logger.error("  - Run: az login")
-            logger.error("  - Verify: az account show")
+            logger.error("Troubleshooting: Run 'az login' and verify with 'az account show'")
         else:
-            logger.error("  - Verify Managed Identity is assigned to App Service")
-            logger.error("  - Verify database user exists and matches MI name")
-            logger.error(f"  - Check: az webapp identity show --name <app> --resource-group <rg>")
-        logger.error("=" * 60)
+            logger.error("Troubleshooting: Verify MI is assigned to App Service and database user exists")
         raise
 
 
@@ -296,12 +269,8 @@ def _acquire_postgres_token() -> tuple[Optional[str], Optional[datetime]]:
     Returns:
         Tuple of (token, expires_at) or raises exception on failure.
     """
-    logger.info("=" * 60)
-    logger.info("Acquiring PostgreSQL OAuth token...")
-    logger.info(f"Mode: {'Local (Azure CLI)' if settings.local_mode else 'Production (Managed Identity)'}")
-    logger.info(f"PostgreSQL Host: {settings.postgres_host}")
-    logger.info(f"PostgreSQL User: {settings.postgres_user}")
-    logger.info("=" * 60)
+    mode = "local" if settings.local_mode else "managed_identity"
+    logger.debug(f"Acquiring PostgreSQL token: host={settings.postgres_host} user={settings.postgres_user} mode={mode}")
 
     try:
         # Use user-assigned MI if client ID is set (production)
@@ -309,32 +278,27 @@ def _acquire_postgres_token() -> tuple[Optional[str], Optional[datetime]]:
         if settings.postgres_mi_client_id and not settings.local_mode:
             from azure.identity import ManagedIdentityCredential
             credential = ManagedIdentityCredential(client_id=settings.postgres_mi_client_id)
-            logger.info(f"Using user-assigned Managed Identity: {settings.postgres_mi_client_id}")
+            logger.debug(f"Using user-assigned MI: {settings.postgres_mi_client_id}")
         else:
             from azure.identity import DefaultAzureCredential
             credential = DefaultAzureCredential()
-            logger.info("Using DefaultAzureCredential")
+            logger.debug("Using DefaultAzureCredential")
 
         token_response = credential.get_token(POSTGRES_SCOPE)
 
         access_token = token_response.token
         expires_at = datetime.fromtimestamp(token_response.expires_on, tz=timezone.utc)
 
-        logger.info(f"PostgreSQL token acquired, expires: {expires_at.isoformat()}")
-        logger.debug(f"Token length: {len(access_token)} characters")
+        logger.info(f"PostgreSQL token acquired, expires={expires_at.isoformat()}")
 
         return access_token, expires_at
 
     except Exception as e:
-        logger.error("=" * 60)
-        logger.error("FAILED TO GET POSTGRESQL OAUTH TOKEN")
-        logger.error("=" * 60)
-        logger.error(f"Error: {type(e).__name__}: {e}")
+        logger.error(f"PostgreSQL token acquisition failed: {type(e).__name__}: {e}")
         if settings.local_mode:
-            logger.error("  - Run: az login")
+            logger.error("Troubleshooting: Run 'az login'")
         else:
-            logger.error("  - Verify Managed Identity is assigned to App Service")
-        logger.error("=" * 60)
+            logger.error("Troubleshooting: Verify MI is assigned to App Service")
         raise
 
 
@@ -351,7 +315,7 @@ async def refresh_postgres_token_async() -> Optional[str]:
         logger.debug("PostgreSQL token refresh skipped (not using managed_identity)")
         return None
 
-    logger.info("Refreshing PostgreSQL OAuth token (async)...")
+    logger.debug("Refreshing PostgreSQL token (async)")
 
     async with postgres_token_cache.async_lock:
         # Invalidate cache to force new token
@@ -361,7 +325,6 @@ async def refresh_postgres_token_async() -> Optional[str]:
             token, expires_at = await asyncio.to_thread(_acquire_postgres_token)
             if token and expires_at:
                 postgres_token_cache.set_unlocked(token, expires_at)
-                logger.info("PostgreSQL token refresh complete")
             return token
         except Exception as e:
             logger.error(f"PostgreSQL token refresh failed: {e}")
