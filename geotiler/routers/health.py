@@ -31,7 +31,12 @@ from geotiler.auth.cache import (
     db_error_cache,
     TokenCache,
 )
-from geotiler.services.database import ping_database, ping_database_with_timing, get_db_pool, get_app_state
+from geotiler.services.database import (
+    ping_database_async,
+    ping_database_with_timing_async,
+    get_db_pool,
+    get_app_state,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -75,8 +80,8 @@ async def readiness(response: Response):
     ready = True
     issues = []
 
-    # Check 1: Database connection
-    db_ok, db_error = ping_database()
+    # Check 1: Database connection (async to avoid blocking event loop)
+    db_ok, db_error = await ping_database_async()
     if not db_ok:
         ready = False
         issues.append(f"database: {db_error}")
@@ -129,8 +134,8 @@ async def health(response: Response):
     # DEPENDENCY CHECKS
     # =========================================================================
 
-    # Database connection
-    db_ok, db_error, ping_ms = ping_database_with_timing()
+    # Database connection (async to avoid blocking event loop)
+    db_ok, db_error, ping_ms = await ping_database_with_timing_async()
     pool_exists = get_db_pool() is not None
 
     dependencies["database"] = {

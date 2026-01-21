@@ -17,7 +17,7 @@
 - **Good Documentation**: Detailed deployment guides, API reference, implementation docs
 
 ### Areas for Improvement
-- **12 issues identified, 8 resolved, 1 not applicable** (3 remaining: 0 High, 1 Medium, 2 Low severity)
+- **12 issues identified, 9 resolved, 1 not applicable** (2 remaining: 0 High, 1 Medium, 1 Low severity)
 - **UI technical debt**: ✅ Resolved via Jinja2 migration (CSS consolidated, URLs configurable)
 - **Async patterns**: ✅ Fixed - Token acquisition now uses `asyncio.to_thread()`
 - **Error handling**: ✅ Fixed - Diagnostics now surface query errors instead of swallowing
@@ -199,27 +199,29 @@ Consider breaking this into smaller functions, each responsible for one diagnost
 
 ---
 
-### 9. Mixed Sync/Async Database Access
+### 9. ~~Mixed Sync/Async Database Access~~ ✅ RESOLVED
 
-**Severity:** Low
-**Location:** `geotiler/services/database.py:56-79`
+**Status:** Fixed on 2026-01-21
+
+**Resolution:** Added async wrappers for database ping functions that use `asyncio.to_thread()` to run blocking psycopg calls in a thread pool:
 
 ```python
-def ping_database() -> Tuple[bool, Optional[str]]:  # Synchronous!
-    pool = get_db_pool()
-    try:
-        with pool.connection() as conn:
-            conn.execute("SELECT 1")
+async def ping_database_async() -> Tuple[bool, Optional[str]]:
+    """Runs blocking ping in thread pool."""
+    return await asyncio.to_thread(ping_database)
+
+async def ping_database_with_timing_async() -> Tuple[bool, Optional[str], Optional[float]]:
+    """Runs blocking ping with timing in thread pool."""
+    return await asyncio.to_thread(ping_database_with_timing)
 ```
 
-**Explanation:**
-The `ping_database()` function is synchronous while most other database code in the application uses async/await. This inconsistency:
+**Files Modified:**
+- `geotiler/services/database.py` - Added `ping_database_async()`, `ping_database_with_timing_async()`, `is_database_ready_async()`
+- `geotiler/routers/health.py` - Updated `/readyz` and `/health` to use async versions
 
-1. **Blocks event loop** - Health checks block all other requests while executing
-2. **Confusing API** - Developers must remember which functions are sync vs async
-3. **Different connection pools** - Uses psycopg sync pool while TiPG uses asyncpg
+Health checks no longer block the event loop during database pings.
 
-The function exists because titiler-pgstac uses psycopg (sync) while TiPG uses asyncpg (async). Consider using the async pool for health checks, or documenting why two pools are necessary.
+**Note:** Two connection pools remain (psycopg for titiler-pgstac, asyncpg for TiPG) because the upstream libraries require different drivers. This is documented and intentional.
 
 ---
 
@@ -319,7 +321,7 @@ The codebase demonstrates several good practices worth preserving:
 | 6 | ~~Error swallowing~~ | ~~Medium~~ | ✅ Fixed | ~~Debugging difficulty~~ |
 | 7 | God function | Low | Medium | Maintainability |
 | 8 | ~~CSS duplication~~ | ~~Low~~ | ✅ Fixed | ~~Maintainability~~ |
-| 9 | Mixed sync/async DB | Low | Medium | Consistency |
+| 9 | ~~Mixed sync/async DB~~ | ~~Low~~ | ✅ Fixed | ~~Consistency~~ |
 | 10 | ~~Excessive logging~~ | ~~Low~~ | ✅ Fixed | ~~Log noise~~ |
 | 11 | ~~Hardcoded URLs~~ | ~~Low~~ | ✅ Fixed | ~~Brittleness~~ |
 | 12 | ~~Missing types~~ | ~~Low~~ | ✅ Fixed | ~~Type safety~~ |
