@@ -97,3 +97,13 @@ async def guide_maplibre_tiles(request: Request):
 async def guide_vector_features(request: Request):
     """Vector features guide."""
     return _render_guide(request, "pages/guide/web-developers/vector-features.html", "/guide/web-developers/vector-features")
+
+
+# =============================================================================
+# ABOUT
+# =============================================================================
+
+@router.get("/guide/technology", response_class=HTMLResponse, include_in_schema=False)
+async def guide_technology(request: Request):
+    """Technology stack and acknowledgments."""
+    return _render_guide(request, "pages/guide/technology.html", "/guide/technology")

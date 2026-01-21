@@ -1,0 +1,94 @@
+{% extends "base_guide.html" %}
+
+{% block title %}Technology Stack{% endblock %}
+
+{% block guide_content %}
+<h1>Technology Stack</h1>
+<p class="subtitle">Open source libraries powering this API</p>
+
+<p>
+    This application is built on exceptional open source geospatial libraries,
+    primarily developed by <a href="https://developmentseed.org/" target="_blank">Development Seed</a>.
+</p>
+
+<h2>Core Libraries</h2>
+
+<table>
+    <tr>
+        <th>Library</th>
+        <th>Purpose</th>
+        <th>Links</th>
+    </tr>
+    <tr>
+        <td><strong>TiTiler</strong></td>
+        <td>Dynamic tile server for Cloud Optimized GeoTIFFs (COGs) and other raster formats. Powers the <code>/cog</code> and <code>/xarray</code> endpoints.</td>
+        <td>
+            <a href="https://github.com/developmentseed/titiler" target="_blank">GitHub</a> |
+            <a href="https://developmentseed.org/titiler/" target="_blank">Docs</a>
+        </td>
+    </tr>
+    <tr>
+        <td><strong>TiPG</strong></td>
+        <td>OGC Features API and Vector Tiles from PostgreSQL/PostGIS. Powers the <code>/vector</code> endpoints.</td>
+        <td>
+            <a href="https://github.com/developmentseed/tipg" target="_blank">GitHub</a> |
+            <a href="https://developmentseed.org/tipg/" target="_blank">Docs</a>
+        </td>
+    </tr>
+    <tr>
+        <td><strong>stac-fastapi</strong></td>
+        <td>STAC API implementation for searching and browsing geospatial catalogs. Powers the <code>/stac</code> endpoints.</td>
+        <td>
+            <a href="https://github.com/stac-utils/stac-fastapi" target="_blank">GitHub</a> |
+            <a href="https://stac-utils.github.io/stac-fastapi/" target="_blank">Docs</a>
+        </td>
+    </tr>
+    <tr>
+        <td><strong>pgSTAC</strong></td>
+        <td>PostgreSQL backend for STAC catalogs. Enables dynamic mosaic tiling from STAC searches.</td>
+        <td>
+            <a href="https://github.com/stac-utils/pgstac" target="_blank">GitHub</a> |
+            <a href="https://stac-utils.github.io/pgstac/" target="_blank">Docs</a>
+        </td>
+    </tr>
+    <tr>
+        <td><strong>rio-tiler</strong></td>
+        <td>Rasterio-based library for reading and tiling geospatial raster data.</td>
+        <td>
+            <a href="https://github.com/cogeotiff/rio-tiler" target="_blank">GitHub</a> |
+            <a href="https://cogeotiff.github.io/rio-tiler/" target="_blank">Docs</a>
+        </td>
+    </tr>
+</table>
+
+<h2>Acknowledgments</h2>
+
+<p>
+    Special thanks to <a href="https://developmentseed.org/" target="_blank">Development Seed</a>
+    for creating and maintaining these libraries that make modern geospatial APIs possible.
+</p>
+
+<div class="callout callout-info">
+    <strong>Development Seed</strong>
+    <p>
+        Development Seed builds open technology and data products to solve global challenges.
+        Their geospatial tools power applications serving climate data, satellite imagery,
+        and environmental monitoring worldwide.
+    </p>
+    <p>
+        <a href="https://developmentseed.org/" target="_blank">developmentseed.org</a>
+    </p>
+</div>
+
+<h2>Additional Dependencies</h2>
+
+<p>This application also relies on:</p>
+
+<ul>
+    <li><a href="https://fastapi.tiangolo.com/" target="_blank">FastAPI</a> - Modern Python web framework</li>
+    <li><a href="https://rasterio.readthedocs.io/" target="_blank">Rasterio</a> - Geospatial raster I/O</li>
+    <li><a href="https://gdal.org/" target="_blank">GDAL</a> - Geospatial data abstraction library</li>
+    <li><a href="https://xarray.dev/" target="_blank">xarray</a> - N-dimensional labeled arrays</li>
+    <li><a href="https://zarr.dev/" target="_blank">Zarr</a> - Chunked, compressed array storage</li>
+</ul>
+{% endblock %}

@@ -255,6 +255,12 @@ li { margin-bottom: var(--spacing-sm); }
     color: var(--ds-blue-primary);
 }
 
+.footer .powered-by {
+    font-size: 0.75rem;
+    margin-top: var(--spacing-sm);
+    margin-bottom: 0;
+}
+
 /* ==========================================================================
    Cards
    ========================================================================== */
