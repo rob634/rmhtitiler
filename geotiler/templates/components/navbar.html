@@ -12,6 +12,7 @@
         {% if stac_api_enabled %}
         <a href="/stac-explorer" class="{{ 'active' if nav_active == '/stac-explorer' else '' }}">STAC</a>
         {% endif %}
+        <a href="/map" class="{{ 'active' if nav_active == '/map' else '' }}">Map</a>
         <a href="/guide/" class="{{ 'active' if nav_active and nav_active.startswith('/guide') else '' }}">Guide</a>
         <a href="/docs" class="{{ 'active' if nav_active == '/docs' else '' }}">API Docs</a>
     </div>

@@ -1,0 +1,886 @@
+{% extends "base.html" %}
+
+{% block title %}Map Viewer{% endblock %}
+
+{% block main_class %}map-viewer{% endblock %}
+
+{% block head %}
+<!-- MapLibre GL JS -->
+<link rel="stylesheet" href="https://unpkg.com/maplibre-gl@4.0.2/dist/maplibre-gl.css" />
+<script src="https://unpkg.com/maplibre-gl@4.0.2/dist/maplibre-gl.js"></script>
+<style>
+/* Map Viewer Layout */
+.map-viewer {
+    display: flex;
+    height: calc(100vh - 50px);
+    padding: 0;
+    max-width: none;
+}
+
+/* Left Panel - Catalog */
+.catalog-panel {
+    width: 280px;
+    background: var(--ds-white);
+    border-right: 1px solid var(--ds-gray-light);
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+}
+
+.panel-header {
+    padding: 12px 15px;
+    border-bottom: 1px solid var(--ds-gray-light);
+    background: var(--ds-bg);
+}
+
+.panel-title {
+    font-size: 14px;
+    font-weight: 700;
+    margin: 0;
+}
+
+.panel-subtitle {
+    font-size: 11px;
+    color: var(--ds-gray);
+    margin-top: 2px;
+}
+
+/* Source tabs */
+.source-tabs {
+    display: flex;
+    border-bottom: 1px solid var(--ds-gray-light);
+    background: var(--ds-bg);
+}
+
+.source-tab {
+    flex: 1;
+    padding: 8px 4px;
+    text-align: center;
+    cursor: pointer;
+    font-size: 11px;
+    font-weight: 500;
+    border-bottom: 2px solid transparent;
+    transition: all 0.2s;
+}
+
+.source-tab:hover {
+    background: var(--ds-white);
+}
+
+.source-tab.active {
+    border-bottom-color: var(--ds-blue-primary);
+    background: var(--ds-white);
+    color: var(--ds-blue-primary);
+}
+
+.catalog-content {
+    flex: 1;
+    overflow-y: auto;
+    padding: 10px;
+}
+
+/* Layer items in catalog */
+.layer-item {
+    padding: 10px 12px;
+    border: 1px solid var(--ds-gray-light);
+    border-radius: 6px;
+    margin-bottom: 8px;
+    cursor: pointer;
+    transition: all 0.2s;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+}
+
+.layer-item:hover {
+    border-color: var(--ds-blue-primary);
+    background: #f8fafc;
+}
+
+.layer-item.added {
+    border-color: var(--ds-status-success);
+    background: #f0fdf4;
+}
+
+.layer-info {
+    flex: 1;
+    min-width: 0;
+}
+
+.layer-name {
+    font-weight: 600;
+    font-size: 12px;
+    margin-bottom: 2px;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.layer-type {
+    font-size: 10px;
+    color: var(--ds-gray);
+}
+
+.layer-add-btn {
+    padding: 4px 8px;
+    font-size: 10px;
+    background: var(--ds-blue-primary);
+    color: white;
+    border: none;
+    border-radius: 4px;
+    cursor: pointer;
+    white-space: nowrap;
+}
+
+.layer-add-btn:hover {
+    background: var(--ds-blue-dark);
+}
+
+.layer-add-btn.added {
+    background: var(--ds-status-success);
+}
+
+/* Map container */
+.map-container {
+    flex: 1;
+    position: relative;
+}
+
+#map {
+    width: 100%;
+    height: 100%;
+}
+
+/* Right Panel - Active Layers */
+.layers-panel {
+    width: 260px;
+    background: var(--ds-white);
+    border-left: 1px solid var(--ds-gray-light);
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+}
+
+.layers-content {
+    flex: 1;
+    overflow-y: auto;
+    padding: 10px;
+}
+
+/* Active layer card */
+.active-layer {
+    padding: 12px;
+    border: 1px solid var(--ds-gray-light);
+    border-radius: 6px;
+    margin-bottom: 10px;
+    background: var(--ds-white);
+}
+
+.active-layer-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+    margin-bottom: 8px;
+}
+
+.active-layer-name {
+    font-weight: 600;
+    font-size: 12px;
+    flex: 1;
+    word-break: break-word;
+}
+
+.active-layer-remove {
+    background: none;
+    border: none;
+    color: var(--ds-gray);
+    cursor: pointer;
+    padding: 0 4px;
+    font-size: 16px;
+    line-height: 1;
+}
+
+.active-layer-remove:hover {
+    color: var(--ds-status-error);
+}
+
+.active-layer-controls {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}
+
+.control-row {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.control-label {
+    font-size: 11px;
+    color: var(--ds-gray);
+    min-width: 50px;
+}
+
+.control-row input[type="range"] {
+    flex: 1;
+    height: 4px;
+}
+
+.control-row input[type="color"] {
+    width: 30px;
+    height: 24px;
+    padding: 0;
+    border: 1px solid var(--ds-gray-light);
+    border-radius: 4px;
+    cursor: pointer;
+}
+
+/* Empty states */
+.empty-state {
+    text-align: center;
+    padding: 30px 15px;
+    color: var(--ds-gray);
+}
+
+.empty-state h3 {
+    color: var(--ds-navy);
+    font-size: 13px;
+    margin-bottom: 6px;
+}
+
+.empty-state p {
+    font-size: 11px;
+    margin: 0;
+}
+
+.loading {
+    text-align: center;
+    padding: 20px;
+    color: var(--ds-gray);
+    font-size: 12px;
+}
+
+/* Status bar */
+.status-bar {
+    padding: 6px 12px;
+    background: var(--ds-bg);
+    border-top: 1px solid var(--ds-gray-light);
+    font-size: 11px;
+    color: var(--ds-gray);
+    display: flex;
+    justify-content: space-between;
+}
+
+/* URL input for COG/XArray */
+.url-input-section {
+    padding: 10px;
+    border-bottom: 1px solid var(--ds-gray-light);
+    background: var(--ds-bg);
+}
+
+.url-input-section input {
+    width: 100%;
+    padding: 6px 8px;
+    border: 1px solid var(--ds-gray-light);
+    border-radius: 4px;
+    font-size: 11px;
+    margin-bottom: 6px;
+}
+
+.url-input-section button {
+    width: 100%;
+    padding: 6px;
+    font-size: 11px;
+}
+</style>
+{% endblock %}
+
+{% block content %}
+<!-- Left Panel - Data Catalog -->
+<div class="catalog-panel">
+    <div class="panel-header">
+        <h2 class="panel-title">Data Catalog</h2>
+        <p class="panel-subtitle">Browse available layers</p>
+    </div>
+
+    <div class="source-tabs">
+        {% if tipg_enabled %}
+        <div class="source-tab active" data-source="vector">Vector</div>
+        {% endif %}
+        <div class="source-tab {% if not tipg_enabled %}active{% endif %}" data-source="cog">COG</div>
+        <div class="source-tab" data-source="xarray">XArray</div>
+        {% if stac_enabled %}
+        <div class="source-tab" data-source="searches">Searches</div>
+        {% endif %}
+    </div>
+
+    <!-- URL input for COG/XArray -->
+    <div id="url-input-section" class="url-input-section" style="display: none;">
+        <input type="text" id="url-input" placeholder="Enter URL (https://...)">
+        <button class="btn btn-primary" onclick="addUrlLayer()">Add to Map</button>
+    </div>
+
+    <div class="catalog-content" id="catalog-content">
+        <div class="loading">Loading...</div>
+    </div>
+</div>
+
+<!-- Map Container -->
+<div class="map-container">
+    <div id="map"></div>
+    <div class="status-bar">
+        <span id="status-text">Ready</span>
+        <span id="coords"></span>
+    </div>
+</div>
+
+<!-- Right Panel - Active Layers -->
+<div class="layers-panel">
+    <div class="panel-header">
+        <h2 class="panel-title">Active Layers</h2>
+        <p class="panel-subtitle">Manage visible layers</p>
+    </div>
+    <div class="layers-content" id="active-layers">
+        <div class="empty-state">
+            <h3>No Layers Added</h3>
+            <p>Select layers from the catalog to add them to the map.</p>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+// State
+let map = null;
+let activeLayers = [];
+let vectorCollections = [];
+let currentSource = '{{ "vector" if tipg_enabled else "cog" }}';
+
+// Initialize
+document.addEventListener('DOMContentLoaded', () => {
+    initMap();
+    initTabs();
+    loadCatalog(currentSource);
+});
+
+// Map initialization
+function initMap() {
+    map = new maplibregl.Map({
+        container: 'map',
+        style: {
+            version: 8,
+            sources: {
+                'osm': {
+                    type: 'raster',
+                    tiles: ['https://tile.openstreetmap.org/{z}/{x}/{y}.png'],
+                    tileSize: 256,
+                    attribution: '&copy; OpenStreetMap contributors'
+                }
+            },
+            layers: [{
+                id: 'osm-layer',
+                type: 'raster',
+                source: 'osm'
+            }]
+        },
+        center: [0, 20],
+        zoom: 2
+    });
+
+    // Add navigation controls
+    map.addControl(new maplibregl.NavigationControl(), 'top-right');
+
+    // Update coordinates on mouse move
+    map.on('mousemove', (e) => {
+        const lng = e.lngLat.lng.toFixed(4);
+        const lat = e.lngLat.lat.toFixed(4);
+        document.getElementById('coords').textContent = `${lat}, ${lng}`;
+    });
+}
+
+// Tab switching
+function initTabs() {
+    document.querySelectorAll('.source-tab').forEach(tab => {
+        tab.addEventListener('click', () => {
+            document.querySelectorAll('.source-tab').forEach(t => t.classList.remove('active'));
+            tab.classList.add('active');
+            currentSource = tab.dataset.source;
+            loadCatalog(currentSource);
+        });
+    });
+}
+
+// Load catalog based on source type
+async function loadCatalog(source) {
+    const container = document.getElementById('catalog-content');
+    const urlSection = document.getElementById('url-input-section');
+    container.innerHTML = '<div class="loading">Loading...</div>';
+
+    // Show URL input for COG/XArray
+    if (source === 'cog' || source === 'xarray') {
+        urlSection.style.display = 'block';
+        document.getElementById('url-input').placeholder = source === 'cog'
+            ? 'Enter COG URL (https://...tif)'
+            : 'Enter Zarr/NetCDF URL';
+    } else {
+        urlSection.style.display = 'none';
+    }
+
+    try {
+        switch (source) {
+            case 'vector':
+                await loadVectorCollections(container);
+                break;
+            case 'cog':
+                renderCogCatalog(container);
+                break;
+            case 'xarray':
+                renderXarrayCatalog(container);
+                break;
+            case 'searches':
+                await loadSearches(container);
+                break;
+        }
+    } catch (error) {
+        container.innerHTML = `<div class="empty-state"><h3>Error</h3><p>${error.message}</p></div>`;
+    }
+}
+
+// Load TiPG vector collections
+async function loadVectorCollections(container) {
+    const response = await fetch('/vector/collections');
+    if (!response.ok) throw new Error('Failed to load collections');
+
+    const data = await response.json();
+    vectorCollections = data.collections || [];
+
+    if (!vectorCollections.length) {
+        container.innerHTML = '<div class="empty-state"><h3>No Collections</h3><p>No vector collections available.</p></div>';
+        return;
+    }
+
+    let html = '';
+    for (const col of vectorCollections) {
+        const isAdded = activeLayers.some(l => l.id === `vector-${col.id}`);
+        html += `
+            <div class="layer-item ${isAdded ? 'added' : ''}" data-id="${col.id}">
+                <div class="layer-info">
+                    <div class="layer-name">${col.id}</div>
+                    <div class="layer-type">Vector (MVT)</div>
+                </div>
+                <button class="layer-add-btn ${isAdded ? 'added' : ''}" onclick="toggleVectorLayer('${col.id}')">
+                    ${isAdded ? 'Added' : 'Add'}
+                </button>
+            </div>
+        `;
+    }
+    container.innerHTML = html;
+}
+
+// Render COG catalog (sample URLs + custom input)
+function renderCogCatalog(container) {
+    const samples = {{ sample_cog_urls | tojson }};
+    let html = '';
+
+    if (samples && samples.length) {
+        html += '<div style="font-size: 11px; color: var(--ds-gray); margin-bottom: 10px;">Sample COGs:</div>';
+        for (const url of samples) {
+            const name = url.split('/').pop();
+            const isAdded = activeLayers.some(l => l.url === url);
+            html += `
+                <div class="layer-item ${isAdded ? 'added' : ''}">
+                    <div class="layer-info">
+                        <div class="layer-name" title="${url}">${name}</div>
+                        <div class="layer-type">COG Raster</div>
+                    </div>
+                    <button class="layer-add-btn ${isAdded ? 'added' : ''}" onclick="toggleCogLayer('${encodeURIComponent(url)}')">
+                        ${isAdded ? 'Added' : 'Add'}
+                    </button>
+                </div>
+            `;
+        }
+    } else {
+        html = '<div class="empty-state"><p>Enter a COG URL above to add it to the map.</p></div>';
+    }
+    container.innerHTML = html;
+}
+
+// Render XArray catalog (sample URLs + custom input)
+function renderXarrayCatalog(container) {
+    const samples = {{ sample_zarr_urls | tojson }};
+    let html = '';
+
+    if (samples && samples.length) {
+        html += '<div style="font-size: 11px; color: var(--ds-gray); margin-bottom: 10px;">Sample Zarr:</div>';
+        for (const url of samples) {
+            const name = url.split('/').pop() || url.substring(0, 40);
+            const isAdded = activeLayers.some(l => l.url === url);
+            html += `
+                <div class="layer-item ${isAdded ? 'added' : ''}">
+                    <div class="layer-info">
+                        <div class="layer-name" title="${url}">${name}</div>
+                        <div class="layer-type">Zarr/NetCDF</div>
+                    </div>
+                    <button class="layer-add-btn ${isAdded ? 'added' : ''}" onclick="toggleXarrayLayer('${encodeURIComponent(url)}')">
+                        ${isAdded ? 'Added' : 'Add'}
+                    </button>
+                </div>
+            `;
+        }
+    } else {
+        html = '<div class="empty-state"><p>Enter a Zarr/NetCDF URL above to add it to the map.</p></div>';
+    }
+    container.innerHTML = html;
+}
+
+// Load pgSTAC searches
+async function loadSearches(container) {
+    const response = await fetch('/searches');
+    if (!response.ok) throw new Error('Failed to load searches');
+
+    const data = await response.json();
+    const searches = data.searches || [];
+
+    if (!searches.length) {
+        container.innerHTML = '<div class="empty-state"><h3>No Searches</h3><p>No pgSTAC searches registered.</p></div>';
+        return;
+    }
+
+    let html = '';
+    for (const search of searches) {
+        const isAdded = activeLayers.some(l => l.id === `search-${search.id}`);
+        html += `
+            <div class="layer-item ${isAdded ? 'added' : ''}">
+                <div class="layer-info">
+                    <div class="layer-name">${search.id}</div>
+                    <div class="layer-type">pgSTAC Mosaic</div>
+                </div>
+                <button class="layer-add-btn ${isAdded ? 'added' : ''}" onclick="toggleSearchLayer('${search.id}')">
+                    ${isAdded ? 'Added' : 'Add'}
+                </button>
+            </div>
+        `;
+    }
+    container.innerHTML = html;
+}
+
+// Add layer from URL input
+function addUrlLayer() {
+    const url = document.getElementById('url-input').value.trim();
+    if (!url) return;
+
+    if (currentSource === 'cog') {
+        toggleCogLayer(encodeURIComponent(url));
+    } else if (currentSource === 'xarray') {
+        toggleXarrayLayer(encodeURIComponent(url));
+    }
+
+    document.getElementById('url-input').value = '';
+}
+
+// Toggle vector layer
+function toggleVectorLayer(collectionId) {
+    const layerId = `vector-${collectionId}`;
+    const existing = activeLayers.find(l => l.id === layerId);
+
+    if (existing) {
+        removeLayer(layerId);
+    } else {
+        addVectorLayer(collectionId);
+    }
+
+    loadCatalog(currentSource);
+}
+
+// Add vector layer to map
+function addVectorLayer(collectionId) {
+    const layerId = `vector-${collectionId}`;
+    const sourceId = `source-${layerId}`;
+
+    // Add source
+    map.addSource(sourceId, {
+        type: 'vector',
+        tiles: [`${window.location.origin}/vector/collections/${collectionId}/tiles/WebMercatorQuad/{z}/{x}/{y}?f=mvt`],
+        minzoom: 0,
+        maxzoom: 22
+    });
+
+    // Add fill layer
+    map.addLayer({
+        id: `${layerId}-fill`,
+        type: 'fill',
+        source: sourceId,
+        'source-layer': 'default',
+        paint: {
+            'fill-color': '#0071BC',
+            'fill-opacity': 0.3
+        }
+    });
+
+    // Add line layer
+    map.addLayer({
+        id: `${layerId}-line`,
+        type: 'line',
+        source: sourceId,
+        'source-layer': 'default',
+        paint: {
+            'line-color': '#0071BC',
+            'line-width': 1.5
+        }
+    });
+
+    // Track active layer
+    activeLayers.push({
+        id: layerId,
+        name: collectionId,
+        type: 'vector',
+        sourceId: sourceId,
+        color: '#0071BC',
+        opacity: 0.3
+    });
+
+    renderActiveLayers();
+    updateStatus(`Added: ${collectionId}`);
+}
+
+// Toggle COG layer
+function toggleCogLayer(encodedUrl) {
+    const url = decodeURIComponent(encodedUrl);
+    const existing = activeLayers.find(l => l.url === url);
+
+    if (existing) {
+        removeLayer(existing.id);
+    } else {
+        addCogLayer(url);
+    }
+
+    loadCatalog(currentSource);
+}
+
+// Add COG layer to map
+function addCogLayer(url) {
+    const layerId = `cog-${Date.now()}`;
+    const sourceId = `source-${layerId}`;
+    const name = url.split('/').pop();
+
+    map.addSource(sourceId, {
+        type: 'raster',
+        tiles: [`${window.location.origin}/cog/tiles/WebMercatorQuad/{z}/{x}/{y}.png?url=${encodeURIComponent(url)}`],
+        tileSize: 256
+    });
+
+    map.addLayer({
+        id: layerId,
+        type: 'raster',
+        source: sourceId,
+        paint: {
+            'raster-opacity': 1
+        }
+    });
+
+    activeLayers.push({
+        id: layerId,
+        name: name,
+        type: 'cog',
+        sourceId: sourceId,
+        url: url,
+        opacity: 1
+    });
+
+    renderActiveLayers();
+    updateStatus(`Added: ${name}`);
+}
+
+// Toggle XArray layer
+function toggleXarrayLayer(encodedUrl) {
+    const url = decodeURIComponent(encodedUrl);
+    const existing = activeLayers.find(l => l.url === url);
+
+    if (existing) {
+        removeLayer(existing.id);
+    } else {
+        addXarrayLayer(url);
+    }
+
+    loadCatalog(currentSource);
+}
+
+// Add XArray layer to map
+function addXarrayLayer(url) {
+    const layerId = `xarray-${Date.now()}`;
+    const sourceId = `source-${layerId}`;
+    const name = url.split('/').pop() || 'Zarr';
+
+    map.addSource(sourceId, {
+        type: 'raster',
+        tiles: [`${window.location.origin}/xarray/tiles/WebMercatorQuad/{z}/{x}/{y}.png?url=${encodeURIComponent(url)}`],
+        tileSize: 256
+    });
+
+    map.addLayer({
+        id: layerId,
+        type: 'raster',
+        source: sourceId,
+        paint: {
+            'raster-opacity': 1
+        }
+    });
+
+    activeLayers.push({
+        id: layerId,
+        name: name,
+        type: 'xarray',
+        sourceId: sourceId,
+        url: url,
+        opacity: 1
+    });
+
+    renderActiveLayers();
+    updateStatus(`Added: ${name}`);
+}
+
+// Toggle search layer
+function toggleSearchLayer(searchId) {
+    const layerId = `search-${searchId}`;
+    const existing = activeLayers.find(l => l.id === layerId);
+
+    if (existing) {
+        removeLayer(layerId);
+    } else {
+        addSearchLayer(searchId);
+    }
+
+    loadCatalog(currentSource);
+}
+
+// Add pgSTAC search layer to map
+function addSearchLayer(searchId) {
+    const layerId = `search-${searchId}`;
+    const sourceId = `source-${layerId}`;
+
+    map.addSource(sourceId, {
+        type: 'raster',
+        tiles: [`${window.location.origin}/searches/${searchId}/tiles/WebMercatorQuad/{z}/{x}/{y}.png`],
+        tileSize: 256
+    });
+
+    map.addLayer({
+        id: layerId,
+        type: 'raster',
+        source: sourceId,
+        paint: {
+            'raster-opacity': 1
+        }
+    });
+
+    activeLayers.push({
+        id: layerId,
+        name: searchId,
+        type: 'search',
+        sourceId: sourceId,
+        opacity: 1
+    });
+
+    renderActiveLayers();
+    updateStatus(`Added: ${searchId}`);
+}
+
+// Remove layer from map
+function removeLayer(layerId) {
+    const layer = activeLayers.find(l => l.id === layerId);
+    if (!layer) return;
+
+    // Remove map layers
+    if (layer.type === 'vector') {
+        if (map.getLayer(`${layerId}-fill`)) map.removeLayer(`${layerId}-fill`);
+        if (map.getLayer(`${layerId}-line`)) map.removeLayer(`${layerId}-line`);
+    } else {
+        if (map.getLayer(layerId)) map.removeLayer(layerId);
+    }
+
+    // Remove source
+    if (map.getSource(layer.sourceId)) {
+        map.removeSource(layer.sourceId);
+    }
+
+    // Update state
+    activeLayers = activeLayers.filter(l => l.id !== layerId);
+
+    renderActiveLayers();
+    updateStatus(`Removed: ${layer.name}`);
+}
+
+// Render active layers panel
+function renderActiveLayers() {
+    const container = document.getElementById('active-layers');
+
+    if (!activeLayers.length) {
+        container.innerHTML = `
+            <div class="empty-state">
+                <h3>No Layers Added</h3>
+                <p>Select layers from the catalog to add them to the map.</p>
+            </div>
+        `;
+        return;
+    }
+
+    let html = '';
+    for (const layer of activeLayers) {
+        html += `
+            <div class="active-layer" data-id="${layer.id}">
+                <div class="active-layer-header">
+                    <span class="active-layer-name">${layer.name}</span>
+                    <button class="active-layer-remove" onclick="removeLayer('${layer.id}')">&times;</button>
+                </div>
+                <div class="active-layer-controls">
+                    <div class="control-row">
+                        <span class="control-label">Opacity</span>
+                        <input type="range" min="0" max="100" value="${layer.opacity * 100}"
+                            onchange="setLayerOpacity('${layer.id}', this.value / 100)">
+                    </div>
+                    ${layer.type === 'vector' ? `
+                    <div class="control-row">
+                        <span class="control-label">Color</span>
+                        <input type="color" value="${layer.color || '#0071BC'}"
+                            onchange="setLayerColor('${layer.id}', this.value)">
+                    </div>
+                    ` : ''}
+                </div>
+            </div>
+        `;
+    }
+    container.innerHTML = html;
+}
+
+// Set layer opacity
+function setLayerOpacity(layerId, opacity) {
+    const layer = activeLayers.find(l => l.id === layerId);
+    if (!layer) return;
+
+    layer.opacity = opacity;
+
+    if (layer.type === 'vector') {
+        map.setPaintProperty(`${layerId}-fill`, 'fill-opacity', opacity);
+    } else {
+        map.setPaintProperty(layerId, 'raster-opacity', opacity);
+    }
+}
+
+// Set vector layer color
+function setLayerColor(layerId, color) {
+    const layer = activeLayers.find(l => l.id === layerId);
+    if (!layer || layer.type !== 'vector') return;
+
+    layer.color = color;
+    map.setPaintProperty(`${layerId}-fill`, 'fill-color', color);
+    map.setPaintProperty(`${layerId}-line`, 'line-color', color);
+}
+
+// Status updates
+function updateStatus(message) {
+    document.getElementById('status-text').textContent = message;
+}
+</script>
+{% endblock %}
