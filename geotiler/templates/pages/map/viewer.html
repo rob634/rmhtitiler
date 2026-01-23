@@ -293,6 +293,78 @@
     padding: 6px;
     font-size: 11px;
 }
+
+/* Breadcrumb navigation for STAC */
+.breadcrumb {
+    padding: 8px 10px;
+    background: var(--ds-bg);
+    border-bottom: 1px solid var(--ds-gray-light);
+    font-size: 11px;
+    display: flex;
+    align-items: center;
+    gap: 4px;
+}
+
+.breadcrumb-item {
+    color: var(--ds-blue-primary);
+    cursor: pointer;
+}
+
+.breadcrumb-item:hover {
+    text-decoration: underline;
+}
+
+.breadcrumb-sep {
+    color: var(--ds-gray);
+}
+
+.breadcrumb-current {
+    color: var(--ds-navy);
+    font-weight: 500;
+}
+
+/* STAC item with date */
+.layer-date {
+    font-size: 10px;
+    color: var(--ds-gray);
+    margin-top: 2px;
+}
+
+/* Asset list within item */
+.asset-list {
+    margin-top: 8px;
+    padding-top: 8px;
+    border-top: 1px dashed var(--ds-gray-light);
+}
+
+.asset-item {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 6px 8px;
+    background: var(--ds-bg);
+    border-radius: 4px;
+    margin-bottom: 4px;
+    font-size: 11px;
+}
+
+.asset-name {
+    font-weight: 500;
+    flex: 1;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.asset-type-badge {
+    font-size: 9px;
+    padding: 2px 4px;
+    background: var(--ds-blue-light);
+    color: var(--ds-blue-dark);
+    border-radius: 3px;
+    margin-left: 6px;
+}
 </style>
 {% endblock %}
 
@@ -308,11 +380,16 @@
         {% if tipg_enabled %}
         <div class="source-tab active" data-source="vector">Vector</div>
         {% endif %}
-        <div class="source-tab {% if not tipg_enabled %}active{% endif %}" data-source="cog">COG</div>
-        <div class="source-tab" data-source="xarray">XArray</div>
         {% if stac_enabled %}
-        <div class="source-tab" data-source="searches">Searches</div>
+        <div class="source-tab" data-source="stac">STAC</div>
         {% endif %}
+        <div class="source-tab {% if not tipg_enabled and not stac_enabled %}active{% endif %}" data-source="cog">COG</div>
+        <div class="source-tab" data-source="xarray">XArray</div>
+    </div>
+
+    <!-- Breadcrumb for STAC navigation -->
+    <div id="stac-breadcrumb" class="breadcrumb" style="display: none;">
+        <span class="breadcrumb-item" onclick="stacNavigate('collections')">Collections</span>
     </div>
 
     <!-- URL input for COG/XArray -->
@@ -356,7 +433,14 @@
 let map = null;
 let activeLayers = [];
 let vectorCollections = [];
-let currentSource = '{{ "vector" if tipg_enabled else "cog" }}';
+let currentSource = '{{ "vector" if tipg_enabled else ("stac" if stac_enabled else "cog") }}';
+
+// STAC navigation state
+let stacCollections = [];
+let stacItems = [];
+let selectedStacCollection = null;
+let selectedStacItem = null;
+let stacNavLevel = 'collections'; // 'collections', 'items', 'assets'
 
 // Initialize
 document.addEventListener('DOMContentLoaded', () => {
@@ -416,6 +500,7 @@ function initTabs() {
 async function loadCatalog(source) {
     const container = document.getElementById('catalog-content');
     const urlSection = document.getElementById('url-input-section');
+    const stacBreadcrumb = document.getElementById('stac-breadcrumb');
     container.innerHTML = '<div class="loading">Loading...</div>';
 
     // Show URL input for COG/XArray
@@ -428,19 +513,31 @@ async function loadCatalog(source) {
         urlSection.style.display = 'none';
     }
 
+    // Show breadcrumb for STAC
+    if (source === 'stac') {
+        stacBreadcrumb.style.display = 'flex';
+        updateStacBreadcrumb();
+    } else {
+        stacBreadcrumb.style.display = 'none';
+        // Reset STAC state when leaving tab
+        stacNavLevel = 'collections';
+        selectedStacCollection = null;
+        selectedStacItem = null;
+    }
+
     try {
         switch (source) {
             case 'vector':
                 await loadVectorCollections(container);
+                break;
+            case 'stac':
+                await loadStacCatalog(container);
                 break;
             case 'cog':
                 renderCogCatalog(container);
                 break;
             case 'xarray':
                 renderXarrayCatalog(container);
-                break;
-            case 'searches':
-                await loadSearches(container);
                 break;
         }
     } catch (error) {
@@ -477,6 +574,244 @@ async function loadVectorCollections(container) {
         `;
     }
     container.innerHTML = html;
+}
+
+// ========================================
+// STAC Catalog Functions
+// ========================================
+
+// Load STAC catalog based on navigation level
+async function loadStacCatalog(container) {
+    switch (stacNavLevel) {
+        case 'collections':
+            await loadStacCollections(container);
+            break;
+        case 'items':
+            await loadStacItems(container);
+            break;
+        case 'assets':
+            renderStacAssets(container);
+            break;
+    }
+}
+
+// Load STAC collections
+async function loadStacCollections(container) {
+    const response = await fetch('/stac/collections');
+    if (!response.ok) throw new Error('Failed to load STAC collections');
+
+    const data = await response.json();
+    stacCollections = data.collections || [];
+
+    if (!stacCollections.length) {
+        container.innerHTML = '<div class="empty-state"><h3>No Collections</h3><p>No STAC collections available.</p></div>';
+        return;
+    }
+
+    let html = '';
+    for (const col of stacCollections) {
+        const desc = col.description ? col.description.substring(0, 60) + '...' : '';
+        html += `
+            <div class="layer-item" onclick="selectStacCollection('${col.id}')">
+                <div class="layer-info">
+                    <div class="layer-name">${col.id}</div>
+                    <div class="layer-type">${desc || 'STAC Collection'}</div>
+                </div>
+                <span style="color: var(--ds-gray);">▶</span>
+            </div>
+        `;
+    }
+    container.innerHTML = html;
+}
+
+// Select a STAC collection and load its items
+async function selectStacCollection(collectionId) {
+    selectedStacCollection = stacCollections.find(c => c.id === collectionId);
+    stacNavLevel = 'items';
+    updateStacBreadcrumb();
+
+    const container = document.getElementById('catalog-content');
+    container.innerHTML = '<div class="loading">Loading items...</div>';
+
+    try {
+        await loadStacItems(container);
+    } catch (error) {
+        container.innerHTML = `<div class="empty-state"><h3>Error</h3><p>${error.message}</p></div>`;
+    }
+}
+
+// Load items for selected collection
+async function loadStacItems(container) {
+    if (!selectedStacCollection) return;
+
+    const response = await fetch(`/stac/collections/${selectedStacCollection.id}/items?limit=50`);
+    if (!response.ok) throw new Error('Failed to load items');
+
+    const data = await response.json();
+    stacItems = data.features || [];
+
+    if (!stacItems.length) {
+        container.innerHTML = '<div class="empty-state"><h3>No Items</h3><p>This collection has no items.</p></div>';
+        return;
+    }
+
+    let html = '';
+    for (const item of stacItems) {
+        const datetime = item.properties?.datetime
+            ? new Date(item.properties.datetime).toLocaleDateString()
+            : '';
+        const assetCount = Object.keys(item.assets || {}).length;
+
+        html += `
+            <div class="layer-item" onclick="selectStacItem('${item.id}')">
+                <div class="layer-info">
+                    <div class="layer-name">${item.id}</div>
+                    <div class="layer-type">${datetime}</div>
+                    <div class="layer-date">${assetCount} assets</div>
+                </div>
+                <span style="color: var(--ds-gray);">▶</span>
+            </div>
+        `;
+    }
+    container.innerHTML = html;
+    updateStatus(`Loaded ${stacItems.length} items`);
+}
+
+// Select a STAC item and show its assets
+function selectStacItem(itemId) {
+    selectedStacItem = stacItems.find(i => i.id === itemId);
+    stacNavLevel = 'assets';
+    updateStacBreadcrumb();
+
+    const container = document.getElementById('catalog-content');
+    renderStacAssets(container);
+}
+
+// Render assets for selected item
+function renderStacAssets(container) {
+    if (!selectedStacItem || !selectedStacItem.assets) {
+        container.innerHTML = '<div class="empty-state"><h3>No Assets</h3><p>This item has no assets.</p></div>';
+        return;
+    }
+
+    const assets = selectedStacItem.assets;
+    let html = '';
+
+    for (const [key, asset] of Object.entries(assets)) {
+        const type = asset.type || '';
+        const isCog = type.includes('tiff') || type.includes('geotiff') ||
+                      key.includes('cog') || key.includes('visual') ||
+                      key.includes('data') || asset.href?.endsWith('.tif');
+
+        const isAdded = activeLayers.some(l => l.url === asset.href);
+
+        html += `
+            <div class="layer-item ${isAdded ? 'added' : ''}">
+                <div class="layer-info">
+                    <div class="layer-name">${key}</div>
+                    <div class="layer-type">${type || 'Unknown type'}</div>
+                </div>
+                ${isCog ? `
+                    <button class="layer-add-btn ${isAdded ? 'added' : ''}"
+                            onclick="event.stopPropagation(); addStacAsset('${encodeURIComponent(asset.href)}', '${key}')">
+                        ${isAdded ? 'Added' : 'Add'}
+                    </button>
+                ` : `
+                    <a href="${asset.href}" target="_blank"
+                       style="font-size: 10px; color: var(--ds-blue-primary);"
+                       onclick="event.stopPropagation();">Open</a>
+                `}
+            </div>
+        `;
+    }
+
+    container.innerHTML = html || '<div class="empty-state"><p>No assets found.</p></div>';
+    updateStatus(`${selectedStacItem.id}: ${Object.keys(assets).length} assets`);
+}
+
+// Add STAC asset (COG) to map
+function addStacAsset(encodedHref, assetKey) {
+    const url = decodeURIComponent(encodedHref);
+    const existing = activeLayers.find(l => l.url === url);
+
+    if (existing) {
+        removeLayer(existing.id);
+    } else {
+        const name = `${selectedStacItem?.id || 'item'}/${assetKey}`;
+        addCogLayerWithName(url, name);
+    }
+
+    // Re-render to update button state
+    const container = document.getElementById('catalog-content');
+    renderStacAssets(container);
+}
+
+// Add COG layer with custom name
+function addCogLayerWithName(url, name) {
+    const layerId = `cog-${Date.now()}`;
+    const sourceId = `source-${layerId}`;
+
+    map.addSource(sourceId, {
+        type: 'raster',
+        tiles: [`${window.location.origin}/cog/tiles/WebMercatorQuad/{z}/{x}/{y}.png?url=${encodeURIComponent(url)}`],
+        tileSize: 256
+    });
+
+    map.addLayer({
+        id: layerId,
+        type: 'raster',
+        source: sourceId,
+        paint: {
+            'raster-opacity': 1
+        }
+    });
+
+    activeLayers.push({
+        id: layerId,
+        name: name,
+        type: 'cog',
+        sourceId: sourceId,
+        url: url,
+        opacity: 1
+    });
+
+    renderActiveLayers();
+    updateStatus(`Added: ${name}`);
+}
+
+// Update STAC breadcrumb
+function updateStacBreadcrumb() {
+    const breadcrumb = document.getElementById('stac-breadcrumb');
+    let html = '<span class="breadcrumb-item" onclick="stacNavigate(\'collections\')">Collections</span>';
+
+    if (stacNavLevel === 'items' || stacNavLevel === 'assets') {
+        html += '<span class="breadcrumb-sep"> / </span>';
+        if (stacNavLevel === 'items') {
+            html += `<span class="breadcrumb-current">${selectedStacCollection?.id || ''}</span>`;
+        } else {
+            html += `<span class="breadcrumb-item" onclick="stacNavigate('items')">${selectedStacCollection?.id || ''}</span>`;
+        }
+    }
+
+    if (stacNavLevel === 'assets') {
+        html += '<span class="breadcrumb-sep"> / </span>';
+        html += `<span class="breadcrumb-current">${selectedStacItem?.id || ''}</span>`;
+    }
+
+    breadcrumb.innerHTML = html;
+}
+
+// Navigate STAC breadcrumb
+function stacNavigate(level) {
+    stacNavLevel = level;
+    if (level === 'collections') {
+        selectedStacCollection = null;
+        selectedStacItem = null;
+    } else if (level === 'items') {
+        selectedStacItem = null;
+    }
+    updateStacBreadcrumb();
+    loadCatalog('stac');
 }
 
 // Render COG catalog (sample URLs + custom input)
@@ -531,37 +866,6 @@ function renderXarrayCatalog(container) {
         }
     } else {
         html = '<div class="empty-state"><p>Enter a Zarr/NetCDF URL above to add it to the map.</p></div>';
-    }
-    container.innerHTML = html;
-}
-
-// Load pgSTAC searches
-async function loadSearches(container) {
-    const response = await fetch('/searches');
-    if (!response.ok) throw new Error('Failed to load searches');
-
-    const data = await response.json();
-    const searches = data.searches || [];
-
-    if (!searches.length) {
-        container.innerHTML = '<div class="empty-state"><h3>No Searches</h3><p>No pgSTAC searches registered.</p></div>';
-        return;
-    }
-
-    let html = '';
-    for (const search of searches) {
-        const isAdded = activeLayers.some(l => l.id === `search-${search.id}`);
-        html += `
-            <div class="layer-item ${isAdded ? 'added' : ''}">
-                <div class="layer-info">
-                    <div class="layer-name">${search.id}</div>
-                    <div class="layer-type">pgSTAC Mosaic</div>
-                </div>
-                <button class="layer-add-btn ${isAdded ? 'added' : ''}" onclick="toggleSearchLayer('${search.id}')">
-                    ${isAdded ? 'Added' : 'Add'}
-                </button>
-            </div>
-        `;
     }
     container.innerHTML = html;
 }
@@ -739,52 +1043,6 @@ function addXarrayLayer(url) {
 
     renderActiveLayers();
     updateStatus(`Added: ${name}`);
-}
-
-// Toggle search layer
-function toggleSearchLayer(searchId) {
-    const layerId = `search-${searchId}`;
-    const existing = activeLayers.find(l => l.id === layerId);
-
-    if (existing) {
-        removeLayer(layerId);
-    } else {
-        addSearchLayer(searchId);
-    }
-
-    loadCatalog(currentSource);
-}
-
-// Add pgSTAC search layer to map
-function addSearchLayer(searchId) {
-    const layerId = `search-${searchId}`;
-    const sourceId = `source-${layerId}`;
-
-    map.addSource(sourceId, {
-        type: 'raster',
-        tiles: [`${window.location.origin}/searches/${searchId}/tiles/WebMercatorQuad/{z}/{x}/{y}.png`],
-        tileSize: 256
-    });
-
-    map.addLayer({
-        id: layerId,
-        type: 'raster',
-        source: sourceId,
-        paint: {
-            'raster-opacity': 1
-        }
-    });
-
-    activeLayers.push({
-        id: layerId,
-        name: searchId,
-        type: 'search',
-        sourceId: sourceId,
-        opacity: 1
-    });
-
-    renderActiveLayers();
-    updateStatus(`Added: ${searchId}`);
 }
 
 // Remove layer from map
