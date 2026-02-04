@@ -301,6 +301,23 @@ def create_app() -> FastAPI:
         )
         logger.info(f"TiPG router mounted at {settings.tipg_router_prefix}")
 
+        # Optional: CatalogUpdateMiddleware for automatic catalog refresh
+        if settings.tipg_catalog_ttl_enabled:
+            from tipg.middleware import CatalogUpdateMiddleware
+            from tipg.collections import register_collection_catalog
+            from tipg.settings import DatabaseSettings as TiPGDatabaseSettings
+
+            db_settings = TiPGDatabaseSettings(schemas=settings.tipg_schema_list)
+            app.add_middleware(
+                CatalogUpdateMiddleware,
+                func=register_collection_catalog,
+                ttl=settings.tipg_catalog_ttl,
+                db_settings=db_settings,
+            )
+            logger.info(
+                f"TiPG CatalogUpdateMiddleware enabled: TTL={settings.tipg_catalog_ttl}s"
+            )
+
         # TiPG diagnostics endpoint (for debugging table discovery)
         app.include_router(diagnostics.router, tags=["Diagnostics"])
 

@@ -113,6 +113,16 @@ class Settings(BaseSettings):
     ogc_geometry_column: str = "geom"
     """Expected geometry column name (for diagnostics). Should match ETL app's OGC_GEOMETRY_COLUMN."""
 
+    tipg_catalog_ttl_enabled: bool = False
+    """Enable automatic catalog refresh via CatalogUpdateMiddleware.
+    When enabled, TiPG will periodically re-scan the database for new tables.
+    Disabled by default - use the /admin/refresh-collections webhook for explicit control."""
+
+    tipg_catalog_ttl: int = 300
+    """Catalog refresh interval in seconds (default: 300 = 5 minutes).
+    Only applies when tipg_catalog_ttl_enabled=true.
+    Lower values = faster new table detection but more DB queries."""
+
     @property
     def tipg_schema_list(self) -> list[str]:
         """Parse comma-separated schemas into list."""
@@ -126,6 +136,27 @@ class Settings(BaseSettings):
 
     stac_router_prefix: str = "/stac"
     """URL prefix for STAC API routes (e.g., /stac/collections)."""
+
+    # =========================================================================
+    # Admin Endpoint Authentication (Azure AD)
+    # =========================================================================
+    admin_auth_enabled: bool = False
+    """Enable Azure AD authentication for /admin/* endpoints.
+    When disabled, admin endpoints are open (for local dev)."""
+
+    admin_allowed_app_ids: str = ""
+    """Comma-separated list of Azure AD app/client IDs allowed to call /admin/* endpoints.
+    Typically the Orchestrator app's Managed Identity client ID."""
+
+    azure_tenant_id: Optional[str] = None
+    """Azure AD tenant ID for token validation. Required when admin_auth_enabled=true."""
+
+    @property
+    def admin_allowed_app_id_list(self) -> list[str]:
+        """Parse comma-separated app IDs into list."""
+        if not self.admin_allowed_app_ids:
+            return []
+        return [s.strip() for s in self.admin_allowed_app_ids.split(",") if s.strip()]
 
     # =========================================================================
     # UI Sample URLs (Landing Pages)
