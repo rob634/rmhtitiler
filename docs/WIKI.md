@@ -239,6 +239,61 @@ https://{titiler-service-url}
 
 ---
 
+### Admin Endpoints
+
+**Prefix:** `/admin`
+
+Endpoints for operational management and ETL pipeline integration.
+
+| Endpoint | Method | Description |
+|----------|--------|-------------|
+| `/admin/refresh-collections` | POST | Refresh TiPG collection catalog (picks up new PostGIS tables) |
+
+**Authentication:** When `ADMIN_AUTH_ENABLED=true`, requires an Azure AD Bearer token. The calling app's Managed Identity client ID must be listed in `ADMIN_ALLOWED_APP_IDS`.
+
+**Refresh Collections Response:**
+```json
+{
+  "status": "success",
+  "collections_before": 5,
+  "collections_after": 7,
+  "new_collections": ["geo.new_layer_1", "geo.new_layer_2"],
+  "removed_collections": [],
+  "refresh_time": "2026-02-04T22:00:00Z"
+}
+```
+
+**Usage - Local development (no auth):**
+```bash
+curl -X POST http://localhost:8000/admin/refresh-collections
+```
+
+**Usage - Production (Azure AD auth):**
+```python
+from azure.identity import DefaultAzureCredential
+import requests
+
+credential = DefaultAzureCredential()
+token = credential.get_token("https://management.azure.com/.default")
+
+response = requests.post(
+    f"{geotiler_url}/admin/refresh-collections",
+    headers={"Authorization": f"Bearer {token.token}"}
+)
+```
+
+**Environment Variables:**
+
+| Variable | Required | Default | Description |
+|----------|----------|---------|-------------|
+| `ADMIN_AUTH_ENABLED` | No | `false` | Enable Azure AD auth for /admin/* endpoints |
+| `ADMIN_ALLOWED_APP_IDS` | If auth enabled | - | Comma-separated MI client IDs allowed to call /admin/* |
+| `AZURE_TENANT_ID` | If auth enabled | - | Azure AD tenant ID for token validation |
+| `TIPG_CATALOG_TTL_ENABLED` | No | `false` | Enable automatic catalog refresh on a timer |
+| `TIPG_CATALOG_TTL` | No | `300` | Auto-refresh interval in seconds (when TTL enabled) |
+
+---
+
 ### COG Endpoints
 
 **Prefix:** `/cog`

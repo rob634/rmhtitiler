@@ -93,6 +93,23 @@ VSI_CACHE_SIZE=536870912            # 512MB cache
 | `USE_AZURE_AUTH` | Yes | `false` | Enable Azure Storage OAuth |
 | `AZURE_STORAGE_ACCOUNT` | If `USE_AZURE_AUTH=true` | - | Storage account name |
 | `LOCAL_MODE` | No | `true` | `false` for Managed Identity, `true` for Azure CLI |
+| `ADMIN_AUTH_ENABLED` | No | `false` | Enable Azure AD auth for `/admin/*` endpoints |
+| `ADMIN_ALLOWED_APP_IDS` | If admin auth enabled | - | Comma-separated MI client IDs allowed to call `/admin/*` |
+| `AZURE_TENANT_ID` | If admin auth enabled | - | Azure AD tenant ID for token validation |
+| `TIPG_CATALOG_TTL_ENABLED` | No | `false` | Enable automatic TiPG catalog refresh on a timer |
+| `TIPG_CATALOG_TTL` | No | `300` | Catalog refresh interval in seconds (when TTL enabled) |
+
+#### Admin Endpoint Authentication (ETL Webhook)
+
+The `/admin/refresh-collections` webhook allows ETL pipelines to trigger TiPG catalog refresh after creating new PostGIS tables. In production, protect this with Azure AD:
+
+```bash
+ADMIN_AUTH_ENABLED=true
+ADMIN_ALLOWED_APP_IDS=<orchestrator-mi-client-id>   # Comma-separated if multiple callers
+AZURE_TENANT_ID=<your-azure-tenant-id>
+```
+
+When disabled (`ADMIN_AUTH_ENABLED=false`), the endpoint is open without authentication (suitable for local development).
 
 ---
 
