@@ -118,8 +118,8 @@ class Settings(BaseSettings):
     When enabled, TiPG will periodically re-scan the database for new tables.
     Disabled by default - use the /admin/refresh-collections webhook for explicit control."""
 
-    tipg_catalog_ttl: int = 300
-    """Catalog refresh interval in seconds (default: 300 = 5 minutes).
+    tipg_catalog_ttl: int = 60
+    """Catalog refresh interval in seconds (default: 60 = 1 minute).
     Only applies when tipg_catalog_ttl_enabled=true.
     Lower values = faster new table detection but more DB queries."""
 

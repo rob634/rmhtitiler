@@ -29,7 +29,9 @@ Dynamic tile server for Cloud Optimized GeoTIFFs (COGs), Zarr/NetCDF arrays, and
 - `GET /vector/collections` - List PostGIS collections (TiPG)
 - `GET /vector/collections/{id}/items` - Query features (GeoJSON)
 - `GET /vector/collections/{id}/tiles/{tms}/{z}/{x}/{y}` - Vector tiles (MVT)
-- `POST /admin/refresh-collections` - Webhook to refresh TiPG catalog (ETL integration)
+- `POST /admin/refresh-collections` - Webhook to refresh TiPG catalog (ETL integration, see note below)
+
+**TiPG Multi-Instance Warning:** In multi-instance deployments (ASE), the refresh webhook only updates ONE instance. Other instances keep stale catalogs until they restart or TTL refresh triggers. See `docs/TIPG_CATALOG_ARCHITECTURE.md` for details and workarounds.
 
 ---
 
@@ -150,7 +152,8 @@ curl "http://localhost:8000/assets/floods/jakarta/versions"
 | `docs/README-LOCAL.md` | Local development setup |
 | `docs/xarray.md` | Zarr/NetCDF implementation guide |
 | `docs/NEW_TENANT_DEPLOYMENT.md` | Multi-tenant deployment |
-| `docs/VERSIONED_ASSETS_IMPLEMENTATION.md` | **NEW** - `?version=latest` routing (V0.8) |
+| `docs/VERSIONED_ASSETS_IMPLEMENTATION.md` | `?version=latest` routing (V0.8) |
+| `docs/TIPG_CATALOG_ARCHITECTURE.md` | **IMPORTANT** - TiPG catalog, multi-instance behavior, refresh limitations |
 
 ---
 
