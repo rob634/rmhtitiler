@@ -30,7 +30,7 @@ from geotiler.config import settings
 from geotiler.middleware.azure_auth import AzureAuthMiddleware
 from geotiler.infrastructure.middleware import RequestTimingMiddleware
 from geotiler.routers import health, planetary_computer, admin, vector, stac, diagnostics
-from geotiler.routers import cog_landing, xarray_landing, searches_landing, stac_explorer, docs_guide, map_viewer
+from geotiler.routers import cog_landing, xarray_landing, searches_landing, stac_explorer, docs_guide, map_viewer, h3_explorer
 from geotiler.services.background import start_token_refresh
 from geotiler.auth.storage import initialize_storage_auth
 from geotiler.auth.postgres import get_postgres_credential, build_database_url
@@ -349,6 +349,9 @@ def create_app() -> FastAPI:
 
     # Map Viewer
     app.include_router(map_viewer.router, tags=["Map Viewer"])
+
+    # H3 Crop Production & Drought Risk Explorer
+    app.include_router(h3_explorer.router, tags=["H3 Explorer"])
 
     # Admin console (HTML at /, JSON at /api)
     app.include_router(admin.router)

@@ -224,6 +224,12 @@ class Settings(BaseSettings):
     # ENVIRONMENT: Deployment environment (default: dev)
 
     # =========================================================================
+    # H3 Explorer
+    # =========================================================================
+    h3_parquet_url: str = "https://rmhazuregeo.blob.core.windows.net/data/mapspam2020_spei_h3level5.parquet"
+    """URL to the H3 Level 5 GeoParquet file for the crop/drought explorer."""
+
+    # =========================================================================
     # Computed Properties
     # =========================================================================
     @property
