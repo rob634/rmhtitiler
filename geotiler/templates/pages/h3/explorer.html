@@ -805,6 +805,10 @@ function setStatus(msg) { document.getElementById('h3-status').textContent = msg
 // ============================================================
 
 (async function main() {
+    if (!PARQUET_URL) {
+        setLoading('H3 Explorer is not configured. Set H3_PARQUET_URL environment variable.');
+        return;
+    }
     try {
         setLoading('Initializing map...');
         initMap();

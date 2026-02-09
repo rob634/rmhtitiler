@@ -226,8 +226,9 @@ class Settings(BaseSettings):
     # =========================================================================
     # H3 Explorer
     # =========================================================================
-    h3_parquet_url: str = "https://rmhazuregeo.blob.core.windows.net/data/mapspam2020_spei_h3level5.parquet"
-    """URL to the H3 Level 5 GeoParquet file for the crop/drought explorer."""
+    h3_parquet_url: str = ""
+    """URL to the H3 Level 5 GeoParquet file for the crop/drought explorer.
+    Must be set via H3_PARQUET_URL env var. H3 explorer is disabled when empty."""
 
     # =========================================================================
     # Computed Properties
