@@ -21,16 +21,21 @@ from fastapi.responses import HTMLResponse, JSONResponse
 
 from geotiler.config import settings
 from geotiler.auth.cache import storage_token_cache
+from geotiler.auth.storage import get_storage_oauth_token
 from geotiler.templates_utils import templates, get_template_context
 
 router = APIRouter(tags=["H3 Explorer"])
 
 
 def _get_storage_token() -> str | None:
-    """Read the current cached storage bearer token (if auth is enabled)."""
+    """Get storage bearer token, acquiring a fresh one if cache is empty."""
     if not settings.use_azure_auth:
         return None
-    return storage_token_cache.get_if_valid(min_ttl_seconds=60)
+    cached = storage_token_cache.get_if_valid(min_ttl_seconds=60)
+    if cached:
+        return cached
+    # Cache miss — acquire a fresh token (also populates the cache)
+    return get_storage_oauth_token()
 
 
 @router.get("/h3", response_class=HTMLResponse, include_in_schema=False)
