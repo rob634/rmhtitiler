@@ -139,10 +139,16 @@ def _download_parquet(url: str, dest_path: str) -> float:
     logger.info(f"Downloading parquet from {url}")
     t0 = time.monotonic()
 
-    headers = {}
+    headers = {
+        # Azure Blob Storage REST API requires x-ms-version for OAuth bearer auth
+        "x-ms-version": "2020-04-08",
+    }
     token = storage_token_cache.get_if_valid(min_ttl_seconds=60)
     if token:
         headers["Authorization"] = f"Bearer {token}"
+        logger.info("Using storage OAuth token for parquet download")
+    else:
+        logger.warning("No storage token available — attempting anonymous download")
 
     resp = requests.get(url, headers=headers, stream=True, timeout=300)
     resp.raise_for_status()
@@ -218,6 +224,7 @@ async def initialize_duckdb(app: "FastAPI") -> None:
 
         app.state.duckdb_conn = conn
         app.state.duckdb_columns = columns
+        app.state.duckdb_query_cache = {}
         state.record_success(parquet_path, row_count, columns, download_ms)
 
         logger.info(
@@ -260,19 +267,29 @@ def _run_query(conn: duckdb.DuckDBPyConnection, prod_col: str, scenario: str) ->
     ]
 
 
+_QUERY_CACHE_MAX = 100
+
+
 async def query_h3_data(
     app: "FastAPI", crop: str, tech: str, scenario: str
-) -> list[dict]:
+) -> tuple[list[dict], bool]:
     """
     Validate parameters and query H3 data.
 
-    Raises ValueError for invalid params, RuntimeError if DuckDB not ready.
+    Returns (data, from_cache). Raises ValueError for invalid params,
+    RuntimeError if DuckDB not ready.
     """
     validate_h3_params(crop, tech, scenario)
 
     conn = getattr(app.state, "duckdb_conn", None)
     if not conn:
         raise RuntimeError("DuckDB not initialized")
+
+    # Check server-side cache
+    cache_key = (crop, tech, scenario)
+    query_cache = getattr(app.state, "duckdb_query_cache", None)
+    if query_cache is not None and cache_key in query_cache:
+        return query_cache[cache_key], True
 
     prod_col = f"{crop}_{tech}_production_mt"
 
@@ -283,4 +300,12 @@ async def query_h3_data(
     if scenario not in columns:
         raise ValueError(f"Scenario column not found: {scenario}")
 
-    return await asyncio.to_thread(_run_query, conn, prod_col, scenario)
+    result = await asyncio.to_thread(_run_query, conn, prod_col, scenario)
+
+    # Store in cache (LRU eviction at max size)
+    if query_cache is not None:
+        if len(query_cache) >= _QUERY_CACHE_MAX:
+            query_cache.pop(next(iter(query_cache)))
+        query_cache[cache_key] = result
+
+    return result, False

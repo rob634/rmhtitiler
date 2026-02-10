@@ -349,6 +349,7 @@ let currentData = [];
 let queryInFlight = false;
 let currentCropName = 'Wheat';
 let currentView = 'bivariate';
+const queryCache = new Map();  // Client-side cache: "crop_tech_scenario" → data array
 
 // ============================================================
 // DuckDB-WASM
@@ -419,6 +420,12 @@ async function initDuckDB() {
 }
 
 async function queryData(crop, tech, scenario) {
+    const cacheKey = `${crop}_${tech}_${scenario}`;
+
+    // Client-side cache check
+    const cached = queryCache.get(cacheKey);
+    if (cached) return { data: cached, fromCache: true };
+
     // Server-side: fetch from /h3/query endpoint
     if (SERVER_SIDE) {
         const params = new URLSearchParams({crop, tech, scenario});
@@ -428,7 +435,8 @@ async function queryData(crop, tech, scenario) {
             throw new Error(err.error || `Query failed (${resp.status})`);
         }
         const result = await resp.json();
-        return result.data;
+        queryCache.set(cacheKey, result.data);
+        return { data: result.data, fromCache: false };
     }
 
     // Browser-side fallback: DuckDB-WASM direct query
@@ -451,7 +459,8 @@ async function queryData(crop, tech, scenario) {
             spei: r.spei != null ? Number(r.spei) : null,
         };
     }
-    return data;
+    queryCache.set(cacheKey, data);
+    return { data, fromCache: false };
 }
 
 // ============================================================
@@ -751,9 +760,15 @@ function populateControls() {
         }
     });
 
-    document.getElementById('sel-crop').addEventListener('change', refresh);
-    document.getElementById('sel-tech').addEventListener('change', refresh);
-    document.getElementById('sel-scenario').addEventListener('change', refresh);
+    let debounceTimer = null;
+    function debouncedRefresh() {
+        setStatus('Loading...');
+        clearTimeout(debounceTimer);
+        debounceTimer = setTimeout(refresh, 300);
+    }
+    document.getElementById('sel-crop').addEventListener('change', debouncedRefresh);
+    document.getElementById('sel-tech').addEventListener('change', debouncedRefresh);
+    document.getElementById('sel-scenario').addEventListener('change', debouncedRefresh);
 
     for (const tab of document.querySelectorAll('.h3-view-tab')) {
         tab.addEventListener('click', () => {
@@ -786,7 +801,8 @@ async function refresh() {
 
     try {
         const t0 = performance.now();
-        currentData = await queryData(crop, tech, scenario);
+        const { data, fromCache } = await queryData(crop, tech, scenario);
+        currentData = data;
         const tQuery = performance.now() - t0;
 
         const t1 = performance.now();
@@ -794,7 +810,11 @@ async function refresh() {
         const tRender = performance.now() - t1;
 
         updateStats(currentData);
-        setStatus(`${currentData.length.toLocaleString()} hexagons (${(tQuery/1000).toFixed(1)}s query, ${(tRender/1000).toFixed(1)}s render)`);
+        if (fromCache) {
+            setStatus(`${currentData.length.toLocaleString()} hexagons (cached, ${(tRender/1000).toFixed(1)}s render)`);
+        } else {
+            setStatus(`${currentData.length.toLocaleString()} hexagons (${(tQuery/1000).toFixed(1)}s query, ${(tRender/1000).toFixed(1)}s render)`);
+        }
     } catch (e) {
         console.error('Query error:', e);
         setStatus('Query failed — see console');

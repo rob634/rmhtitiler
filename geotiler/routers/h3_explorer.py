@@ -103,13 +103,14 @@ async def h3_query(
 
     try:
         t0 = time.monotonic()
-        data = await query_h3_data(request.app, crop, tech, scenario)
+        data, from_cache = await query_h3_data(request.app, crop, tech, scenario)
         query_ms = round((time.monotonic() - t0) * 1000, 1)
 
         return JSONResponse({
             "data": data,
             "count": len(data),
             "query_ms": query_ms,
+            "cached": from_cache,
         })
 
     except ValueError as e:
