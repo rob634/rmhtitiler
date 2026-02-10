@@ -237,6 +237,7 @@ const PARQUET_URL = '{{ h3_parquet_url }}';
 const STORAGE_TOKEN = '{{ h3_storage_token }}';
 const AUTH_ENABLED = {{ 'true' if h3_auth_enabled else 'false' }};
 const TOKEN_REFRESH_MS = 30 * 60 * 1000;  // 30 minutes
+const SERVER_SIDE = {{ 'true' if h3_server_side else 'false' }};
 
 const CROPS = [
     {code:'bana',name:'Banana'},{code:'barl',name:'Barley'},{code:'bean',name:'Bean'},
@@ -418,6 +419,19 @@ async function initDuckDB() {
 }
 
 async function queryData(crop, tech, scenario) {
+    // Server-side: fetch from /h3/query endpoint
+    if (SERVER_SIDE) {
+        const params = new URLSearchParams({crop, tech, scenario});
+        const resp = await fetch(`/h3/query?${params}`);
+        if (!resp.ok) {
+            const err = await resp.json().catch(() => ({}));
+            throw new Error(err.error || `Query failed (${resp.status})`);
+        }
+        const result = await resp.json();
+        return result.data;
+    }
+
+    // Browser-side fallback: DuckDB-WASM direct query
     const prodCol = `${crop}_${tech}_production_mt`;
     const sql = `
         SELECT h3_index, "${prodCol}" as production, "${scenario}" as spei
@@ -805,7 +819,7 @@ function setStatus(msg) { document.getElementById('h3-status').textContent = msg
 // ============================================================
 
 (async function main() {
-    if (!PARQUET_URL) {
+    if (!PARQUET_URL && !SERVER_SIDE) {
         setLoading('H3 Explorer is not configured. Set H3_PARQUET_URL environment variable.');
         return;
     }
@@ -814,7 +828,13 @@ function setStatus(msg) { document.getElementById('h3-status').textContent = msg
         initMap();
         buildLegend();
 
-        await initDuckDB();
+        if (SERVER_SIDE) {
+            // Server-side DuckDB — no WASM download, no token setup
+            console.log('Using server-side DuckDB query engine');
+        } else {
+            // Browser-side fallback — init DuckDB-WASM
+            await initDuckDB();
+        }
 
         populateControls();
         hideLoading();

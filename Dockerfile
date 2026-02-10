@@ -26,10 +26,14 @@ RUN pip install --no-cache-dir \
     pydantic-settings>=2.0.0 \
     azure-monitor-opentelemetry>=1.6.0 \
     "tipg>=0.12.0" \
-    "stac-fastapi.pgstac>=4.0.0"
+    "stac-fastapi.pgstac>=4.0.0" \
+    "duckdb>=1.0.0"
 
 # Set working directory
 WORKDIR /app
+
+# Create data directory for DuckDB parquet cache
+RUN mkdir -p /app/data
 
 # Copy application package
 COPY geotiler /app/geotiler
@@ -42,6 +46,7 @@ ENV ENABLE_TIPG=true
 ENV TIPG_SCHEMAS=geo
 ENV ENABLE_STAC_API=true
 ENV STAC_ROUTER_PREFIX=/stac
+ENV ENABLE_H3_DUCKDB=false
 
 # Observability settings (set APPLICATIONINSIGHTS_CONNECTION_STRING to enable telemetry)
 # OBSERVABILITY_MODE enables detailed request/latency logging

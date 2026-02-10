@@ -1,28 +1,34 @@
 """
 H3 Crop Production & Drought Risk Explorer.
 
-Interactive browser-based explorer using DuckDB-WASM to query
-H3 Level 5 GeoParquet data directly from Azure Blob Storage.
+Serves the H3 explorer page and provides a server-side query endpoint
+backed by DuckDB (when ENABLE_H3_DUCKDB=true).
 
-No server-side compute required — DuckDB runs entirely in the browser
-and reads only the columns needed via HTTP range requests (~3-5 MB
-per query from the 160 MB parquet file).
+When server-side DuckDB is active:
+- /h3/query returns JSON data, browser only handles rendering
+- No storage tokens are passed to the browser
+- No CORS configuration needed on storage accounts
 
-Authentication: When Azure Storage OAuth is enabled, the server passes
-its cached bearer token to the browser. DuckDB-WASM uses this token
-via CREATE SECRET to authenticate HTTP range requests. A /h3/token
-endpoint allows the browser to refresh the token before expiry.
+When server-side DuckDB is disabled (fallback):
+- DuckDB-WASM runs in the browser, querying parquet directly
+- Storage tokens are passed to the browser for auth
+- /h3/token endpoint provides token refresh
 
-Stack: DuckDB-WASM + deck.gl (PolygonLayer) + MapLibre + h3-js
+Stack: deck.gl (PolygonLayer) + MapLibre + h3-js
 """
 
-from fastapi import APIRouter, Request
+import time
+import logging
+
+from fastapi import APIRouter, Query, Request
 from fastapi.responses import HTMLResponse, JSONResponse
 
 from geotiler.config import settings
 from geotiler.auth.cache import storage_token_cache
 from geotiler.auth.storage import get_storage_oauth_token
 from geotiler.templates_utils import templates, get_template_context
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter(tags=["H3 Explorer"])
 
@@ -38,6 +44,12 @@ def _get_storage_token() -> str | None:
     return get_storage_oauth_token()
 
 
+def _is_duckdb_ready(request: Request) -> bool:
+    """Check if server-side DuckDB is initialized and healthy."""
+    state = getattr(request.app.state, "duckdb_state", None)
+    return state is not None and state.init_success
+
+
 @router.get("/h3", response_class=HTMLResponse, include_in_schema=False)
 async def h3_explorer(request: Request):
     """
@@ -45,34 +57,77 @@ async def h3_explorer(request: Request):
 
     Interactive bivariate choropleth showing production intensity
     crossed with SPEI-12 drought projections at H3 Level 5 resolution.
-
-    Features:
-    - 46 crops, 3 technology levels, 6 climate scenarios
-    - Bivariate view (3x3 production x drought grid)
-    - Risk segmented view (safe/drought zone color ramps)
-    - DuckDB-WASM queries parquet via HTTP range requests (zero backend compute)
     """
+    server_side = _is_duckdb_ready(request)
+
+    # When server-side DuckDB is active, don't leak tokens to the browser
+    if server_side:
+        storage_token = ""
+        auth_enabled = False
+    else:
+        storage_token = _get_storage_token() or ""
+        auth_enabled = settings.use_azure_auth
+
     context = get_template_context(
         request,
         nav_active="/h3",
         h3_parquet_url=settings.h3_parquet_url,
-        h3_storage_token=_get_storage_token() or "",
-        h3_auth_enabled=settings.use_azure_auth,
+        h3_storage_token=storage_token,
+        h3_auth_enabled=auth_enabled,
+        h3_server_side=server_side,
     )
     return templates.TemplateResponse("pages/h3/explorer.html", context)
+
+
+@router.get("/h3/query", include_in_schema=False)
+async def h3_query(
+    request: Request,
+    crop: str = Query(..., description="4-letter crop code"),
+    tech: str = Query(..., description="Technology: a, i, or r"),
+    scenario: str = Query(..., description="SPEI scenario column"),
+):
+    """
+    Server-side H3 query endpoint.
+
+    Returns production and drought data for the given crop/tech/scenario
+    combination. Requires ENABLE_H3_DUCKDB=true.
+    """
+    if not _is_duckdb_ready(request):
+        return JSONResponse(
+            {"error": "H3 DuckDB not available"},
+            status_code=503,
+        )
+
+    # Import here to avoid import error when duckdb is not installed
+    from geotiler.services.duckdb import query_h3_data
+
+    try:
+        t0 = time.monotonic()
+        data = await query_h3_data(request.app, crop, tech, scenario)
+        query_ms = round((time.monotonic() - t0) * 1000, 1)
+
+        return JSONResponse({
+            "data": data,
+            "count": len(data),
+            "query_ms": query_ms,
+        })
+
+    except ValueError as e:
+        return JSONResponse({"error": str(e)}, status_code=400)
+    except Exception as e:
+        logger.error(f"H3 query error: {e}")
+        return JSONResponse({"error": "Query failed"}, status_code=500)
 
 
 @router.get("/h3/token", include_in_schema=False)
 async def h3_token(request: Request):
     """
-    Return current storage bearer token for DuckDB-WASM.
+    Return current storage bearer token for DuckDB-WASM fallback.
 
-    Called by the browser every 30 minutes to refresh the token
-    before the ~60-minute Azure AD expiry.
+    Only used when server-side DuckDB is disabled. Called by the browser
+    every 30 minutes to refresh the token before expiry.
 
     Minimal guard: rejects requests without a same-origin Referer header.
-    This is NOT real security — just prevents casual direct access.
-    Will be removed when server-side DuckDB replaces browser-WASM.
     """
     referer = request.headers.get("referer", "")
     if not referer or "/h3" not in referer:

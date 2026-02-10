@@ -230,6 +230,15 @@ class Settings(BaseSettings):
     """URL to the H3 Level 5 GeoParquet file for the crop/drought explorer.
     Must be set via H3_PARQUET_URL env var. H3 explorer is disabled when empty."""
 
+    enable_h3_duckdb: bool = False
+    """Enable server-side DuckDB for H3 queries. Requires H3_PARQUET_URL."""
+
+    h3_data_dir: str = "/app/data"
+    """Local directory for cached parquet file."""
+
+    h3_parquet_filename: str = "h3_data.parquet"
+    """Filename for the local parquet cache."""
+
     # =========================================================================
     # Computed Properties
     # =========================================================================

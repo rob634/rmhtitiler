@@ -32,6 +32,7 @@ from geotiler.infrastructure.middleware import RequestTimingMiddleware
 from geotiler.routers import health, planetary_computer, admin, vector, stac, diagnostics
 from geotiler.routers import cog_landing, xarray_landing, searches_landing, stac_explorer, docs_guide, map_viewer, h3_explorer
 from geotiler.services.background import start_token_refresh
+from geotiler.services.duckdb import initialize_duckdb, close_duckdb
 from geotiler.auth.storage import initialize_storage_auth
 from geotiler.auth.postgres import get_postgres_credential, build_database_url
 from geotiler.auth.cache import db_error_cache
@@ -84,6 +85,10 @@ async def lifespan(app: FastAPI):
     if settings.use_azure_auth:
         start_token_refresh(app)
 
+    # Initialize H3 DuckDB (server-side parquet queries)
+    if settings.enable_h3_duckdb and settings.h3_parquet_url:
+        await initialize_duckdb(app)
+
     logger.info(f"Startup complete: geotiler v{__version__}")
 
     yield  # Application runs here
@@ -93,7 +98,11 @@ async def lifespan(app: FastAPI):
     # =========================================================================
     logger.info("Shutting down geotiler...")
 
-    # Close TiPG pool first
+    # Close H3 DuckDB
+    if settings.enable_h3_duckdb:
+        await close_duckdb(app)
+
+    # Close TiPG pool
     if settings.enable_tipg:
         await vector.close_tipg(app)
 

@@ -303,6 +303,35 @@ async def health(request: Request, response: Response):
             disabled_reason="ENABLE_TIPG=false",
         )
 
+    # H3 DuckDB (server-side query engine)
+    if settings.enable_h3_duckdb:
+        duckdb_state = getattr(request.app.state, "duckdb_state", None)
+        if duckdb_state and duckdb_state.init_success:
+            services["h3_duckdb"] = _build_service_status(
+                name="h3_duckdb",
+                available=True,
+                description="H3 server-side DuckDB query engine",
+                endpoints=["/h3/query"],
+                details=duckdb_state.to_dict(),
+            )
+        else:
+            services["h3_duckdb"] = _build_service_status(
+                name="h3_duckdb",
+                available=False,
+                description="H3 server-side DuckDB query engine",
+                endpoints=[],
+                details=duckdb_state.to_dict() if duckdb_state else None,
+            )
+            issues.append("H3 DuckDB initialization failed")
+    else:
+        services["h3_duckdb"] = _build_service_status(
+            name="h3_duckdb",
+            available=False,
+            description="H3 server-side DuckDB query engine",
+            endpoints=[],
+            disabled_reason="ENABLE_H3_DUCKDB=false",
+        )
+
     # STAC API
     if settings.enable_stac_api:
         if settings.enable_tipg and tipg_ok:
@@ -383,6 +412,7 @@ async def health(request: Request, response: Response):
             "tipg_schemas": settings.tipg_schema_list if settings.enable_tipg else None,
             "stac_api_enabled": settings.enable_stac_api,
             "planetary_computer_enabled": settings.enable_planetary_computer,
+            "h3_duckdb_enabled": settings.enable_h3_duckdb,
         },
     }
 
