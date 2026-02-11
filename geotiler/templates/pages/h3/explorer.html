@@ -94,7 +94,8 @@
 .h3-legend-ticks { display: flex; justify-content: space-between; width: 100%; }
 .h3-legend-ticks span { font-size: 8px; color: #666; }
 
-/* ---- Segmented Legend ---- */
+/* ---- Sequential / Segmented Legend ---- */
+.h3-seq-legend { display: flex; flex-direction: column; gap: 6px; }
 .h3-seg-legend { display: flex; flex-direction: column; gap: 10px; }
 .h3-seg-row-label { font-size: 10px; font-weight: 600; margin-bottom: 3px; }
 .h3-seg-row-label.safe { color: #d4a017; }
@@ -105,6 +106,9 @@
 .h3-seg-ramp-cell { flex: 1; }
 .h3-seg-ramp-labels { display: flex; justify-content: space-between; margin-top: 2px; }
 .h3-seg-ramp-labels span { font-size: 8px; color: #666; }
+
+/* ---- Dimmed controls when not relevant ---- */
+.h3-cg.dimmed { opacity: 0.35; pointer-events: none; }
 
 /* ---- Stats ---- */
 #h3-stats {
@@ -202,8 +206,9 @@
     <div class="h3-cg">
         <label>View</label>
         <div class="h3-view-tabs">
-            <button class="h3-view-tab active" data-view="bivariate">Bivariate</button>
-            <button class="h3-view-tab" data-view="segmented">Risk Segmented</button>
+            <button class="h3-view-tab active" data-view="production">Production</button>
+            <button class="h3-view-tab" data-view="segmented">Segmented</button>
+            <button class="h3-view-tab" data-view="bivariate">Bivariate</button>
         </div>
     </div>
     <div id="h3-status">Initializing...</div>
@@ -356,7 +361,7 @@ let deckOverlay = null;
 let currentData = [];
 let queryInFlight = false;
 let currentCropName = 'Wheat';
-let currentView = 'bivariate';
+let currentView = 'production';
 const queryCache = new Map();  // Client-side cache: "crop_tech_scenario" → data array
 
 // ============================================================
@@ -554,7 +559,19 @@ function buildLayer(data) {
         };
     }
 
-    if (currentView === 'bivariate') {
+    if (currentView === 'production') {
+        // Single sequential ramp — production only, no drought overlay
+        const breaks = quantileBreaks(prodValues, 5);
+        const ramp = PALETTES[currentPalette].safe;
+        for (let i = 0; i < processed.length; i++) {
+            const p = processed[i];
+            const bin = classifyRamp(p.production, breaks);
+            p.color = [...ramp[bin], 200];
+            p.prodBin = bin;
+            p.droughtBin = 0;
+            p.isDrought = false;
+        }
+    } else if (currentView === 'bivariate') {
         const breaks = quantileBreaks(prodValues, 3);
         for (let i = 0; i < processed.length; i++) {
             const p = processed[i];
@@ -564,6 +581,7 @@ function buildLayer(data) {
             p.isDrought = p.spei != null && p.spei < DROUGHT_SPEI_THRESHOLD;
         }
     } else {
+        // Segmented: safe vs drought zones
         const breaks = quantileBreaks(prodValues, 5);
         for (let i = 0; i < processed.length; i++) {
             const p = processed[i];
@@ -609,25 +627,28 @@ function onHover({object, x, y}) {
         tooltip.style.display = 'none';
         return;
     }
-    const speiClass = object.spei == null ? '' :
-        object.spei > 0 ? 'spei-wet' : object.spei >= -1 ? 'spei-mod' : 'spei-dry';
-    const speiLabel = object.spei == null ? 'N/A' : object.spei.toFixed(2);
 
-    let riskLabel;
-    if (currentView === 'segmented') {
-        riskLabel = object.isDrought
-            ? '<span style="color:#e63946;font-weight:600">Drought Zone</span> (SPEI &lt; -1.5)'
-            : '<span style="color:#d4a017;font-weight:600">Safe Zone</span>';
-    } else {
-        const droughtLabel = ['Safe', 'Moderate', 'At Risk'][object.droughtBin];
-        riskLabel = `<span class="spei-val ${speiClass}">${speiLabel}</span> <span style="color:#888">(${droughtLabel})</span>`;
+    let html = `<strong>${currentCropName}</strong><br>
+        Production: <span class="val">${formatMT(object.production)}</span>`;
+
+    if (currentView !== 'production') {
+        const speiClass = object.spei == null ? '' :
+            object.spei > 0 ? 'spei-wet' : object.spei >= -1 ? 'spei-mod' : 'spei-dry';
+        const speiLabel = object.spei == null ? 'N/A' : object.spei.toFixed(2);
+
+        if (currentView === 'segmented') {
+            const thr = DROUGHT_SPEI_THRESHOLD;
+            const riskLabel = object.isDrought
+                ? `<span style="color:#e63946;font-weight:600">Drought Zone</span> (SPEI &lt; ${thr})`
+                : '<span style="color:#d4a017;font-weight:600">Safe Zone</span>';
+            html += `<br>SPEI-12: ${riskLabel}`;
+        } else {
+            const droughtLabel = ['Safe', 'Moderate', 'At Risk'][object.droughtBin];
+            html += `<br>SPEI-12: <span class="spei-val ${speiClass}">${speiLabel}</span> <span style="color:#888">(${droughtLabel})</span>`;
+        }
     }
 
-    tooltip.innerHTML = `
-        <strong>${currentCropName}</strong><br>
-        Production: <span class="val">${formatMT(object.production)}</span><br>
-        SPEI-12: ${riskLabel}
-    `;
+    tooltip.innerHTML = html;
     tooltip.style.display = 'block';
     tooltip.style.left = `${x + 14}px`;
     tooltip.style.top = `${y + 14}px`;
@@ -667,17 +688,25 @@ function formatMT(val) {
 function updateStats(data) {
     const nHex = data.length;
     const totalProd = data.reduce((s, d) => s + d.production, 0);
-    const threshold = currentView === 'segmented' ? DROUGHT_SPEI_THRESHOLD : -1;
-    const atRisk = data.filter(d => d.spei != null && d.spei < threshold);
-    const riskProd = atRisk.reduce((s, d) => s + d.production, 0);
-    const riskPct = totalProd > 0 ? (riskProd / totalProd * 100) : 0;
 
     document.getElementById('stat-hexes').textContent = nHex.toLocaleString();
     document.getElementById('stat-prod').textContent = formatMT(totalProd);
-    document.getElementById('stat-risk').textContent =
-        `${formatMT(riskProd)} (${riskPct.toFixed(1)}%)`;
-    document.getElementById('stat-risk-label').textContent =
-        currentView === 'segmented' ? 'In Drought Zone' : 'At Drought Risk';
+
+    const riskRow = document.getElementById('stat-risk').parentElement;
+    if (currentView === 'production') {
+        // Hide drought stats in production-only view
+        riskRow.style.display = 'none';
+    } else {
+        riskRow.style.display = '';
+        const threshold = currentView === 'segmented' ? DROUGHT_SPEI_THRESHOLD : -1;
+        const atRisk = data.filter(d => d.spei != null && d.spei < threshold);
+        const riskProd = atRisk.reduce((s, d) => s + d.production, 0);
+        const riskPct = totalProd > 0 ? (riskProd / totalProd * 100) : 0;
+        document.getElementById('stat-risk').textContent =
+            `${formatMT(riskProd)} (${riskPct.toFixed(1)}%)`;
+        document.getElementById('stat-risk-label').textContent =
+            currentView === 'segmented' ? 'In Drought Zone' : 'At Drought Risk';
+    }
 }
 
 // ============================================================
@@ -686,7 +715,25 @@ function updateStats(data) {
 
 function buildLegend() {
     const container = document.getElementById('h3-legend');
-    if (currentView === 'bivariate') {
+    const thr = DROUGHT_SPEI_THRESHOLD;
+
+    if (currentView === 'production') {
+        // Simple sequential ramp — production only
+        const ramp = PALETTES[currentPalette].safe;
+        container.innerHTML = `
+            <div class="h3-legend-title">Crop Production Intensity</div>
+            <div class="h3-seq-legend">
+                <div class="h3-seg-ramp" id="h3-prod-ramp"></div>
+                <div class="h3-seg-ramp-labels"><span>Low</span><span>Production (MT)</span><span>High</span></div>
+            </div>`;
+        const el = document.getElementById('h3-prod-ramp');
+        for (const [r, g, b] of ramp) {
+            const cell = document.createElement('div');
+            cell.className = 'h3-seg-ramp-cell';
+            cell.style.background = `rgb(${r},${g},${b})`;
+            el.appendChild(cell);
+        }
+    } else if (currentView === 'bivariate') {
         container.innerHTML = `
             <div class="h3-legend-title">Production x Drought Risk</div>
             <div class="h3-legend-body">
@@ -709,16 +756,17 @@ function buildLegend() {
             }
         }
     } else {
+        // Segmented: safe vs drought
         container.innerHTML = `
-            <div class="h3-legend-title">Production by Drought Zone (SPEI &lt; -1.5)</div>
+            <div class="h3-legend-title">Production by Drought Zone (SPEI &lt; ${thr})</div>
             <div class="h3-seg-legend">
                 <div>
-                    <div class="h3-seg-row-label safe">Safe Zone (SPEI &ge; -1.5)</div>
+                    <div class="h3-seg-row-label safe">Safe Zone (SPEI &ge; ${thr})</div>
                     <div class="h3-seg-ramp" id="h3-seg-safe-ramp"></div>
                     <div class="h3-seg-ramp-labels"><span>Low</span><span>Production</span><span>High</span></div>
                 </div>
                 <div>
-                    <div class="h3-seg-row-label risk">Drought Zone (SPEI &lt; -1.5)</div>
+                    <div class="h3-seg-row-label risk">Drought Zone (SPEI &lt; ${thr})</div>
                     <div class="h3-seg-ramp" id="h3-seg-drought-ramp"></div>
                     <div class="h3-seg-ramp-labels"><span>Low</span><span>Production</span><span>High</span></div>
                 </div>
@@ -788,11 +836,19 @@ function populateControls() {
     document.getElementById('sel-tech').addEventListener('change', debouncedRefresh);
     document.getElementById('sel-scenario').addEventListener('change', debouncedRefresh);
 
+    function updateDroughtControlVisibility() {
+        const dim = currentView === 'production';
+        document.getElementById('sel-scenario').closest('.h3-cg').classList.toggle('dimmed', dim);
+        document.getElementById('sel-threshold').closest('.h3-cg').classList.toggle('dimmed', dim);
+    }
+    updateDroughtControlVisibility();
+
     for (const tab of document.querySelectorAll('.h3-view-tab')) {
         tab.addEventListener('click', () => {
             document.querySelectorAll('.h3-view-tab').forEach(t => t.classList.remove('active'));
             tab.classList.add('active');
             currentView = tab.dataset.view;
+            updateDroughtControlVisibility();
             buildLegend();
             if (currentData.length) {
                 buildLayer(currentData);
