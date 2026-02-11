@@ -98,7 +98,7 @@
 .h3-seq-legend { display: flex; flex-direction: column; gap: 6px; }
 .h3-seg-legend { display: flex; flex-direction: column; gap: 10px; }
 .h3-seg-row-label { font-size: 10px; font-weight: 600; margin-bottom: 3px; }
-.h3-seg-row-label.safe { color: #d4a017; }
+.h3-seg-row-label.safe { color: #2ab873; }
 .h3-seg-row-label.risk { color: #e63946; }
 .h3-seg-ramp {
     display: flex; gap: 1px; height: 16px; border-radius: 3px; overflow: hidden;
@@ -200,15 +200,10 @@
         </select>
     </div>
     <div class="h3-cg">
-        <label>Palette</label>
-        <select id="sel-palette"></select>
-    </div>
-    <div class="h3-cg">
         <label>View</label>
         <div class="h3-view-tabs">
             <button class="h3-view-tab active" data-view="production">Production</button>
-            <button class="h3-view-tab" data-view="segmented">Segmented</button>
-            <button class="h3-view-tab" data-view="bivariate">Bivariate</button>
+            <button class="h3-view-tab" data-view="segmented">At Risk</button>
         </div>
     </div>
     <div id="h3-status">Initializing...</div>
@@ -218,15 +213,19 @@
 
 <div id="h3-stats">
     <div class="h3-stat-row">
-        <span class="h3-stat-label">Hexagons</span>
-        <span class="h3-stat-value" id="stat-hexes">-</span>
+        <span class="h3-stat-label">Harvested Area</span>
+        <span class="h3-stat-value" id="stat-area">-</span>
+    </div>
+    <div class="h3-stat-row" id="stat-area-risk-row">
+        <span class="h3-stat-label">Area at Risk</span>
+        <span class="h3-stat-value warning" id="stat-area-risk">-</span>
     </div>
     <div class="h3-stat-row">
-        <span class="h3-stat-label">Total Production</span>
+        <span class="h3-stat-label">Production</span>
         <span class="h3-stat-value" id="stat-prod">-</span>
     </div>
-    <div class="h3-stat-row">
-        <span class="h3-stat-label" id="stat-risk-label">At Drought Risk</span>
+    <div class="h3-stat-row" id="stat-prod-risk-row">
+        <span class="h3-stat-label">Production at Risk</span>
         <span class="h3-stat-value warning" id="stat-risk">-</span>
     </div>
 </div>
@@ -345,7 +344,7 @@ const PALETTES = {
     },
 };
 
-let currentPalette = 'emergency';
+let currentPalette = 'fire';
 
 const SPEI_THRESHOLDS = [0, -1];
 let DROUGHT_SPEI_THRESHOLD = -1.5;
@@ -454,8 +453,9 @@ async function queryData(crop, tech, scenario) {
 
     // Browser-side fallback: DuckDB-WASM direct query
     const prodCol = `${crop}_${tech}_production_mt`;
+    const harvCol = `${crop}_${tech}_harv_area_ha`;
     const sql = `
-        SELECT h3_index, "${prodCol}" as production, "${scenario}" as spei
+        SELECT h3_index, "${prodCol}" as production, "${harvCol}" as harv_area_ha, "${scenario}" as spei
         FROM '${PARQUET_URL}'
         WHERE "${prodCol}" > 0 AND "${prodCol}" IS NOT NULL
     `;
@@ -469,6 +469,7 @@ async function queryData(crop, tech, scenario) {
         data[i] = {
             h3_index: r.h3_index,
             production: Number(r.production) || 0,
+            harv_area_ha: Number(r.harv_area_ha) || 0,
             spei: r.spei != null ? Number(r.spei) : null,
         };
     }
@@ -477,23 +478,35 @@ async function queryData(crop, tech, scenario) {
 }
 
 // ============================================================
-// Bivariate Classification
+// Log10 Classification
 // ============================================================
 
-function quantileBreaks(values, nBins) {
-    const sorted = Float64Array.from(values).sort();
+function log10Breaks(values, nBins) {
+    // Equal intervals in log10 space → geometric intervals in real space
+    let minVal = Infinity, maxVal = -Infinity;
+    for (const v of values) {
+        if (v > 0) {
+            if (v < minVal) minVal = v;
+            if (v > maxVal) maxVal = v;
+        }
+    }
+    if (minVal >= maxVal) return Array(nBins - 1).fill(maxVal);
+
+    const logMin = Math.log10(minVal);
+    const logMax = Math.log10(maxVal);
+    const step = (logMax - logMin) / nBins;
     const breaks = [];
     for (let i = 1; i < nBins; i++) {
-        const idx = Math.floor(i * sorted.length / nBins);
-        breaks.push(sorted[Math.min(idx, sorted.length - 1)]);
+        breaks.push(Math.pow(10, logMin + step * i));
     }
     return breaks;
 }
 
-function classifyProd(val, breaks) {
-    if (val <= breaks[0]) return 0;
-    if (val <= breaks[1]) return 1;
-    return 2;
+function classifyLog(val, breaks) {
+    for (let i = 0; i < breaks.length; i++) {
+        if (val <= breaks[i]) return i;
+    }
+    return breaks.length;
 }
 
 function classifyDrought(spei) {
@@ -505,13 +518,6 @@ function classifyDrought(spei) {
 
 function getColor(prodBin, droughtBin) {
     return [...PALETTES[currentPalette].colors[droughtBin][prodBin], 190];
-}
-
-function classifyRamp(val, breaks) {
-    for (let i = 0; i < breaks.length; i++) {
-        if (val <= breaks[i]) return i;
-    }
-    return breaks.length;
 }
 
 // ============================================================
@@ -555,38 +561,29 @@ function buildLayer(data) {
         polygon.push(polygon[0]);
         processed[i] = {
             polygon, h3_index: d.h3_index,
-            production: d.production, spei: d.spei,
+            production: d.production, harv_area_ha: d.harv_area_ha, spei: d.spei,
         };
     }
 
+    const breaks = log10Breaks(prodValues, 5);
+
     if (currentView === 'production') {
         // Single sequential ramp — production only, no drought overlay
-        const breaks = quantileBreaks(prodValues, 5);
         const ramp = PALETTES[currentPalette].safe;
         for (let i = 0; i < processed.length; i++) {
             const p = processed[i];
-            const bin = classifyRamp(p.production, breaks);
+            const bin = classifyLog(p.production, breaks);
             p.color = [...ramp[bin], 200];
             p.prodBin = bin;
             p.droughtBin = 0;
             p.isDrought = false;
         }
-    } else if (currentView === 'bivariate') {
-        const breaks = quantileBreaks(prodValues, 3);
-        for (let i = 0; i < processed.length; i++) {
-            const p = processed[i];
-            p.prodBin = classifyProd(p.production, breaks);
-            p.droughtBin = classifyDrought(p.spei);
-            p.color = getColor(p.prodBin, p.droughtBin);
-            p.isDrought = p.spei != null && p.spei < DROUGHT_SPEI_THRESHOLD;
-        }
     } else {
-        // Segmented: safe vs drought zones
-        const breaks = quantileBreaks(prodValues, 5);
+        // At Risk: safe vs drought zones
         for (let i = 0; i < processed.length; i++) {
             const p = processed[i];
             p.isDrought = p.spei != null && p.spei < DROUGHT_SPEI_THRESHOLD;
-            const bin = classifyRamp(p.production, breaks);
+            const bin = classifyLog(p.production, breaks);
             const pal = PALETTES[currentPalette];
             const ramp = p.isDrought ? pal.drought : pal.safe;
             p.color = [...ramp[bin], 200];
@@ -629,6 +626,7 @@ function onHover({object, x, y}) {
     }
 
     let html = `<strong>${currentCropName}</strong><br>
+        Harvested: <span class="val">${formatHA(object.harv_area_ha)}</span><br>
         Production: <span class="val">${formatMT(object.production)}</span>`;
 
     if (currentView !== 'production') {
@@ -640,7 +638,7 @@ function onHover({object, x, y}) {
             const thr = DROUGHT_SPEI_THRESHOLD;
             const riskLabel = object.isDrought
                 ? `<span style="color:#e63946;font-weight:600">Drought Zone</span> (SPEI &lt; ${thr})`
-                : '<span style="color:#d4a017;font-weight:600">Safe Zone</span>';
+                : '<span style="color:#2ab873;font-weight:600">Safe Zone</span>';
             html += `<br>SPEI-12: ${riskLabel}`;
         } else {
             const droughtLabel = ['Safe', 'Moderate', 'At Risk'][object.droughtBin];
@@ -660,13 +658,14 @@ function onClick({object, coordinate}) {
         object.spei > 0 ? 'spei-wet' : object.spei >= -1 ? 'spei-mod' : 'spei-dry';
     const zoneHtml = object.isDrought
         ? '<span style="color:#e63946;font-weight:600">Drought Zone</span>'
-        : '<span style="color:#d4a017;font-weight:600">Safe Zone</span>';
+        : '<span style="color:#2ab873;font-weight:600">Safe Zone</span>';
     new maplibregl.Popup({maxWidth: '280px'})
         .setLngLat(coordinate)
         .setHTML(`
             <div style="line-height:1.6">
                 <strong style="color:#fff">${currentCropName}</strong><br>
                 <span style="color:#888">H3:</span> <code style="font-size:10px">${object.h3_index}</code><br>
+                <span style="color:#888">Harvested:</span> <strong class="val">${formatHA(object.harv_area_ha)}</strong><br>
                 <span style="color:#888">Production:</span> <strong class="val">${formatMT(object.production)}</strong><br>
                 <span style="color:#888">SPEI-12:</span> <strong class="spei-val ${speiClass}">${object.spei?.toFixed(3) ?? 'N/A'}</strong><br>
                 <span style="color:#888">Zone:</span> ${zoneHtml}
@@ -681,31 +680,54 @@ function formatMT(val) {
     return val.toFixed(0) + ' MT';
 }
 
+function formatHA(ha) {
+    if (ha >= 1e6) return (ha / 1e6).toFixed(2) + ' M ha';
+    if (ha >= 1e3) return (ha / 1e3).toFixed(1) + ' K ha';
+    return ha.toFixed(0) + ' ha';
+}
+
 // ============================================================
 // Stats Panel
 // ============================================================
 
 function updateStats(data) {
-    const nHex = data.length;
-    const totalProd = data.reduce((s, d) => s + d.production, 0);
+    // Harvested area (ha) and production (MT) from parquet columns
+    let totalArea = 0;
+    let totalProd = 0;
+    for (const d of data) {
+        totalArea += d.harv_area_ha;
+        totalProd += d.production;
+    }
 
-    document.getElementById('stat-hexes').textContent = nHex.toLocaleString();
+    document.getElementById('stat-area').textContent = formatHA(totalArea);
     document.getElementById('stat-prod').textContent = formatMT(totalProd);
 
-    const riskRow = document.getElementById('stat-risk').parentElement;
+    const areaRiskRow = document.getElementById('stat-area-risk-row');
+    const prodRiskRow = document.getElementById('stat-prod-risk-row');
+
     if (currentView === 'production') {
-        // Hide drought stats in production-only view
-        riskRow.style.display = 'none';
+        areaRiskRow.style.display = 'none';
+        prodRiskRow.style.display = 'none';
     } else {
-        riskRow.style.display = '';
-        const threshold = currentView === 'segmented' ? DROUGHT_SPEI_THRESHOLD : -1;
-        const atRisk = data.filter(d => d.spei != null && d.spei < threshold);
-        const riskProd = atRisk.reduce((s, d) => s + d.production, 0);
-        const riskPct = totalProd > 0 ? (riskProd / totalProd * 100) : 0;
+        areaRiskRow.style.display = '';
+        prodRiskRow.style.display = '';
+
+        let riskArea = 0;
+        let riskProd = 0;
+        for (const d of data) {
+            if (d.spei != null && d.spei < DROUGHT_SPEI_THRESHOLD) {
+                riskArea += d.harv_area_ha;
+                riskProd += d.production;
+            }
+        }
+
+        const areaPct = totalArea > 0 ? (riskArea / totalArea * 100) : 0;
+        const prodPct = totalProd > 0 ? (riskProd / totalProd * 100) : 0;
+
+        document.getElementById('stat-area-risk').textContent =
+            `${formatHA(riskArea)} (${areaPct.toFixed(1)}%)`;
         document.getElementById('stat-risk').textContent =
-            `${formatMT(riskProd)} (${riskPct.toFixed(1)}%)`;
-        document.getElementById('stat-risk-label').textContent =
-            currentView === 'segmented' ? 'In Drought Zone' : 'At Drought Risk';
+            `${formatMT(riskProd)} (${prodPct.toFixed(1)}%)`;
     }
 }
 
@@ -797,24 +819,6 @@ function populateControls() {
         if (c.code === 'whea') opt.selected = true;
         sel.appendChild(opt);
     }
-
-    // Palette selector
-    const palSel = document.getElementById('sel-palette');
-    for (const [key, pal] of Object.entries(PALETTES)) {
-        const opt = document.createElement('option');
-        opt.value = key;
-        opt.textContent = pal.name;
-        if (key === currentPalette) opt.selected = true;
-        palSel.appendChild(opt);
-    }
-    palSel.addEventListener('change', () => {
-        currentPalette = palSel.value;
-        buildLegend();
-        if (currentData.length) {
-            buildLayer(currentData);
-            updateStats(currentData);
-        }
-    });
 
     // Drought threshold selector — re-renders existing data, no new query
     document.getElementById('sel-threshold').addEventListener('change', (e) => {

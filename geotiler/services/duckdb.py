@@ -253,16 +253,16 @@ async def close_duckdb(app: "FastAPI") -> None:
 # QUERY
 # =============================================================================
 
-def _run_query(conn: duckdb.DuckDBPyConnection, prod_col: str, scenario: str) -> list[dict]:
+def _run_query(conn: duckdb.DuckDBPyConnection, prod_col: str, harv_col: str, scenario: str) -> list[dict]:
     """Execute H3 query synchronously. Called via asyncio.to_thread()."""
     sql = f"""
-        SELECT h3_index, "{prod_col}" as production, "{scenario}" as spei
+        SELECT h3_index, "{prod_col}" as production, "{harv_col}" as harv_area_ha, "{scenario}" as spei
         FROM h3_data
         WHERE "{prod_col}" > 0 AND "{prod_col}" IS NOT NULL
     """
     rows = conn.execute(sql).fetchall()
     return [
-        {"h3_index": r[0], "production": r[1], "spei": r[2]}
+        {"h3_index": r[0], "production": r[1], "harv_area_ha": r[2] or 0, "spei": r[3]}
         for r in rows
     ]
 
@@ -292,15 +292,18 @@ async def query_h3_data(
         return query_cache[cache_key], True
 
     prod_col = f"{crop}_{tech}_production_mt"
+    harv_col = f"{crop}_{tech}_harv_area_ha"
 
-    # Verify column exists in parquet schema
+    # Verify columns exist in parquet schema
     columns = getattr(app.state, "duckdb_columns", [])
     if prod_col not in columns:
         raise ValueError(f"Column not found in dataset: {prod_col}")
+    if harv_col not in columns:
+        raise ValueError(f"Column not found in dataset: {harv_col}")
     if scenario not in columns:
         raise ValueError(f"Scenario column not found: {scenario}")
 
-    result = await asyncio.to_thread(_run_query, conn, prod_col, scenario)
+    result = await asyncio.to_thread(_run_query, conn, prod_col, harv_col, scenario)
 
     # Store in cache (LRU eviction at max size)
     if query_cache is not None:
