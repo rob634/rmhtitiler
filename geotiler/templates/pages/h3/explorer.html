@@ -188,6 +188,14 @@
         </select>
     </div>
     <div class="h3-cg">
+        <label>Drought Threshold</label>
+        <select id="sel-threshold">
+            <option value="-1">SPEI &lt; -1.0 (Moderate)</option>
+            <option value="-1.5" selected>SPEI &lt; -1.5 (Severe)</option>
+            <option value="-2">SPEI &lt; -2.0 (Extreme)</option>
+        </select>
+    </div>
+    <div class="h3-cg">
         <label>Palette</label>
         <select id="sel-palette"></select>
     </div>
@@ -335,7 +343,7 @@ const PALETTES = {
 let currentPalette = 'emergency';
 
 const SPEI_THRESHOLDS = [0, -1];
-const DROUGHT_SPEI_THRESHOLD = -1.5;
+let DROUGHT_SPEI_THRESHOLD = -1.5;
 
 // ============================================================
 // State
@@ -753,6 +761,16 @@ function populateControls() {
     }
     palSel.addEventListener('change', () => {
         currentPalette = palSel.value;
+        buildLegend();
+        if (currentData.length) {
+            buildLayer(currentData);
+            updateStats(currentData);
+        }
+    });
+
+    // Drought threshold selector — re-renders existing data, no new query
+    document.getElementById('sel-threshold').addEventListener('change', (e) => {
+        DROUGHT_SPEI_THRESHOLD = parseFloat(e.target.value);
         buildLegend();
         if (currentData.length) {
             buildLayer(currentData);
