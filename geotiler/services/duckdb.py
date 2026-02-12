@@ -96,7 +96,6 @@ VALID_CROPS = frozenset([
 VALID_TECHS = frozenset(["a", "i", "r"])
 
 VALID_SCENARIOS = frozenset([
-    "spei12_hist_median", "spei12_hist_p10",
     "spei12_ssp370_median", "spei12_ssp370_p10",
     "spei12_ssp585_median", "spei12_ssp585_p10",
 ])
