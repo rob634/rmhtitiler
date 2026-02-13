@@ -15,6 +15,9 @@
 <!-- h3-js for hex geometry conversion -->
 <script src="https://unpkg.com/h3-js@^4.0.0/dist/h3-js.umd.js"></script>
 
+<!-- TopoJSON client for country boundary decoding -->
+<script src="https://unpkg.com/topojson-client@3/dist/topojson-client.min.js"></script>
+
 <style>
 /* ---- Reset ---- */
 *, *::before, *::after { box-sizing: border-box; }
@@ -266,6 +269,33 @@ const SPEI_WET = 0;     // fully safe color
 const SPEI_DRY = -2.5;  // fully drought color
 
 // ============================================================
+// MENAAP Country Filter (ISO 3166-1 numeric codes)
+// ============================================================
+
+const MENAAP_CODES = new Set([
+    '004', // Afghanistan
+    '012', // Algeria
+    '262', // Djibouti
+    '818', // Egypt
+    '364', // Iran
+    '368', // Iraq
+    '400', // Jordan
+    '422', // Lebanon
+    '434', // Libya
+    '504', // Morocco
+    '586', // Pakistan
+    '682', // Saudi Arabia
+    '760', // Syria
+    '788', // Tunisia
+    '275', // Palestine (West Bank and Gaza)
+    '887', // Yemen
+]);
+
+const EXCLUDE_CODES = new Set([
+    '732', // Western Sahara — must never appear
+]);
+
+// ============================================================
 // State
 // ============================================================
 
@@ -275,6 +305,111 @@ let currentData = [];
 let queryInFlight = false;
 let currentCropName = 'Wheat';
 const queryCache = new Map();
+
+// Country boundaries
+let borderGeoJSON = null;     // all countries except excluded, for border lines
+let menaapPolygons = [];      // pre-processed MENAAP polygons for point-in-polygon
+const menaapHexCache = new Map(); // h3_index → boolean (persists across queries)
+
+// ============================================================
+// Country Boundary Loading
+// ============================================================
+
+async function loadBoundaries() {
+    const resp = await fetch('https://cdn.jsdelivr.net/npm/world-atlas@2/countries-110m.json');
+    if (!resp.ok) throw new Error(`Failed to load boundaries: ${resp.status}`);
+    const world = await resp.json();
+    const allCountries = topojson.feature(world, world.objects.countries);
+
+    // Border lines: all countries except Western Sahara
+    borderGeoJSON = {
+        type: 'FeatureCollection',
+        features: allCountries.features.filter(f => {
+            const id = String(f.id).padStart(3, '0');
+            return !EXCLUDE_CODES.has(id);
+        }),
+    };
+
+    // MENAAP polygons: extract and pre-process for point-in-polygon
+    const menaapFeatures = allCountries.features.filter(f => {
+        const id = String(f.id).padStart(3, '0');
+        return MENAAP_CODES.has(id);
+    });
+    menaapPolygons = extractPolygons(menaapFeatures);
+
+    console.log(`Boundaries loaded: ${borderGeoJSON.features.length} countries, ${menaapPolygons.length} MENAAP polygon rings`);
+}
+
+function extractPolygons(features) {
+    const result = [];
+    for (const feature of features) {
+        const geom = feature.geometry;
+        let polyGroups;
+        if (geom.type === 'Polygon') {
+            polyGroups = [geom.coordinates];
+        } else if (geom.type === 'MultiPolygon') {
+            polyGroups = geom.coordinates;
+        } else continue;
+
+        for (const rings of polyGroups) {
+            const outer = rings[0];
+            const holes = rings.slice(1);
+            // Bounding box for fast rejection
+            let minLng = Infinity, maxLng = -Infinity, minLat = Infinity, maxLat = -Infinity;
+            for (const [lng, lat] of outer) {
+                if (lng < minLng) minLng = lng;
+                if (lng > maxLng) maxLng = lng;
+                if (lat < minLat) minLat = lat;
+                if (lat > maxLat) maxLat = lat;
+            }
+            result.push({ outer, holes, bbox: [minLng, minLat, maxLng, maxLat] });
+        }
+    }
+    return result;
+}
+
+// ============================================================
+// Point-in-Polygon (Ray Casting)
+// ============================================================
+
+function pointInRing(x, y, ring) {
+    let inside = false;
+    for (let i = 0, j = ring.length - 1; i < ring.length; j = i++) {
+        const [xi, yi] = ring[i];
+        const [xj, yj] = ring[j];
+        if ((yi > y) !== (yj > y) && x < (xj - xi) * (y - yi) / (yj - yi) + xi) {
+            inside = !inside;
+        }
+    }
+    return inside;
+}
+
+function isInMENAAP(lng, lat) {
+    for (const poly of menaapPolygons) {
+        const [minLng, minLat, maxLng, maxLat] = poly.bbox;
+        if (lng < minLng || lng > maxLng || lat < minLat || lat > maxLat) continue;
+        if (!pointInRing(lng, lat, poly.outer)) continue;
+        // Check holes
+        let inHole = false;
+        for (const hole of poly.holes) {
+            if (pointInRing(lng, lat, hole)) { inHole = true; break; }
+        }
+        if (!inHole) return true;
+    }
+    return false;
+}
+
+function filterMENAAP(data) {
+    if (!menaapPolygons.length) return data; // boundaries not loaded, pass through
+    return data.filter(d => {
+        const cached = menaapHexCache.get(d.h3_index);
+        if (cached !== undefined) return cached;
+        const [lat, lng] = h3.cellToLatLng(d.h3_index);
+        const inside = isInMENAAP(lng, lat);
+        menaapHexCache.set(d.h3_index, inside);
+        return inside;
+    });
+}
 
 // ============================================================
 // Data Query (server-side DuckDB)
@@ -329,7 +464,6 @@ function classifyLog(val, breaks) {
 }
 
 function speiToT(spei) {
-    // Map SPEI to [0, 1]: 0 = wet/safe, 1 = dry/drought
     if (spei == null) return 0.5;
     if (spei >= SPEI_WET) return 0;
     if (spei <= SPEI_DRY) return 1;
@@ -373,53 +507,68 @@ function initMap() {
 }
 
 // ============================================================
-// Hex Rendering
+// Layer Rendering (hexagons + borders)
 // ============================================================
 
-function buildLayer(data) {
-    if (!data.length) {
-        deckOverlay.setProps({layers: []});
-        return;
+function buildLayers(data) {
+    const layers = [];
+
+    // 1. Hexagon layer
+    if (data.length) {
+        const prodValues = data.map(d => d.production).filter(v => v > 0);
+        const breaks = log10Breaks(prodValues, 5);
+
+        const processed = new Array(data.length);
+        for (let i = 0; i < data.length; i++) {
+            const d = data[i];
+            const boundary = h3.cellToBoundary(d.h3_index);
+            const polygon = boundary.map(([lat, lng]) => [lng, lat]);
+            polygon.push(polygon[0]);
+
+            const prodBin = classifyLog(d.production, breaks);
+
+            processed[i] = {
+                polygon, h3_index: d.h3_index,
+                production: d.production, harv_area_ha: d.harv_area_ha, spei: d.spei,
+                prodBin,
+                color: bivariateColor(prodBin, d.spei),
+            };
+        }
+
+        layers.push(new deck.PolygonLayer({
+            id: 'h3-layer',
+            data: processed,
+            getPolygon: d => d.polygon,
+            getFillColor: d => d.color,
+            getLineColor: [255, 255, 255, 20],
+            getLineWidth: 1,
+            lineWidthMinPixels: 0.3,
+            lineWidthMaxPixels: 1,
+            pickable: true,
+            autoHighlight: true,
+            highlightColor: [255, 255, 255, 60],
+            onHover: onHover,
+            parameters: {depthTest: false},
+            transitions: {getFillColor: 400},
+        }));
     }
 
-    const prodValues = data.map(d => d.production).filter(v => v > 0);
-    const breaks = log10Breaks(prodValues, 5);
-
-    const processed = new Array(data.length);
-    for (let i = 0; i < data.length; i++) {
-        const d = data[i];
-        const boundary = h3.cellToBoundary(d.h3_index);
-        const polygon = boundary.map(([lat, lng]) => [lng, lat]);
-        polygon.push(polygon[0]);
-
-        const prodBin = classifyLog(d.production, breaks);
-
-        processed[i] = {
-            polygon, h3_index: d.h3_index,
-            production: d.production, harv_area_ha: d.harv_area_ha, spei: d.spei,
-            prodBin,
-            color: bivariateColor(prodBin, d.spei),
-        };
+    // 2. Country border lines (on top of hexagons)
+    if (borderGeoJSON) {
+        layers.push(new deck.GeoJsonLayer({
+            id: 'country-borders',
+            data: borderGeoJSON,
+            stroked: true,
+            filled: false,
+            getLineColor: [220, 220, 230, 70],
+            getLineWidth: 1,
+            lineWidthMinPixels: 0.5,
+            lineWidthMaxPixels: 2,
+            parameters: {depthTest: false},
+        }));
     }
 
-    const layer = new deck.PolygonLayer({
-        id: 'h3-layer',
-        data: processed,
-        getPolygon: d => d.polygon,
-        getFillColor: d => d.color,
-        getLineColor: [255, 255, 255, 20],
-        getLineWidth: 1,
-        lineWidthMinPixels: 0.3,
-        lineWidthMaxPixels: 1,
-        pickable: true,
-        autoHighlight: true,
-        highlightColor: [255, 255, 255, 60],
-        onHover: onHover,
-        parameters: {depthTest: false},
-        transitions: {getFillColor: 400},
-    });
-
-    deckOverlay.setProps({layers: [layer]});
+    deckOverlay.setProps({layers});
 }
 
 // ============================================================
@@ -506,9 +655,8 @@ function buildLegend() {
         </div>`;
 
     const grid = document.getElementById('h3-legend-grid');
-    // 5 rows (top = driest) x 5 cols (left = low prod)
     for (let row = 4; row >= 0; row--) {
-        const t = row / 4; // 0 = wet, 1 = dry
+        const t = row / 4;
         for (let col = 0; col < 5; col++) {
             const rgb = lerpColor(pal.safe[col], pal.drought[col], t);
             const cell = document.createElement('div');
@@ -517,7 +665,7 @@ function buildLegend() {
 
             const speiVal = (SPEI_WET + t * (SPEI_DRY - SPEI_WET)).toFixed(1);
             const prodLabels = ['Very Low', 'Low', 'Medium', 'High', 'Very High'];
-            cell.title = `${prodLabels[col]} production, SPEI ≈ ${speiVal}`;
+            cell.title = `${prodLabels[col]} production, SPEI \u2248 ${speiVal}`;
             grid.appendChild(cell);
         }
     }
@@ -528,7 +676,6 @@ function buildLegend() {
 // ============================================================
 
 function populateControls() {
-    // Crop dropdown
     const selCrop = document.getElementById('sel-crop');
     for (const c of CROPS) {
         const opt = document.createElement('option');
@@ -538,7 +685,6 @@ function populateControls() {
         selCrop.appendChild(opt);
     }
 
-    // Palette dropdown
     const selPalette = document.getElementById('sel-palette');
     for (const [key, pal] of Object.entries(PALETTES)) {
         const opt = document.createElement('option');
@@ -550,10 +696,9 @@ function populateControls() {
     selPalette.addEventListener('change', (e) => {
         currentPalette = e.target.value;
         buildLegend();
-        if (currentData.length) buildLayer(currentData);
+        if (currentData.length) buildLayers(currentData);
     });
 
-    // Crop/tech/scenario — debounced refresh (new query)
     let debounceTimer = null;
     function debouncedRefresh() {
         setStatus('Loading...');
@@ -583,22 +728,31 @@ async function refresh() {
     try {
         const t0 = performance.now();
         const { data, fromCache } = await queryData(crop, tech, scenario);
-        currentData = data;
         const tQuery = performance.now() - t0;
 
+        setStatus('Filtering MENAAP...');
         const t1 = performance.now();
-        buildLayer(currentData);
-        const tRender = performance.now() - t1;
+        currentData = filterMENAAP(data);
+        const tFilter = performance.now() - t1;
+
+        const t2 = performance.now();
+        buildLayers(currentData);
+        const tRender = performance.now() - t2;
 
         updateStats(currentData);
+
+        const parts = [`${currentData.length.toLocaleString()} hexagons`];
         if (fromCache) {
-            setStatus(`${currentData.length.toLocaleString()} hexagons (cached, ${(tRender/1000).toFixed(1)}s render)`);
+            parts.push('cached');
         } else {
-            setStatus(`${currentData.length.toLocaleString()} hexagons (${(tQuery/1000).toFixed(1)}s query, ${(tRender/1000).toFixed(1)}s render)`);
+            parts.push(`${(tQuery/1000).toFixed(1)}s query`);
         }
+        parts.push(`${(tRender/1000).toFixed(1)}s render`);
+        setStatus(parts.join(', '));
+
     } catch (e) {
         console.error('Query error:', e);
-        setStatus('Query failed — see console');
+        setStatus('Query failed \u2014 see console');
     } finally {
         queryInFlight = false;
     }
@@ -625,19 +779,26 @@ function setStatus(msg) { document.getElementById('h3-status').textContent = msg
         return;
     }
     try {
-        setLoading('Initializing map...');
+        setLoading('Loading map & boundaries...');
         initMap();
-        buildLegend();
         populateControls();
-        hideLoading();
 
-        if (map.isStyleLoaded()) {
-            await refresh();
-        } else {
-            map.on('load', () => refresh());
-        }
+        // Load boundaries in parallel with map style
+        const [_] = await Promise.all([
+            loadBoundaries(),
+            new Promise(resolve => {
+                if (map.isStyleLoaded()) resolve();
+                else map.on('load', resolve);
+            }),
+        ]);
+
+        buildLegend();
+        hideLoading();
+        await refresh();
+
     } catch (e) {
         console.error('Initialization failed:', e);
+        setLoading('Failed to initialize \u2014 see console');
     }
 })();
 
