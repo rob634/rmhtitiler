@@ -15,6 +15,7 @@ from typing import Optional, Any, Dict, Tuple
 from urllib.parse import urlparse
 
 from fastapi import APIRouter, Query, Request, Response
+from fastapi.responses import JSONResponse
 
 from geotiler.config import settings, PC_STORAGE_ACCOUNTS, TILE_SIZE
 
@@ -188,13 +189,17 @@ async def pc_variables(
 ):
     """List variables in a Planetary Computer Zarr dataset."""
     if not PC_AVAILABLE:
-        return {"error": "Planetary Computer support not installed"}
+        return JSONResponse(
+            {"error": "Planetary Computer support not installed"},
+            status_code=501,
+        )
 
     is_pc, storage_account, default_collection = is_planetary_computer_url(url)
     if not is_pc:
-        return {
-            "error": f"URL is not a Planetary Computer URL. Known accounts: {list(PC_STORAGE_ACCOUNTS.keys())}"
-        }
+        return JSONResponse(
+            {"error": f"URL is not a Planetary Computer URL. Known accounts: {list(PC_STORAGE_ACCOUNTS.keys())}"},
+            status_code=400,
+        )
 
     try:
         ds = open_pc_zarr_dataset(url)
@@ -215,7 +220,10 @@ async def pc_variables(
 
     except Exception as e:
         logger.error(f"Error accessing Planetary Computer data: {e}", exc_info=True)
-        return {"error": str(e), "url": url, "collection": default_collection}
+        return JSONResponse(
+            {"error": str(e), "url": url, "collection": default_collection},
+            status_code=500,
+        )
 
 
 @router.get("/info")
@@ -226,19 +234,26 @@ async def pc_info(
 ):
     """Get metadata for a variable in a Planetary Computer Zarr dataset."""
     if not PC_AVAILABLE:
-        return {"error": "Planetary Computer support not installed"}
+        return JSONResponse(
+            {"error": "Planetary Computer support not installed"},
+            status_code=501,
+        )
 
     is_pc, _, _ = is_planetary_computer_url(url)
     if not is_pc:
-        return {"error": "URL is not a Planetary Computer URL"}
+        return JSONResponse(
+            {"error": "URL is not a Planetary Computer URL"},
+            status_code=400,
+        )
 
     try:
         ds = open_pc_zarr_dataset(url)
 
         if variable not in ds.data_vars:
-            return {
-                "error": f"Variable '{variable}' not found. Available: {list(ds.data_vars.keys())}"
-            }
+            return JSONResponse(
+                {"error": f"Variable '{variable}' not found. Available: {list(ds.data_vars.keys())}"},
+                status_code=404,
+            )
 
         var = ds[variable]
 
@@ -269,7 +284,7 @@ async def pc_info(
 
     except Exception as e:
         logger.error(f"Error getting PC variable info: {e}", exc_info=True)
-        return {"error": str(e)}
+        return JSONResponse({"error": str(e)}, status_code=500)
 
 
 @router.get("/tiles/{tileMatrixSetId}/{z}/{x}/{y}.png")

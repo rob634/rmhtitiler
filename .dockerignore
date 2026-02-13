@@ -2,7 +2,7 @@
 .git
 .gitignore
 
-# Python
+# Python artifacts
 __pycache__/
 *.py[cod]
 *$py.class
@@ -13,6 +13,8 @@ env/
 ENV/
 .venv
 *.egg-info/
+dist/
+build/
 
 # IDEs
 .vscode/
@@ -25,22 +27,36 @@ ENV/
 Thumbs.db
 
 # Documentation (not needed in container)
+docs/
 *.md
-!README.md
+
+# Prototype / dev files (not needed in container)
+preview_h3.py
+palette_comparison.html
+viewer.html
+todo.md
+diagram.png
 
 # Local development files
-docker-compose.yml
+docker-compose*
+Dockerfile.local
 .env*
 .dockerignore
 
-# Test data (not needed in production container)
+# Test data
 data/
 *.tif
 *.tiff
+
+# Tests
+tests/
+test_*.py
+*_test.py
 
 # Logs
 logs/
 *.log
 
-# Azure local credentials
+# Azure / Claude / AI tooling
 .azure/
+.claude/

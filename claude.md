@@ -60,22 +60,20 @@ Dynamic tile server for Cloud Optimized GeoTIFFs (COGs), Zarr/NetCDF arrays, and
 docker-compose up --build
 
 # Option 2: Direct Python (requires local PostgreSQL)
-uvicorn geotiler.app:app --reload --port 8000
+uvicorn geotiler.main:app --reload --port 8000
 ```
 
 ### Build & Deploy
 
 ```bash
-# Build for Azure
-docker build --platform linux/amd64 -t <acr>.azurecr.io/titiler-pgstac:v<version> .
+# Build in Azure Container Registry (no local Docker needed)
+az acr build --registry <acr> --resource-group <rg> \
+  --image titiler-pgstac:v<version> .
 
-# Push to ACR
-az acr login --name <acr>
-docker push <acr>.azurecr.io/titiler-pgstac:v<version>
-
-# Update App Service
+# Deploy to App Service
 az webapp config container set --name <app> --resource-group <rg> \
-  --docker-custom-image-name <acr>.azurecr.io/titiler-pgstac:v<version>
+  --container-image-name <acr>.azurecr.io/titiler-pgstac:v<version>
+az webapp restart --name <app> --resource-group <rg>
 ```
 
 ### Version Management
@@ -97,21 +95,19 @@ See [docs/WIKI.md](docs/WIKI.md) for complete list. Key variables:
 |----------|-------------|
 | `USE_AZURE_AUTH` | Enable OAuth for blob storage |
 | `LOCAL_MODE` | Use Azure CLI instead of Managed Identity |
-| `DATABASE_URL` | PostgreSQL connection string |
+| `POSTGRES_HOST` | PostgreSQL server hostname |
+| `POSTGRES_DB` | PostgreSQL database name |
+| `POSTGRES_USER` | PostgreSQL username |
+| `POSTGRES_AUTH_MODE` | Auth mode: `password`, `key_vault`, or `managed_identity` |
 | `ENABLE_PLANETARY_COMPUTER` | Enable PC credential provider for public data |
 | `ENABLE_TIPG` | Enable TiPG OGC Features + Vector Tiles (default: true) |
 | `TIPG_SCHEMAS` | Comma-separated PostGIS schemas to expose (default: "geo") |
 | `TIPG_ROUTER_PREFIX` | URL prefix for TiPG routes (default: "/vector") |
 | `TIPG_CATALOG_TTL_ENABLED` | Enable automatic catalog refresh (default: false) |
-| `TIPG_CATALOG_TTL` | Catalog refresh interval in seconds when TTL enabled (default: 300) |
+| `TIPG_CATALOG_TTL` | Catalog refresh interval in seconds when TTL enabled (default: 60) |
 | `ADMIN_AUTH_ENABLED` | Enable Azure AD auth for /admin/* endpoints (default: false) |
 | `ADMIN_ALLOWED_APP_IDS` | Comma-separated MI client IDs allowed to call /admin/* |
 | `AZURE_TENANT_ID` | Azure AD tenant ID for token validation |
-| `ENABLE_VERSIONED_ASSETS` | Enable `/assets/{dataset}/{resource}?version=latest` routing |
-| `RMHGEOAPI_POSTGRES_HOST` | rmhgeoapi database host (for versioned assets) |
-| `RMHGEOAPI_POSTGRES_DB` | rmhgeoapi database name |
-| `RMHGEOAPI_POSTGRES_USER` | Database user (read-only access to app.geospatial_assets) |
-| `RMHGEOAPI_POSTGRES_PASSWORD` | Database password |
 
 ---
 
@@ -135,10 +131,6 @@ curl "http://localhost:8000/vector/collections/my_table/tiles/WebMercatorQuad/10
 
 # Refresh TiPG catalog (after ETL creates new tables)
 curl -X POST http://localhost:8000/admin/refresh-collections | jq
-
-# Versioned Assets (if ENABLE_VERSIONED_ASSETS=true)
-curl "http://localhost:8000/assets/floods/jakarta/tiles/10/512/384?version=latest"
-curl "http://localhost:8000/assets/floods/jakarta/versions"
 ```
 
 ---
@@ -152,7 +144,7 @@ curl "http://localhost:8000/assets/floods/jakarta/versions"
 | `docs/README-LOCAL.md` | Local development setup |
 | `docs/xarray.md` | Zarr/NetCDF implementation guide |
 | `docs/NEW_TENANT_DEPLOYMENT.md` | Multi-tenant deployment |
-| `docs/VERSIONED_ASSETS_IMPLEMENTATION.md` | `?version=latest` routing (V0.8) |
+| `docs/VERSIONED_ASSETS_IMPLEMENTATION.md` | `?version=latest` routing (planned, not yet implemented) |
 | `docs/TIPG_CATALOG_ARCHITECTURE.md` | **IMPORTANT** - TiPG catalog, multi-instance behavior, refresh limitations |
 
 ---

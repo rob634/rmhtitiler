@@ -1,8 +1,7 @@
 # TiTiler-pgSTAC Application Wiki
 
-**Version:** 0.3.1
 **Status:** Production-Ready
-**Last Updated:** December 2024
+**Last Updated:** February 2026
 
 ---
 
@@ -290,7 +289,7 @@ response = requests.post(
 | `ADMIN_ALLOWED_APP_IDS` | If auth enabled | - | Comma-separated MI client IDs allowed to call /admin/* |
 | `AZURE_TENANT_ID` | If auth enabled | - | Azure AD tenant ID for token validation |
 | `TIPG_CATALOG_TTL_ENABLED` | No | `false` | Enable automatic catalog refresh on a timer |
-| `TIPG_CATALOG_TTL` | No | `300` | Auto-refresh interval in seconds (when TTL enabled) |
+| `TIPG_CATALOG_TTL` | No | `60` | Auto-refresh interval in seconds (when TTL enabled) |
 
 ---
 

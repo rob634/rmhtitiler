@@ -12,7 +12,7 @@ import logging
 from datetime import datetime, timezone
 
 from fastapi import APIRouter, Request, Response, Depends
-from fastapi.responses import HTMLResponse
+from fastapi.responses import HTMLResponse, JSONResponse
 
 from geotiler import __version__
 from geotiler.config import settings
@@ -182,8 +182,11 @@ async def refresh_collections(request: Request):
 
     except Exception as e:
         logger.error(f"Catalog refresh failed: {e}")
-        return {
-            "status": "error",
-            "error": str(e),
-            "refresh_time": datetime.now(timezone.utc).isoformat(),
-        }
+        return JSONResponse(
+            {
+                "status": "error",
+                "error": str(e),
+                "refresh_time": datetime.now(timezone.utc).isoformat(),
+            },
+            status_code=500,
+        )

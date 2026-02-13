@@ -51,11 +51,6 @@ from titiler.pgstac.settings import PostgresSettings
 from titiler.xarray.factory import TilerFactory as XarrayTilerFactory
 from titiler.xarray.extensions import VariablesExtension
 
-# Configure logging
-logging.basicConfig(
-    level=logging.DEBUG,
-    format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
-)
 logger = logging.getLogger(__name__)
 
 
@@ -83,7 +78,7 @@ async def lifespan(app: FastAPI):
 
     # Start background token refresh
     if settings.use_azure_auth:
-        start_token_refresh(app)
+        app.state.refresh_task = start_token_refresh(app)
 
     # Initialize H3 DuckDB (server-side parquet queries)
     if settings.enable_h3_duckdb and settings.h3_parquet_url:

@@ -92,7 +92,11 @@ def validate_azure_ad_token(token: str) -> dict:
             algorithms=["RS256"],
             issuer=expected_issuer,
             options={
-                "verify_aud": False,  # We check app ID instead of audience
+                # Audience verification is disabled because service-to-service
+            # MI tokens use varying audience values (e.g. https://management.azure.com
+            # or the app's own ID). Instead, we extract and verify the caller's
+            # app/client ID from azp/appid claims against ADMIN_ALLOWED_APP_IDS.
+            "verify_aud": False,
                 "verify_exp": True,
                 "verify_iss": True,
             },

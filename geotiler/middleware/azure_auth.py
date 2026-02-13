@@ -19,6 +19,14 @@ from geotiler.auth.storage import (
 logger = logging.getLogger(__name__)
 
 
+# Paths that never need storage auth — skip to avoid unnecessary work
+_SKIP_AUTH_PREFIXES = (
+    "/livez", "/readyz", "/health",
+    "/static/", "/docs", "/redoc", "/openapi.json",
+    "/api", "/_health-fragment",
+)
+
+
 class AzureAuthMiddleware(BaseHTTPMiddleware):
     """
     Middleware that ensures Azure Storage OAuth authentication is set before each request.
@@ -27,12 +35,18 @@ class AzureAuthMiddleware(BaseHTTPMiddleware):
     - GDAL: AZURE_STORAGE_ACCOUNT + AZURE_STORAGE_ACCESS_TOKEN (for /vsiaz/ COG access)
     - fsspec/adlfs: AZURE_STORAGE_ACCOUNT_NAME (for abfs:// Zarr access)
 
+    Skips paths that don't access storage (health probes, static files, docs).
+
     Note: Token acquisition uses asyncio.to_thread() to avoid blocking the event loop
     when the Azure SDK makes HTTP calls to acquire/refresh tokens.
     """
 
     async def dispatch(self, request: Request, call_next):
-        logger.debug(f"Middleware called for: {request.url.path}")
+        path = request.url.path
+
+        # Fast path: skip auth for non-storage endpoints
+        if path.startswith(_SKIP_AUTH_PREFIXES):
+            return await call_next(request)
 
         if settings.use_azure_auth and settings.azure_storage_account:
             try:

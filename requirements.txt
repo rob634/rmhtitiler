@@ -1,69 +1,54 @@
-# Production dependencies for TiTiler-pgSTAC with Azure OAuth authentication,
-# Xarray/Zarr support, and Planetary Computer integration
+# =============================================================================
+# geotiler — Production Dependencies
+# =============================================================================
+# Installed ON TOP of the base image (ghcr.io/stac-utils/titiler-pgstac:1.9.0)
+# which already provides: titiler-pgstac, titiler-core, rio-tiler, rasterio,
+# fastapi, starlette, uvicorn, psycopg, pydantic, asyncpg, etc.
+#
+# This file is the SINGLE SOURCE OF TRUTH for dependencies.
+# The Dockerfile uses: pip install -r requirements.txt
+# =============================================================================
 
-# Azure authentication - OAuth tokens via Managed Identity
+# --- Azure Authentication -------------------------------------------------
+# OAuth tokens via Managed Identity for storage and PostgreSQL
 azure-identity>=1.15.0
-
-# Azure Key Vault - for password retrieval (key_vault auth mode)
+# Key Vault access for password retrieval (key_vault auth mode)
 azure-keyvault-secrets>=4.7.0
 
-# TiTiler-pgSTAC and dependencies
-titiler.pgstac>=1.0.0
-
-# Xarray/Zarr support for multidimensional data
+# --- Xarray / Zarr --------------------------------------------------------
+# Multidimensional data support (Zarr, NetCDF)
 titiler.xarray>=0.18.0
-
-# Azure Data Lake filesystem for fsspec (Zarr access)
+# Azure Data Lake filesystem for fsspec (Zarr access via abfs://)
 adlfs>=2024.4.1
 
-# Database
-asyncpg>=0.29.0
-psycopg2-binary>=2.9.9
-
-# Additional dependencies
-pydantic>=2.0.0
-pydantic-settings>=2.0.0
-
-# ============================================================================
-# PLANETARY COMPUTER SUPPORT
-# ============================================================================
-# obstore provides:
-# - PlanetaryComputerCredentialProvider: Automatic SAS token acquisition
-# - AzureStore: High-performance Azure Blob Storage access via Rust
-# - Integration with Zarr for reading multidimensional climate data
+# --- Planetary Computer ---------------------------------------------------
+# obstore: High-performance Azure Blob Storage with PC credential provider
 obstore>=0.6.0
-
-# requests is required by PlanetaryComputerCredentialProvider
+# Required by PlanetaryComputerCredentialProvider
 requests>=2.28.0
 
-# ============================================================================
-# MONITORING & OBSERVABILITY
-# ============================================================================
-# psutil for hardware metrics in health endpoint
-psutil>=5.9.0
+# --- Configuration ---------------------------------------------------------
+pydantic-settings>=2.0.0
 
-# Azure Monitor OpenTelemetry for Application Insights integration
-# Provides automatic HTTP request tracing, structured logging, and metrics
-# Set APPLICATIONINSIGHTS_CONNECTION_STRING to enable
+# --- Monitoring & Observability --------------------------------------------
+# Hardware metrics in /health endpoint
+psutil>=5.9.0
+# Application Insights integration (set APPLICATIONINSIGHTS_CONNECTION_STRING)
 azure-monitor-opentelemetry>=1.6.0
 
-# ============================================================================
-# OGC FEATURES + VECTOR TILES (TiPG)
-# ============================================================================
-# TiPG provides OGC API - Features and OGC API - Tiles for PostGIS tables
-# Complements TiTiler (raster) with vector data capabilities
+# --- OGC Features + Vector Tiles (TiPG) -----------------------------------
+# OGC API - Features and OGC API - Tiles for PostGIS tables
 # https://github.com/developmentseed/tipg
 tipg>=0.12.0
 
-# TiPG dependencies (some may be satisfied by tipg, listed for clarity)
-buildpg>=0.3
-pygeofilter>=0.2.0,<0.3.0
-ciso8601~=2.3
-starlette-cramjam>=0.4,<0.6
+# --- STAC API --------------------------------------------------------------
+# Catalog browsing and search via stac-fastapi-pgstac
+stac-fastapi.pgstac>=4.0.0
 
-# ============================================================================
-# ADMIN ENDPOINT AUTHENTICATION
-# ============================================================================
-# PyJWT for Azure AD token validation on /admin/* endpoints
+# --- Admin Endpoint Authentication ----------------------------------------
+# Azure AD JWT token validation for /admin/* endpoints
 PyJWT>=2.8.0
 cryptography>=41.0.0
+
+# --- H3 Explorer (optional, gated by ENABLE_H3_DUCKDB) --------------------
+duckdb>=1.0.0
