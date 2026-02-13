@@ -103,6 +103,7 @@ body { margin: 0; }
 .h3-stat-row { display: flex; justify-content: space-between; gap: 20px; margin-bottom: 4px; }
 .h3-stat-label { font-size: 12px; color: #a0a0a0; text-transform: uppercase; letter-spacing: 0.5px; }
 .h3-stat-value { font-size: 13px; font-weight: 600; font-variant-numeric: tabular-nums; }
+.h3-stat-value.warning { color: #c85a5a; }
 
 /* ---- Tooltip ---- */
 #h3-tooltip {
@@ -164,6 +165,14 @@ body { margin: 0; }
         </select>
     </div>
     <div class="h3-cg">
+        <label>Drought Threshold</label>
+        <select id="sel-threshold">
+            <option value="-1">SPEI &lt; -1.0 (Moderate)</option>
+            <option value="-1.5" selected>SPEI &lt; -1.5 (Severe)</option>
+            <option value="-2">SPEI &lt; -2.0 (Extreme)</option>
+        </select>
+    </div>
+    <div class="h3-cg">
         <label>Palette</label>
         <select id="sel-palette"></select>
     </div>
@@ -174,20 +183,20 @@ body { margin: 0; }
 
 <div id="h3-stats">
     <div class="h3-stat-row">
-        <span class="h3-stat-label">Hexagons</span>
-        <span class="h3-stat-value" id="stat-count">-</span>
-    </div>
-    <div class="h3-stat-row">
         <span class="h3-stat-label">Harvested Area</span>
         <span class="h3-stat-value" id="stat-area">-</span>
+    </div>
+    <div class="h3-stat-row">
+        <span class="h3-stat-label">Area at Risk</span>
+        <span class="h3-stat-value warning" id="stat-area-risk">-</span>
     </div>
     <div class="h3-stat-row">
         <span class="h3-stat-label">Production</span>
         <span class="h3-stat-value" id="stat-prod">-</span>
     </div>
     <div class="h3-stat-row">
-        <span class="h3-stat-label">Mean SPEI-12</span>
-        <span class="h3-stat-value" id="stat-spei">-</span>
+        <span class="h3-stat-label">Production at Risk</span>
+        <span class="h3-stat-value warning" id="stat-risk">-</span>
     </div>
 </div>
 
@@ -267,6 +276,9 @@ let currentPalette = 'fire';
 // SPEI range for continuous interpolation
 const SPEI_WET = 0;     // fully safe color
 const SPEI_DRY = -2.5;  // fully drought color
+
+// Threshold for at-risk stats (rendering stays continuous)
+let DROUGHT_SPEI_THRESHOLD = -1.5;
 
 // ============================================================
 // MENAAP Country Filter (ISO 3166-1 numeric codes)
@@ -614,26 +626,26 @@ function formatHA(ha) {
 // ============================================================
 
 function updateStats(data) {
-    let totalArea = 0, totalProd = 0, speiSum = 0, speiCount = 0;
+    let totalArea = 0, totalProd = 0, riskArea = 0, riskProd = 0;
     for (const d of data) {
         totalArea += d.harv_area_ha;
         totalProd += d.production;
-        if (d.spei != null) { speiSum += d.spei; speiCount++; }
+        if (d.spei != null && d.spei < DROUGHT_SPEI_THRESHOLD) {
+            riskArea += d.harv_area_ha;
+            riskProd += d.production;
+        }
     }
 
-    document.getElementById('stat-count').textContent = data.length.toLocaleString();
     document.getElementById('stat-area').textContent = formatHA(totalArea);
     document.getElementById('stat-prod').textContent = formatMT(totalProd);
 
-    const meanSpei = speiCount > 0 ? (speiSum / speiCount) : null;
-    const speiEl = document.getElementById('stat-spei');
-    if (meanSpei != null) {
-        speiEl.textContent = meanSpei.toFixed(2);
-        speiEl.className = 'h3-stat-value' + (meanSpei < -1 ? ' spei-dry' : meanSpei < 0 ? ' spei-mod' : ' spei-wet');
-    } else {
-        speiEl.textContent = '-';
-        speiEl.className = 'h3-stat-value';
-    }
+    const areaPct = totalArea > 0 ? (riskArea / totalArea * 100) : 0;
+    const prodPct = totalProd > 0 ? (riskProd / totalProd * 100) : 0;
+
+    document.getElementById('stat-area-risk').textContent =
+        `${formatHA(riskArea)} (${areaPct.toFixed(1)}%)`;
+    document.getElementById('stat-risk').textContent =
+        `${formatMT(riskProd)} (${prodPct.toFixed(1)}%)`;
 }
 
 // ============================================================
@@ -697,6 +709,12 @@ function populateControls() {
         currentPalette = e.target.value;
         buildLegend();
         if (currentData.length) buildLayers(currentData);
+    });
+
+    // Drought threshold — re-computes stats only, rendering stays continuous
+    document.getElementById('sel-threshold').addEventListener('change', (e) => {
+        DROUGHT_SPEI_THRESHOLD = parseFloat(e.target.value);
+        if (currentData.length) updateStats(currentData);
     });
 
     let debounceTimer = null;
