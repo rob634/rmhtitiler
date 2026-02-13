@@ -47,6 +47,19 @@ async def h3_explorer(request: Request):
     return templates.TemplateResponse("pages/h3/explorer.html", context)
 
 
+@router.get("/h3/menaap", response_class=HTMLResponse, include_in_schema=False)
+async def h3_menaap(request: Request):
+    """
+    MENAAP-focused bivariate H3 explorer.
+
+    Continuous SPEI × production bivariate choropleth,
+    centered on Middle East, North Africa, Afghanistan & Pakistan.
+    """
+    server_side = _is_duckdb_ready(request)
+    context = get_template_context(request, h3_server_side=server_side)
+    return templates.TemplateResponse("pages/h3/menaap.html", context)
+
+
 @router.get("/h3/query", include_in_schema=False)
 async def h3_query(
     request: Request,
