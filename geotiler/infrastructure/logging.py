@@ -250,18 +250,22 @@ class LoggerFactory:
         if level is not None:
             logger.setLevel(level)
 
-        # Add component attribute for filtering
-        old_factory = logging.getLogRecordFactory()
-
-        def record_factory(*args, **kwargs):
-            record = old_factory(*args, **kwargs)
-            if record.name.startswith(f"geotiler.{component.value}"):
-                record.component = component.value
-            return record
-
-        logging.setLogRecordFactory(record_factory)
+        # Add component attribute via filter (scoped to this logger only)
+        logger.addFilter(_ComponentFilter(component.value))
 
         return logger
+
+
+class _ComponentFilter(logging.Filter):
+    """Injects a component attribute into log records for App Insights filtering."""
+
+    def __init__(self, component_value: str):
+        super().__init__()
+        self._component = component_value
+
+    def filter(self, record: logging.LogRecord) -> bool:
+        record.component = self._component
+        return True
 
 
 # ============================================================================

@@ -12,9 +12,8 @@ Creates and configures the TiTiler application with:
 - Request timing and observability (when OBSERVABILITY_MODE=true)
 
 Entry Point:
-    For production, use geotiler.main:app which configures Azure Monitor
-    telemetry before FastAPI is imported. For development without telemetry,
-    geotiler.app:app can be used directly.
+    Always use geotiler.main:app which configures Azure Monitor telemetry
+    and structured logging before FastAPI is imported.
 """
 
 import logging
@@ -361,7 +360,3 @@ def create_app() -> FastAPI:
     app.include_router(admin.router)
 
     return app
-
-
-# Create app instance for uvicorn
-app = create_app()

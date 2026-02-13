@@ -12,7 +12,7 @@ import uvicorn
 def main():
     """Run the application with uvicorn."""
     uvicorn.run(
-        "geotiler.app:app",
+        "geotiler.main:app",
         host="0.0.0.0",
         port=8000,
         reload=False,
