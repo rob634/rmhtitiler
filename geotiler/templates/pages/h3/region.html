@@ -653,7 +653,7 @@ function onHover({object, x, y}) {
 
     let html = `<strong>${currentCropName}</strong>`;
 
-    if ((currentView === 'quad' || currentView === 'tech-biv') && object.i_prod != null) {
+    if (currentView !== 'production' && object.i_prod != null) {
         const iPct = object.production > 0 ? (object.i_prod / object.production * 100).toFixed(0) : 0;
         const rPct = object.production > 0 ? (object.r_prod / object.production * 100).toFixed(0) : 0;
         html += `<div class="tt-row"><span class="tt-lbl">Irrigated</span><span class="tt-val">${formatMT(object.i_prod)} (${iPct}%)</span></div>`;
@@ -877,8 +877,7 @@ function populateControls() {
     }
 
     function updateControlVisibility() {
-        const dualTech = currentView === 'quad' || currentView === 'tech-biv';
-        document.getElementById('cg-tech').classList.toggle('dimmed', dualTech);
+        document.getElementById('cg-tech').classList.toggle('dimmed', currentView !== 'production');
         document.getElementById('cg-palette').classList.toggle('dimmed', currentView !== 'bivariate');
     }
     updateControlVisibility();
@@ -911,11 +910,11 @@ async function refresh() {
     try {
         const t0 = performance.now();
         let result;
-        if (currentView === 'quad' || currentView === 'tech-biv') {
-            result = await queryBothTechs(crop, scenario);
-        } else {
+        if (currentView === 'production') {
             const tech = document.getElementById('sel-tech').value;
             result = await queryData(crop, tech, scenario);
+        } else {
+            result = await queryBothTechs(crop, scenario);
         }
         const tQuery = performance.now() - t0;
 
