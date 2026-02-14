@@ -302,11 +302,12 @@ const PALETTES = {
 // Production-only ramp (amber/gold on dark basemap)
 const PROD_RAMP = [[235,230,210], [215,195,120], [190,160,45], [160,120,10], [125,85,0]];
 
-// Tech bivariate: 3-anchor piecewise ramp (green → yellow → blue)
-const TECH_BIV = {
-    irrig: [[210,238,210], [150,210,150], [80,178,80],  [25,145,40],  [0,105,20]],   // green
-    mixed: [[248,242,200], [235,218,125], [215,188,40],  [182,152,8],  [145,118,0]],  // yellow/amber
-    rain:  [[210,225,248], [150,192,232], [82,152,212], [28,112,182], [0,72,142]],    // blue
+// Tech bivariate: 4-corner bilinear interpolation
+const TECH_BIV_CORNERS = {
+    BL: [240, 240, 235],  // white  (low prod, irrigated)
+    BR: [0, 105, 20],     // green  (high prod, irrigated)
+    TL: [0, 72, 142],     // blue   (low prod, rainfed)
+    TR: [145, 118, 0],    // yellow (high prod, rainfed)
 };
 
 // Quad-view: 4 fixed ramps (green / blue / orange / red)
@@ -519,15 +520,14 @@ function productionColor(prodBin) {
 }
 
 function techBivColor(prodBin, rainfedPct) {
-    // Quadratic Bezier: smooth curve through green → yellow → blue
-    // Yellow influence distributed across range (no hard band at 0.5)
-    const t = rainfedPct;
-    const w0 = (1-t)*(1-t), w1 = 2*t*(1-t), w2 = t*t;
-    const g = TECH_BIV.irrig[prodBin], y = TECH_BIV.mixed[prodBin], b = TECH_BIV.rain[prodBin];
+    // Bilinear interpolation across 4 corners
+    const tx = prodBin / 4;  // production: 0→1
+    const ty = rainfedPct;   // rainfed share: 0→1
+    const {BL, BR, TL, TR} = TECH_BIV_CORNERS;
     return [
-        Math.round(w0*g[0] + w1*y[0] + w2*b[0]),
-        Math.round(w0*g[1] + w1*y[1] + w2*b[1]),
-        Math.round(w0*g[2] + w1*y[2] + w2*b[2]),
+        Math.round((1-tx)*(1-ty)*BL[0] + tx*(1-ty)*BR[0] + (1-tx)*ty*TL[0] + tx*ty*TR[0]),
+        Math.round((1-tx)*(1-ty)*BL[1] + tx*(1-ty)*BR[1] + (1-tx)*ty*TL[1] + tx*ty*TR[1]),
+        Math.round((1-tx)*(1-ty)*BL[2] + tx*(1-ty)*BR[2] + (1-tx)*ty*TL[2] + tx*ty*TR[2]),
         200,
     ];
 }
@@ -724,15 +724,15 @@ function buildLegend() {
                 </div>
             </div>`;
         const grid = document.getElementById('h3-legend-grid');
+        const {BL, BR, TL, TR} = TECH_BIV_CORNERS;
         for (let row = 4; row >= 0; row--) {
-            const t = row / 4; // 0 = irrigated (bottom), 1 = rainfed (top)
-            const w0 = (1-t)*(1-t), w1 = 2*t*(1-t), w2 = t*t;
+            const ty = row / 4; // 0 = irrigated (bottom), 1 = rainfed (top)
             for (let col = 0; col < 5; col++) {
-                const g = TECH_BIV.irrig[col], y = TECH_BIV.mixed[col], b = TECH_BIV.rain[col];
+                const tx = col / 4; // 0 = low prod, 1 = high prod
                 const rgb = [
-                    Math.round(w0*g[0] + w1*y[0] + w2*b[0]),
-                    Math.round(w0*g[1] + w1*y[1] + w2*b[1]),
-                    Math.round(w0*g[2] + w1*y[2] + w2*b[2]),
+                    Math.round((1-tx)*(1-ty)*BL[0] + tx*(1-ty)*BR[0] + (1-tx)*ty*TL[0] + tx*ty*TR[0]),
+                    Math.round((1-tx)*(1-ty)*BL[1] + tx*(1-ty)*BR[1] + (1-tx)*ty*TL[1] + tx*ty*TR[1]),
+                    Math.round((1-tx)*(1-ty)*BL[2] + tx*(1-ty)*BR[2] + (1-tx)*ty*TL[2] + tx*ty*TR[2]),
                 ];
                 const cell = document.createElement('div');
                 cell.className = 'h3-legend-cell';
