@@ -303,11 +303,12 @@ const PALETTES = {
 const PROD_RAMP = [[235,230,210], [215,195,120], [190,160,45], [160,120,10], [125,85,0]];
 
 // Tech bivariate: 4-corner bilinear interpolation
+// Production drives light→dark, rainfed share drives hue
 const TECH_BIV_CORNERS = {
-    BL: [240, 240, 235],  // white  (low prod, irrigated)
-    BR: [0, 105, 20],     // green  (high prod, irrigated)
-    TL: [0, 72, 142],     // blue   (low prod, rainfed)
-    TR: [145, 118, 0],    // yellow (high prod, rainfed)
+    BL: [238, 245, 235],  // light green tint (low prod, irrigated)
+    BR: [0, 105, 20],     // dark green       (high prod, irrigated)
+    TL: [225, 235, 250],  // light blue tint  (low prod, rainfed)
+    TR: [145, 118, 0],    // dark yellow      (high prod, rainfed)
 };
 
 // Quad-view: 4 fixed ramps (green / blue / orange / red)
