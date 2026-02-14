@@ -15,13 +15,36 @@ import time
 import logging
 
 from fastapi import APIRouter, Query, Request
-from fastapi.responses import HTMLResponse, JSONResponse
+from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse
 
 from geotiler.templates_utils import templates, get_template_context
 
 logger = logging.getLogger(__name__)
 
 router = APIRouter(tags=["H3 Explorer"])
+
+# Region definitions for parameterized H3 views
+REGIONS = {
+    "menaap": {
+        "name": "MENAAP",
+        "title": "MENAAP — Crop Production & Drought Risk",
+        "center": [30, 27],
+        "zoom": 3.5,
+        "country_codes": [
+            "004", "012", "262", "818", "364", "368", "400",
+            "422", "434", "504", "586", "682", "760", "788", "275", "887",
+        ],
+        "exclude_codes": ["732"],  # Western Sahara
+    },
+    "sar": {
+        "name": "SAR",
+        "title": "SAR — Crop Production & Drought Risk",
+        "center": [80, 23],
+        "zoom": 4,
+        "country_codes": ["356", "144", "524", "064", "050"],
+        "exclude_codes": [],
+    },
+}
 
 
 def _is_duckdb_ready(request: Request) -> bool:
@@ -48,16 +71,26 @@ async def h3_explorer(request: Request):
 
 
 @router.get("/h3/menaap", response_class=HTMLResponse, include_in_schema=False)
-async def h3_menaap(request: Request):
-    """
-    MENAAP-focused bivariate H3 explorer.
+async def h3_menaap_redirect(request: Request):
+    """Redirect legacy /h3/menaap to /h3/region/menaap."""
+    return RedirectResponse(url="/h3/region/menaap", status_code=302)
 
-    Continuous SPEI × production bivariate choropleth,
-    centered on Middle East, North Africa, Afghanistan & Pakistan.
+
+@router.get("/h3/region/{region_id}", response_class=HTMLResponse, include_in_schema=False)
+async def h3_region(request: Request, region_id: str):
     """
+    Parameterized regional H3 explorer.
+
+    Renders the bivariate/trivariate choropleth filtered to the
+    specified region's country set.
+    """
+    region = REGIONS.get(region_id)
+    if not region:
+        return JSONResponse({"error": f"Unknown region: {region_id}"}, status_code=404)
+
     server_side = _is_duckdb_ready(request)
-    context = get_template_context(request, h3_server_side=server_side)
-    return templates.TemplateResponse("pages/h3/menaap.html", context)
+    context = get_template_context(request, h3_server_side=server_side, **region)
+    return templates.TemplateResponse("pages/h3/region.html", context)
 
 
 @router.get("/h3/query", include_in_schema=False)
