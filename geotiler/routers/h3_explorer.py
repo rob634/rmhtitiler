@@ -44,6 +44,19 @@ REGIONS = {
         "country_codes": ["356", "144", "524", "064", "050"],
         "exclude_codes": [],
     },
+    "lac": {
+        "name": "LAC",
+        "title": "LAC — Crop Production & Drought Risk",
+        "center": [-72, 2],
+        "zoom": 3,
+        "country_codes": [
+            "032", "068", "076", "170", "152", "188", "214", "218",  # AR BO BR CO CL CR DO EC
+            "222", "320", "332", "340", "388", "484", "558", "591",  # SV GT HT HN JM MX NI PA
+            "600", "604", "534", "740", "858", "862", "780", "308",  # PY PE SX SR UY VE TT GD
+            "662", "052", "670", "212", "028", "192", "084",         # LC BB VC DM AG CU BZ
+        ],
+        "exclude_codes": [],
+    },
 }
 
 
