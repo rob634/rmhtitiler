@@ -19,22 +19,14 @@
 <script src="https://unpkg.com/topojson-client@3/dist/topojson-client.min.js"></script>
 
 <style>
-/* ---- Reset ---- */
 *, *::before, *::after { box-sizing: border-box; }
 body { margin: 0; }
 
-/* ---- Full-viewport dark layout ---- */
 .h3-explorer {
-    position: relative;
-    height: 100vh;
-    padding: 0;
-    max-width: none;
-    background: #0a0a14;
-    color: #d0d0d0;
-    overflow: hidden;
+    position: relative; height: 100vh; padding: 0; max-width: none;
+    background: #0a0a14; color: #d0d0d0; overflow: hidden;
     font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif;
 }
-
 #h3-map { position: absolute; top: 0; left: 0; width: 100%; height: 100%; }
 
 /* ---- Controls ---- */
@@ -55,14 +47,27 @@ body { margin: 0; }
     background: rgba(255,255,255,0.10); color: #fff;
     border: 1px solid rgba(255,255,255,0.20); border-radius: 6px;
     padding: 7px 30px 7px 10px; font-size: 13px; cursor: pointer;
-    color-scheme: dark;
-    appearance: none; -webkit-appearance: none;
+    color-scheme: dark; appearance: none; -webkit-appearance: none;
     background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='6'%3E%3Cpath d='M0 0l5 6 5-6z' fill='%23aaa'/%3E%3C/svg%3E");
     background-repeat: no-repeat; background-position: right 8px center;
 }
 .h3-cg select option { background: #1a1a2e; color: #eee; }
 .h3-cg select:hover { border-color: rgba(255,255,255,0.35); }
 .h3-cg select:focus { outline: none; border-color: #64acbe; }
+.h3-cg.dimmed { opacity: 0.35; pointer-events: none; }
+
+/* ---- View Tabs ---- */
+.h3-view-tabs {
+    display: flex; gap: 2px; background: rgba(255,255,255,0.04);
+    border-radius: 6px; padding: 2px; align-self: flex-end;
+}
+.h3-view-tab {
+    background: none; border: none; color: #a0a0a0; font-size: 12px; font-weight: 600;
+    padding: 6px 12px; border-radius: 5px; cursor: pointer; white-space: nowrap;
+    transition: all 0.15s;
+}
+.h3-view-tab:hover { color: #bbb; }
+.h3-view-tab.active { background: rgba(255,255,255,0.1); color: #e0e0e0; }
 
 #h3-status {
     font-size: 11px; color: #a0a0a0; padding: 6px 0; min-width: 120px; text-align: right;
@@ -88,9 +93,23 @@ body { margin: 0; }
     gap: 1px;
 }
 .h3-legend-cell { border-radius: 2px; }
-.h3-legend-xlabel { font-size: 11px; color: #a0a0a0; margin-top: 4px; letter-spacing: 0.5px; }
 .h3-legend-ticks { display: flex; justify-content: space-between; width: 100%; }
 .h3-legend-ticks span { font-size: 10px; color: #888; }
+
+/* Quad legend */
+.h3-quad-legend { display: flex; flex-direction: column; gap: 10px; }
+.h3-quad-zone-label { font-size: 12px; font-weight: 600; margin-bottom: 3px; }
+.h3-quad-zone-label.safe { color: #2ab873; }
+.h3-quad-zone-label.risk { color: #e63946; }
+.h3-quad-ramps { display: flex; gap: 12px; }
+.h3-quad-ramp-wrap { display: flex; flex-direction: column; gap: 2px; }
+.h3-quad-ramp {
+    display: flex; gap: 1px; height: 16px; border-radius: 3px; overflow: hidden;
+}
+.h3-quad-ramp-cell { flex: 1; min-width: 20px; }
+.h3-quad-ramp-label { font-size: 10px; color: #999; text-align: center; }
+.h3-quad-prod-labels { display: flex; justify-content: space-between; margin-top: 2px; }
+.h3-quad-prod-labels span { font-size: 10px; color: #888; }
 
 /* ---- Stats ---- */
 #h3-stats {
@@ -111,7 +130,7 @@ body { margin: 0; }
     background: rgba(8, 8, 16, 0.92); backdrop-filter: blur(8px);
     border: 1px solid rgba(255,255,255,0.1); border-radius: 8px;
     padding: 10px 14px; font-size: 12px; line-height: 1.5;
-    max-width: 260px; color: #d0d0d0;
+    max-width: 280px; color: #d0d0d0;
 }
 #h3-tooltip strong { color: #fff; }
 #h3-tooltip .val { color: #64acbe; font-weight: 600; }
@@ -134,7 +153,6 @@ body { margin: 0; }
 }
 @keyframes h3spin { to { transform: rotate(360deg); } }
 .h3-loading-text { font-size: 13px; color: #a0a0a0; }
-
 .maplibregl-ctrl-attrib { font-size: 10px !important; }
 </style>
 </head>
@@ -144,10 +162,17 @@ body { margin: 0; }
 
 <div id="h3-controls">
     <div class="h3-cg">
+        <label>View</label>
+        <div class="h3-view-tabs">
+            <button class="h3-view-tab active" data-view="bivariate">SPEI Bivariate</button>
+            <button class="h3-view-tab" data-view="quad">Tech Split</button>
+        </div>
+    </div>
+    <div class="h3-cg">
         <label>Crop</label>
         <select id="sel-crop"></select>
     </div>
-    <div class="h3-cg">
+    <div class="h3-cg" id="cg-tech">
         <label>Technology</label>
         <select id="sel-tech">
             <option value="a">All</option>
@@ -172,7 +197,7 @@ body { margin: 0; }
             <option value="-2">SPEI &lt; -2.0 (Extreme)</option>
         </select>
     </div>
-    <div class="h3-cg">
+    <div class="h3-cg" id="cg-palette">
         <label>Palette</label>
         <select id="sel-palette"></select>
     </div>
@@ -233,6 +258,7 @@ const CROPS = [
     {code:'yams',name:'Yams'},
 ];
 
+// Bivariate palettes (SPEI continuous view)
 const PALETTES = {
     fire: {
         name: 'Fire Alert',
@@ -271,41 +297,30 @@ const PALETTES = {
     },
 };
 
+// Quad-view: 4 fixed ramps (green / blue / orange / red)
+const QUAD = {
+    safe_irrig:    [[210,238,210], [150,210,150], [80,178,80],  [25,145,40],  [0,105,20]],
+    safe_rain:     [[210,225,248], [150,192,232], [82,152,212], [28,112,182], [0,72,142]],
+    drought_irrig: [[255,228,188], [255,192,132], [252,152,62], [238,112,18], [202,82,0]],
+    drought_rain:  [[252,208,202], [242,158,142], [228,98,82],  [205,48,38],  [168,18,18]],
+};
+
 let currentPalette = 'fire';
+let currentView = 'bivariate';
 
-// SPEI range for continuous interpolation
-const SPEI_WET = 0;     // fully safe color
-const SPEI_DRY = -2.5;  // fully drought color
-
-// Threshold for at-risk stats (rendering stays continuous)
+const SPEI_WET = 0;
+const SPEI_DRY = -2.5;
 let DROUGHT_SPEI_THRESHOLD = -1.5;
 
 // ============================================================
-// MENAAP Country Filter (ISO 3166-1 numeric codes)
+// MENAAP Country Filter
 // ============================================================
 
 const MENAAP_CODES = new Set([
-    '004', // Afghanistan
-    '012', // Algeria
-    '262', // Djibouti
-    '818', // Egypt
-    '364', // Iran
-    '368', // Iraq
-    '400', // Jordan
-    '422', // Lebanon
-    '434', // Libya
-    '504', // Morocco
-    '586', // Pakistan
-    '682', // Saudi Arabia
-    '760', // Syria
-    '788', // Tunisia
-    '275', // Palestine (West Bank and Gaza)
-    '887', // Yemen
+    '004','012','262','818','364','368','400','422','434',
+    '504','586','682','760','788','275','887',
 ]);
-
-const EXCLUDE_CODES = new Set([
-    '732', // Western Sahara — must never appear
-]);
+const EXCLUDE_CODES = new Set(['732']);
 
 // ============================================================
 // State
@@ -318,10 +333,9 @@ let queryInFlight = false;
 let currentCropName = 'Wheat';
 const queryCache = new Map();
 
-// Country boundaries
-let borderGeoJSON = null;     // all countries except excluded, for border lines
-let menaapPolygons = [];      // pre-processed MENAAP polygons for point-in-polygon
-const menaapHexCache = new Map(); // h3_index → boolean (persists across queries)
+let borderGeoJSON = null;
+let menaapPolygons = [];
+const menaapHexCache = new Map();
 
 // ============================================================
 // Country Boundary Loading
@@ -333,46 +347,27 @@ async function loadBoundaries() {
     const world = await resp.json();
     const allCountries = topojson.feature(world, world.objects.countries);
 
-    // Border lines: all countries except Western Sahara
     borderGeoJSON = {
         type: 'FeatureCollection',
-        features: allCountries.features.filter(f => {
-            const id = String(f.id).padStart(3, '0');
-            return !EXCLUDE_CODES.has(id);
-        }),
+        features: allCountries.features.filter(f => !EXCLUDE_CODES.has(String(f.id).padStart(3, '0'))),
     };
 
-    // MENAAP polygons: extract and pre-process for point-in-polygon
-    const menaapFeatures = allCountries.features.filter(f => {
-        const id = String(f.id).padStart(3, '0');
-        return MENAAP_CODES.has(id);
-    });
+    const menaapFeatures = allCountries.features.filter(f => MENAAP_CODES.has(String(f.id).padStart(3, '0')));
     menaapPolygons = extractPolygons(menaapFeatures);
-
-    console.log(`Boundaries loaded: ${borderGeoJSON.features.length} countries, ${menaapPolygons.length} MENAAP polygon rings`);
 }
 
 function extractPolygons(features) {
     const result = [];
     for (const feature of features) {
         const geom = feature.geometry;
-        let polyGroups;
-        if (geom.type === 'Polygon') {
-            polyGroups = [geom.coordinates];
-        } else if (geom.type === 'MultiPolygon') {
-            polyGroups = geom.coordinates;
-        } else continue;
-
-        for (const rings of polyGroups) {
-            const outer = rings[0];
-            const holes = rings.slice(1);
-            // Bounding box for fast rejection
+        const groups = geom.type === 'Polygon' ? [geom.coordinates]
+            : geom.type === 'MultiPolygon' ? geom.coordinates : [];
+        for (const rings of groups) {
+            const outer = rings[0], holes = rings.slice(1);
             let minLng = Infinity, maxLng = -Infinity, minLat = Infinity, maxLat = -Infinity;
             for (const [lng, lat] of outer) {
-                if (lng < minLng) minLng = lng;
-                if (lng > maxLng) maxLng = lng;
-                if (lat < minLat) minLat = lat;
-                if (lat > maxLat) maxLat = lat;
+                if (lng < minLng) minLng = lng; if (lng > maxLng) maxLng = lng;
+                if (lat < minLat) minLat = lat; if (lat > maxLat) maxLat = lat;
             }
             result.push({ outer, holes, bbox: [minLng, minLat, maxLng, maxLat] });
         }
@@ -381,38 +376,33 @@ function extractPolygons(features) {
 }
 
 // ============================================================
-// Point-in-Polygon (Ray Casting)
+// Point-in-Polygon
 // ============================================================
 
 function pointInRing(x, y, ring) {
     let inside = false;
     for (let i = 0, j = ring.length - 1; i < ring.length; j = i++) {
-        const [xi, yi] = ring[i];
-        const [xj, yj] = ring[j];
-        if ((yi > y) !== (yj > y) && x < (xj - xi) * (y - yi) / (yj - yi) + xi) {
+        const [xi, yi] = ring[i], [xj, yj] = ring[j];
+        if ((yi > y) !== (yj > y) && x < (xj - xi) * (y - yi) / (yj - yi) + xi)
             inside = !inside;
-        }
     }
     return inside;
 }
 
 function isInMENAAP(lng, lat) {
     for (const poly of menaapPolygons) {
-        const [minLng, minLat, maxLng, maxLat] = poly.bbox;
-        if (lng < minLng || lng > maxLng || lat < minLat || lat > maxLat) continue;
+        const [a, b, c, d] = poly.bbox;
+        if (lng < a || lng > c || lat < b || lat > d) continue;
         if (!pointInRing(lng, lat, poly.outer)) continue;
-        // Check holes
         let inHole = false;
-        for (const hole of poly.holes) {
-            if (pointInRing(lng, lat, hole)) { inHole = true; break; }
-        }
+        for (const hole of poly.holes) { if (pointInRing(lng, lat, hole)) { inHole = true; break; } }
         if (!inHole) return true;
     }
     return false;
 }
 
 function filterMENAAP(data) {
-    if (!menaapPolygons.length) return data; // boundaries not loaded, pass through
+    if (!menaapPolygons.length) return data;
     return data.filter(d => {
         const cached = menaapHexCache.get(d.h3_index);
         if (cached !== undefined) return cached;
@@ -424,12 +414,11 @@ function filterMENAAP(data) {
 }
 
 // ============================================================
-// Data Query (server-side DuckDB)
+// Data Query
 // ============================================================
 
 async function queryData(crop, tech, scenario) {
     const cacheKey = `${crop}_${tech}_${scenario}`;
-
     const cached = queryCache.get(cacheKey);
     if (cached) return { data: cached, fromCache: true };
 
@@ -444,6 +433,41 @@ async function queryData(crop, tech, scenario) {
     return { data: result.data, fromCache: false };
 }
 
+// Fetch both irrigated + rainfed and merge by h3_index
+async function queryBothTechs(crop, scenario) {
+    const [iRes, rRes] = await Promise.all([
+        queryData(crop, 'i', scenario),
+        queryData(crop, 'r', scenario),
+    ]);
+
+    const merged = new Map();
+    for (const d of iRes.data) {
+        merged.set(d.h3_index, {
+            h3_index: d.h3_index, i_prod: d.production, r_prod: 0,
+            i_area: d.harv_area_ha, r_area: 0, spei: d.spei,
+        });
+    }
+    for (const d of rRes.data) {
+        const m = merged.get(d.h3_index);
+        if (m) { m.r_prod = d.production; m.r_area = d.harv_area_ha; }
+        else {
+            merged.set(d.h3_index, {
+                h3_index: d.h3_index, i_prod: 0, r_prod: d.production,
+                i_area: 0, r_area: d.harv_area_ha, spei: d.spei,
+            });
+        }
+    }
+
+    const data = [];
+    for (const d of merged.values()) {
+        d.production = d.i_prod + d.r_prod;
+        d.harv_area_ha = d.i_area + d.r_area;
+        d.rainfed_pct = d.production > 0 ? d.r_prod / d.production : 0;
+        data.push(d);
+    }
+    return { data, fromCache: iRes.fromCache && rRes.fromCache };
+}
+
 // ============================================================
 // Classification & Color
 // ============================================================
@@ -451,27 +475,18 @@ async function queryData(crop, tech, scenario) {
 function log10Breaks(values, nBins) {
     let minVal = Infinity, maxVal = -Infinity;
     for (const v of values) {
-        if (v > 0) {
-            if (v < minVal) minVal = v;
-            if (v > maxVal) maxVal = v;
-        }
+        if (v > 0) { if (v < minVal) minVal = v; if (v > maxVal) maxVal = v; }
     }
     if (minVal >= maxVal) return Array(nBins - 1).fill(maxVal);
-
-    const logMin = Math.log10(minVal);
-    const logMax = Math.log10(maxVal);
+    const logMin = Math.log10(minVal), logMax = Math.log10(maxVal);
     const step = (logMax - logMin) / nBins;
     const breaks = [];
-    for (let i = 1; i < nBins; i++) {
-        breaks.push(Math.pow(10, logMin + step * i));
-    }
+    for (let i = 1; i < nBins; i++) breaks.push(Math.pow(10, logMin + step * i));
     return breaks;
 }
 
 function classifyLog(val, breaks) {
-    for (let i = 0; i < breaks.length; i++) {
-        if (val <= breaks[i]) return i;
-    }
+    for (let i = 0; i < breaks.length; i++) { if (val <= breaks[i]) return i; }
     return breaks.length;
 }
 
@@ -493,8 +508,13 @@ function lerpColor(c1, c2, t) {
 function bivariateColor(prodBin, spei) {
     const pal = PALETTES[currentPalette];
     const t = speiToT(spei);
-    const rgb = lerpColor(pal.safe[prodBin], pal.drought[prodBin], t);
-    return [...rgb, 200];
+    return [...lerpColor(pal.safe[prodBin], pal.drought[prodBin], t), 200];
+}
+
+function quadColor(prodBin, rainfedPct, isDrought) {
+    const irrig = isDrought ? QUAD.drought_irrig : QUAD.safe_irrig;
+    const rain  = isDrought ? QUAD.drought_rain  : QUAD.safe_rain;
+    return [...lerpColor(irrig[prodBin], rain[prodBin], rainfedPct), 200];
 }
 
 // ============================================================
@@ -505,27 +525,21 @@ function initMap() {
     map = new maplibregl.Map({
         container: 'h3-map',
         style: 'https://basemaps.cartocdn.com/gl/dark-matter-gl-style/style.json',
-        center: [30, 27],
-        zoom: 3.5,
-        maxZoom: 14,
-        antialias: true,
+        center: [30, 27], zoom: 3.5, maxZoom: 14, antialias: true,
     });
-
     map.addControl(new maplibregl.NavigationControl(), 'top-right');
     map.addControl(new maplibregl.ScaleControl({maxWidth: 150}), 'bottom-right');
-
     deckOverlay = new deck.MapboxOverlay({interleaved: false, layers: []});
     map.addControl(deckOverlay);
 }
 
 // ============================================================
-// Layer Rendering (hexagons + borders)
+// Layer Rendering
 // ============================================================
 
 function buildLayers(data) {
     const layers = [];
 
-    // 1. Hexagon layer
     if (data.length) {
         const prodValues = data.map(d => d.production).filter(v => v > 0);
         const breaks = log10Breaks(prodValues, 5);
@@ -536,46 +550,41 @@ function buildLayers(data) {
             const boundary = h3.cellToBoundary(d.h3_index);
             const polygon = boundary.map(([lat, lng]) => [lng, lat]);
             polygon.push(polygon[0]);
-
             const prodBin = classifyLog(d.production, breaks);
+
+            let color;
+            if (currentView === 'quad') {
+                const isDrought = d.spei != null && d.spei < DROUGHT_SPEI_THRESHOLD;
+                color = quadColor(prodBin, d.rainfed_pct || 0, isDrought);
+            } else {
+                color = bivariateColor(prodBin, d.spei);
+            }
 
             processed[i] = {
                 polygon, h3_index: d.h3_index,
                 production: d.production, harv_area_ha: d.harv_area_ha, spei: d.spei,
-                prodBin,
-                color: bivariateColor(prodBin, d.spei),
+                i_prod: d.i_prod, r_prod: d.r_prod, rainfed_pct: d.rainfed_pct,
+                prodBin, color,
             };
         }
 
         layers.push(new deck.PolygonLayer({
-            id: 'h3-layer',
-            data: processed,
-            getPolygon: d => d.polygon,
-            getFillColor: d => d.color,
-            getLineColor: [255, 255, 255, 20],
-            getLineWidth: 1,
-            lineWidthMinPixels: 0.3,
-            lineWidthMaxPixels: 1,
-            pickable: true,
-            autoHighlight: true,
-            highlightColor: [255, 255, 255, 60],
-            onHover: onHover,
-            parameters: {depthTest: false},
+            id: 'h3-layer', data: processed,
+            getPolygon: d => d.polygon, getFillColor: d => d.color,
+            getLineColor: [255, 255, 255, 20], getLineWidth: 1,
+            lineWidthMinPixels: 0.3, lineWidthMaxPixels: 1,
+            pickable: true, autoHighlight: true, highlightColor: [255, 255, 255, 60],
+            onHover: onHover, parameters: {depthTest: false},
             transitions: {getFillColor: 400},
         }));
     }
 
-    // 2. Country border lines (on top of hexagons)
     if (borderGeoJSON) {
         layers.push(new deck.GeoJsonLayer({
-            id: 'country-borders',
-            data: borderGeoJSON,
-            stroked: true,
-            filled: false,
-            getLineColor: [220, 220, 230, 70],
-            getLineWidth: 1,
-            lineWidthMinPixels: 0.5,
-            lineWidthMaxPixels: 2,
+            id: 'country-borders', data: borderGeoJSON,
+            stroked: true, filled: false,
+            getLineColor: [220, 220, 230, 70], getLineWidth: 1,
+            lineWidthMinPixels: 0.5, lineWidthMaxPixels: 2,
             parameters: {depthTest: false},
         }));
     }
@@ -590,20 +599,28 @@ function buildLayers(data) {
 const tooltip = document.getElementById('h3-tooltip');
 
 function onHover({object, x, y}) {
-    if (!object) {
-        tooltip.style.display = 'none';
-        return;
-    }
+    if (!object) { tooltip.style.display = 'none'; return; }
 
     const speiClass = object.spei == null ? '' :
         object.spei > 0 ? 'spei-wet' : object.spei >= -1 ? 'spei-mod' : 'spei-dry';
     const speiLabel = object.spei == null ? 'N/A' : object.spei.toFixed(3);
 
-    tooltip.innerHTML = `<strong>${currentCropName}</strong><br>
-        Harvested: <span class="val">${formatHA(object.harv_area_ha)}</span><br>
-        Production: <span class="val">${formatMT(object.production)}</span><br>
-        SPEI-12: <span class="spei-val ${speiClass}">${speiLabel}</span>`;
+    let html = `<strong>${currentCropName}</strong><br>`;
 
+    if (currentView === 'quad' && object.i_prod != null) {
+        const iPct = object.production > 0 ? (object.i_prod / object.production * 100).toFixed(0) : 0;
+        const rPct = object.production > 0 ? (object.r_prod / object.production * 100).toFixed(0) : 0;
+        html += `Irrigated: <span class="val">${formatMT(object.i_prod)}</span> (${iPct}%)<br>`;
+        html += `Rainfed: <span class="val">${formatMT(object.r_prod)}</span> (${rPct}%)<br>`;
+        html += `Total: <span class="val">${formatMT(object.production)}</span><br>`;
+    } else {
+        html += `Production: <span class="val">${formatMT(object.production)}</span><br>`;
+    }
+
+    html += `Harvested: <span class="val">${formatHA(object.harv_area_ha)}</span><br>`;
+    html += `SPEI-12: <span class="spei-val ${speiClass}">${speiLabel}</span>`;
+
+    tooltip.innerHTML = html;
     tooltip.style.display = 'block';
     tooltip.style.left = `${x + 14}px`;
     tooltip.style.top = `${y + 14}px`;
@@ -635,50 +652,91 @@ function updateStats(data) {
             riskProd += d.production;
         }
     }
-
     document.getElementById('stat-area').textContent = formatHA(totalArea);
     document.getElementById('stat-prod').textContent = formatMT(totalProd);
 
     const areaPct = totalArea > 0 ? (riskArea / totalArea * 100) : 0;
     const prodPct = totalProd > 0 ? (riskProd / totalProd * 100) : 0;
-
-    document.getElementById('stat-area-risk').textContent =
-        `${formatHA(riskArea)} (${areaPct.toFixed(1)}%)`;
-    document.getElementById('stat-risk').textContent =
-        `${formatMT(riskProd)} (${prodPct.toFixed(1)}%)`;
+    document.getElementById('stat-area-risk').textContent = `${formatHA(riskArea)} (${areaPct.toFixed(1)}%)`;
+    document.getElementById('stat-risk').textContent = `${formatMT(riskProd)} (${prodPct.toFixed(1)}%)`;
 }
 
 // ============================================================
-// Legend — 5x5 Bivariate Grid
+// Legend
 // ============================================================
 
 function buildLegend() {
     const container = document.getElementById('h3-legend');
-    const pal = PALETTES[currentPalette];
 
-    container.innerHTML = `
-        <div class="h3-legend-title">Production &times; Drought Risk (${pal.name})</div>
-        <div class="h3-legend-body">
-            <div class="h3-legend-ylabel">Drought risk &rarr;</div>
-            <div class="h3-legend-grid-wrap">
-                <div class="h3-legend-grid" id="h3-legend-grid"></div>
-                <div class="h3-legend-ticks"><span>Low</span><span>Production &rarr;</span><span>High</span></div>
-            </div>
-        </div>`;
+    if (currentView === 'quad') {
+        const thr = DROUGHT_SPEI_THRESHOLD;
+        container.innerHTML = `
+            <div class="h3-legend-title">Production &times; Technology &times; Drought</div>
+            <div class="h3-quad-legend">
+                <div>
+                    <div class="h3-quad-zone-label safe">Safe Zone (SPEI &ge; ${thr})</div>
+                    <div class="h3-quad-ramps">
+                        <div class="h3-quad-ramp-wrap">
+                            <div class="h3-quad-ramp" id="q-safe-irrig"></div>
+                            <div class="h3-quad-ramp-label">Irrigated</div>
+                        </div>
+                        <div class="h3-quad-ramp-wrap">
+                            <div class="h3-quad-ramp" id="q-safe-rain"></div>
+                            <div class="h3-quad-ramp-label">Rainfed</div>
+                        </div>
+                    </div>
+                </div>
+                <div>
+                    <div class="h3-quad-zone-label risk">Drought Zone (SPEI &lt; ${thr})</div>
+                    <div class="h3-quad-ramps">
+                        <div class="h3-quad-ramp-wrap">
+                            <div class="h3-quad-ramp" id="q-drought-irrig"></div>
+                            <div class="h3-quad-ramp-label">Irrigated</div>
+                        </div>
+                        <div class="h3-quad-ramp-wrap">
+                            <div class="h3-quad-ramp" id="q-drought-rain"></div>
+                            <div class="h3-quad-ramp-label">Rainfed</div>
+                        </div>
+                    </div>
+                </div>
+                <div class="h3-quad-prod-labels"><span>Low</span><span>Production &rarr;</span><span>High</span></div>
+            </div>`;
 
-    const grid = document.getElementById('h3-legend-grid');
-    for (let row = 4; row >= 0; row--) {
-        const t = row / 4;
-        for (let col = 0; col < 5; col++) {
-            const rgb = lerpColor(pal.safe[col], pal.drought[col], t);
-            const cell = document.createElement('div');
-            cell.className = 'h3-legend-cell';
-            cell.style.background = `rgb(${rgb[0]},${rgb[1]},${rgb[2]})`;
-
-            const speiVal = (SPEI_WET + t * (SPEI_DRY - SPEI_WET)).toFixed(1);
-            const prodLabels = ['Very Low', 'Low', 'Medium', 'High', 'Very High'];
-            cell.title = `${prodLabels[col]} production, SPEI \u2248 ${speiVal}`;
-            grid.appendChild(cell);
+        const rampPairs = [
+            ['q-safe-irrig', QUAD.safe_irrig], ['q-safe-rain', QUAD.safe_rain],
+            ['q-drought-irrig', QUAD.drought_irrig], ['q-drought-rain', QUAD.drought_rain],
+        ];
+        for (const [id, ramp] of rampPairs) {
+            const el = document.getElementById(id);
+            for (const [r, g, b] of ramp) {
+                const cell = document.createElement('div');
+                cell.className = 'h3-quad-ramp-cell';
+                cell.style.background = `rgb(${r},${g},${b})`;
+                el.appendChild(cell);
+            }
+        }
+    } else {
+        // Bivariate 5x5 grid
+        const pal = PALETTES[currentPalette];
+        container.innerHTML = `
+            <div class="h3-legend-title">Production &times; Drought Risk (${pal.name})</div>
+            <div class="h3-legend-body">
+                <div class="h3-legend-ylabel">Drought risk &rarr;</div>
+                <div class="h3-legend-grid-wrap">
+                    <div class="h3-legend-grid" id="h3-legend-grid"></div>
+                    <div class="h3-legend-ticks"><span>Low</span><span>Production &rarr;</span><span>High</span></div>
+                </div>
+            </div>`;
+        const grid = document.getElementById('h3-legend-grid');
+        for (let row = 4; row >= 0; row--) {
+            const t = row / 4;
+            for (let col = 0; col < 5; col++) {
+                const rgb = lerpColor(pal.safe[col], pal.drought[col], t);
+                const cell = document.createElement('div');
+                cell.className = 'h3-legend-cell';
+                cell.style.background = `rgb(${rgb[0]},${rgb[1]},${rgb[2]})`;
+                grid.appendChild(cell);
+            }
         }
     }
 }
@@ -691,8 +749,7 @@ function populateControls() {
     const selCrop = document.getElementById('sel-crop');
     for (const c of CROPS) {
         const opt = document.createElement('option');
-        opt.value = c.code;
-        opt.textContent = c.name;
+        opt.value = c.code; opt.textContent = c.name;
         if (c.code === 'whea') opt.selected = true;
         selCrop.appendChild(opt);
     }
@@ -700,8 +757,7 @@ function populateControls() {
     const selPalette = document.getElementById('sel-palette');
     for (const [key, pal] of Object.entries(PALETTES)) {
         const opt = document.createElement('option');
-        opt.value = key;
-        opt.textContent = pal.name;
+        opt.value = key; opt.textContent = pal.name;
         if (key === currentPalette) opt.selected = true;
         selPalette.appendChild(opt);
     }
@@ -711,11 +767,33 @@ function populateControls() {
         if (currentData.length) buildLayers(currentData);
     });
 
-    // Drought threshold — re-computes stats only, rendering stays continuous
     document.getElementById('sel-threshold').addEventListener('change', (e) => {
         DROUGHT_SPEI_THRESHOLD = parseFloat(e.target.value);
-        if (currentData.length) updateStats(currentData);
+        buildLegend();
+        if (currentData.length) {
+            if (currentView === 'quad') buildLayers(currentData); // threshold affects rendering
+            updateStats(currentData);
+        }
     });
+
+    // View tabs
+    for (const tab of document.querySelectorAll('.h3-view-tab')) {
+        tab.addEventListener('click', () => {
+            document.querySelectorAll('.h3-view-tab').forEach(t => t.classList.remove('active'));
+            tab.classList.add('active');
+            currentView = tab.dataset.view;
+            updateControlVisibility();
+            buildLegend();
+            currentData = []; // force re-query (data shape differs)
+            refresh();
+        });
+    }
+
+    function updateControlVisibility() {
+        document.getElementById('cg-tech').classList.toggle('dimmed', currentView === 'quad');
+        document.getElementById('cg-palette').classList.toggle('dimmed', currentView === 'quad');
+    }
+    updateControlVisibility();
 
     let debounceTimer = null;
     function debouncedRefresh() {
@@ -737,7 +815,6 @@ async function refresh() {
     queryInFlight = true;
 
     const crop = document.getElementById('sel-crop').value;
-    const tech = document.getElementById('sel-tech').value;
     const scenario = document.getElementById('sel-scenario').value;
     currentCropName = CROPS.find(c => c.code === crop)?.name || crop;
 
@@ -745,13 +822,17 @@ async function refresh() {
 
     try {
         const t0 = performance.now();
-        const { data, fromCache } = await queryData(crop, tech, scenario);
+        let result;
+        if (currentView === 'quad') {
+            result = await queryBothTechs(crop, scenario);
+        } else {
+            const tech = document.getElementById('sel-tech').value;
+            result = await queryData(crop, tech, scenario);
+        }
         const tQuery = performance.now() - t0;
 
         setStatus('Filtering MENAAP...');
-        const t1 = performance.now();
-        currentData = filterMENAAP(data);
-        const tFilter = performance.now() - t1;
+        currentData = filterMENAAP(result.data);
 
         const t2 = performance.now();
         buildLayers(currentData);
@@ -760,11 +841,8 @@ async function refresh() {
         updateStats(currentData);
 
         const parts = [`${currentData.length.toLocaleString()} hexagons`];
-        if (fromCache) {
-            parts.push('cached');
-        } else {
-            parts.push(`${(tQuery/1000).toFixed(1)}s query`);
-        }
+        if (result.fromCache) parts.push('cached');
+        else parts.push(`${(tQuery/1000).toFixed(1)}s query`);
         parts.push(`${(tRender/1000).toFixed(1)}s render`);
         setStatus(parts.join(', '));
 
@@ -801,8 +879,7 @@ function setStatus(msg) { document.getElementById('h3-status').textContent = msg
         initMap();
         populateControls();
 
-        // Load boundaries in parallel with map style
-        const [_] = await Promise.all([
+        await Promise.all([
             loadBoundaries(),
             new Promise(resolve => {
                 if (map.isStyleLoaded()) resolve();
