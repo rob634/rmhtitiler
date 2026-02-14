@@ -302,6 +302,13 @@ const PALETTES = {
 // Production-only ramp (amber/gold on dark basemap)
 const PROD_RAMP = [[235,230,210], [215,195,120], [190,160,45], [160,120,10], [125,85,0]];
 
+// Tech bivariate: 3-anchor piecewise ramp (green → yellow → blue)
+const TECH_BIV = {
+    irrig: [[210,238,210], [150,210,150], [80,178,80],  [25,145,40],  [0,105,20]],   // green
+    mixed: [[248,242,200], [235,218,125], [215,188,40],  [182,152,8],  [145,118,0]],  // yellow/amber
+    rain:  [[210,225,248], [150,192,232], [82,152,212], [28,112,182], [0,72,142]],    // blue
+};
+
 // Quad-view: 4 fixed ramps (green / blue / orange / red)
 const QUAD = {
     safe_irrig:    [[210,238,210], [150,210,150], [80,178,80],  [25,145,40],  [0,105,20]],
@@ -512,7 +519,14 @@ function productionColor(prodBin) {
 }
 
 function techBivColor(prodBin, rainfedPct) {
-    return [...lerpColor(QUAD.safe_irrig[prodBin], QUAD.safe_rain[prodBin], rainfedPct), 200];
+    // Piecewise: green → yellow (0–0.5) → blue (0.5–1.0)
+    if (rainfedPct <= 0.5) {
+        const t = rainfedPct * 2;
+        return [...lerpColor(TECH_BIV.irrig[prodBin], TECH_BIV.mixed[prodBin], t), 200];
+    } else {
+        const t = (rainfedPct - 0.5) * 2;
+        return [...lerpColor(TECH_BIV.mixed[prodBin], TECH_BIV.rain[prodBin], t), 200];
+    }
 }
 
 function bivariateColor(prodBin, spei) {
@@ -699,27 +713,27 @@ function buildLegend() {
     } else if (currentView === 'tech-biv') {
         container.innerHTML = `
             <div class="h3-legend-title">Production &times; Irrigated vs Rainfed</div>
-            <div class="h3-quad-legend">
-                <div class="h3-quad-ramps">
-                    <div class="h3-quad-ramp-wrap">
-                        <div class="h3-quad-ramp" id="tb-irrig"></div>
-                        <div class="h3-quad-ramp-label">Irrigated</div>
-                    </div>
-                    <div class="h3-quad-ramp-wrap">
-                        <div class="h3-quad-ramp" id="tb-rain"></div>
-                        <div class="h3-quad-ramp-label">Rainfed</div>
-                    </div>
+            <div class="h3-legend-body">
+                <div class="h3-legend-ylabel">Rainfed share &rarr;</div>
+                <div class="h3-legend-grid-wrap">
+                    <div class="h3-legend-grid" id="h3-legend-grid"></div>
+                    <div class="h3-legend-ticks"><span>Low</span><span>Production &rarr;</span><span>High</span></div>
                 </div>
-                <div class="h3-quad-prod-labels"><span>Low</span><span>Production &rarr;</span><span>High</span></div>
             </div>`;
-        const ramps = [['tb-irrig', QUAD.safe_irrig], ['tb-rain', QUAD.safe_rain]];
-        for (const [id, ramp] of ramps) {
-            const el = document.getElementById(id);
-            for (const [r, g, b] of ramp) {
+        const grid = document.getElementById('h3-legend-grid');
+        for (let row = 4; row >= 0; row--) {
+            const rfPct = row / 4; // 0 = irrigated (bottom), 1 = rainfed (top)
+            for (let col = 0; col < 5; col++) {
+                let rgb;
+                if (rfPct <= 0.5) {
+                    rgb = lerpColor(TECH_BIV.irrig[col], TECH_BIV.mixed[col], rfPct * 2);
+                } else {
+                    rgb = lerpColor(TECH_BIV.mixed[col], TECH_BIV.rain[col], (rfPct - 0.5) * 2);
+                }
                 const cell = document.createElement('div');
-                cell.className = 'h3-quad-ramp-cell';
-                cell.style.background = `rgb(${r},${g},${b})`;
-                el.appendChild(cell);
+                cell.className = 'h3-legend-cell';
+                cell.style.background = `rgb(${rgb[0]},${rgb[1]},${rgb[2]})`;
+                grid.appendChild(cell);
             }
         }
     } else if (currentView === 'quad') {
