@@ -121,7 +121,11 @@ body { margin: 0; }
 }
 .h3-stat-row { display: flex; justify-content: space-between; gap: 20px; margin-bottom: 4px; }
 .h3-stat-label { font-size: 12px; color: #a0a0a0; text-transform: uppercase; letter-spacing: 0.5px; }
-.h3-stat-value { font-size: 13px; font-weight: 600; font-variant-numeric: tabular-nums; }
+.h3-stat-value {
+    font-size: 13px; font-weight: 600;
+    font-family: 'SF Mono', 'Menlo', 'Consolas', 'Monaco', monospace;
+    font-variant-numeric: tabular-nums; text-align: right;
+}
 .h3-stat-value.warning { color: #c85a5a; }
 
 /* ---- Tooltip ---- */
@@ -133,8 +137,18 @@ body { margin: 0; }
     max-width: 280px; color: #d0d0d0;
 }
 #h3-tooltip strong { color: #fff; }
-#h3-tooltip .val { color: #64acbe; font-weight: 600; }
-#h3-tooltip .spei-val { font-weight: 600; }
+#h3-tooltip .tt-row { display: flex; justify-content: space-between; gap: 14px; }
+#h3-tooltip .tt-lbl { white-space: nowrap; }
+#h3-tooltip .tt-val {
+    color: #64acbe; font-weight: 600; text-align: right; white-space: nowrap;
+    font-family: 'SF Mono', 'Menlo', 'Consolas', 'Monaco', monospace;
+    font-variant-numeric: tabular-nums;
+}
+#h3-tooltip .spei-val {
+    font-weight: 600; text-align: right; white-space: nowrap;
+    font-family: 'SF Mono', 'Menlo', 'Consolas', 'Monaco', monospace;
+    font-variant-numeric: tabular-nums;
+}
 .spei-wet { color: #64acbe; }
 .spei-mod { color: #e4acac; }
 .spei-dry { color: #c85a5a; }
@@ -637,20 +651,20 @@ function onHover({object, x, y}) {
         object.spei > 0 ? 'spei-wet' : object.spei >= -1 ? 'spei-mod' : 'spei-dry';
     const speiLabel = object.spei == null ? 'N/A' : object.spei.toFixed(3);
 
-    let html = `<strong>${currentCropName}</strong><br>`;
+    let html = `<strong>${currentCropName}</strong>`;
 
     if ((currentView === 'quad' || currentView === 'tech-biv') && object.i_prod != null) {
         const iPct = object.production > 0 ? (object.i_prod / object.production * 100).toFixed(0) : 0;
         const rPct = object.production > 0 ? (object.r_prod / object.production * 100).toFixed(0) : 0;
-        html += `Irrigated: <span class="val">${formatMT(object.i_prod)}</span> (${iPct}%)<br>`;
-        html += `Rainfed: <span class="val">${formatMT(object.r_prod)}</span> (${rPct}%)<br>`;
-        html += `Total: <span class="val">${formatMT(object.production)}</span><br>`;
+        html += `<div class="tt-row"><span class="tt-lbl">Irrigated</span><span class="tt-val">${formatMT(object.i_prod)} (${iPct}%)</span></div>`;
+        html += `<div class="tt-row"><span class="tt-lbl">Rainfed</span><span class="tt-val">${formatMT(object.r_prod)} (${rPct}%)</span></div>`;
+        html += `<div class="tt-row"><span class="tt-lbl">Total</span><span class="tt-val">${formatMT(object.production)}</span></div>`;
     } else {
-        html += `Production: <span class="val">${formatMT(object.production)}</span><br>`;
+        html += `<div class="tt-row"><span class="tt-lbl">Production</span><span class="tt-val">${formatMT(object.production)}</span></div>`;
     }
 
-    html += `Harvested: <span class="val">${formatHA(object.harv_area_ha)}</span><br>`;
-    html += `SPEI-12: <span class="spei-val ${speiClass}">${speiLabel}</span>`;
+    html += `<div class="tt-row"><span class="tt-lbl">Harvested</span><span class="tt-val">${formatHA(object.harv_area_ha)}</span></div>`;
+    html += `<div class="tt-row"><span class="tt-lbl">SPEI-12</span><span class="spei-val ${speiClass}">${speiLabel}</span></div>`;
 
     tooltip.innerHTML = html;
     tooltip.style.display = 'block';
