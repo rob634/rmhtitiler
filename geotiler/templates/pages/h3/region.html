@@ -519,14 +519,17 @@ function productionColor(prodBin) {
 }
 
 function techBivColor(prodBin, rainfedPct) {
-    // Piecewise: green → yellow (0–0.5) → blue (0.5–1.0)
-    if (rainfedPct <= 0.5) {
-        const t = rainfedPct * 2;
-        return [...lerpColor(TECH_BIV.irrig[prodBin], TECH_BIV.mixed[prodBin], t), 200];
-    } else {
-        const t = (rainfedPct - 0.5) * 2;
-        return [...lerpColor(TECH_BIV.mixed[prodBin], TECH_BIV.rain[prodBin], t), 200];
-    }
+    // Quadratic Bezier: smooth curve through green → yellow → blue
+    // Yellow influence distributed across range (no hard band at 0.5)
+    const t = rainfedPct;
+    const w0 = (1-t)*(1-t), w1 = 2*t*(1-t), w2 = t*t;
+    const g = TECH_BIV.irrig[prodBin], y = TECH_BIV.mixed[prodBin], b = TECH_BIV.rain[prodBin];
+    return [
+        Math.round(w0*g[0] + w1*y[0] + w2*b[0]),
+        Math.round(w0*g[1] + w1*y[1] + w2*b[1]),
+        Math.round(w0*g[2] + w1*y[2] + w2*b[2]),
+        200,
+    ];
 }
 
 function bivariateColor(prodBin, spei) {
@@ -722,14 +725,15 @@ function buildLegend() {
             </div>`;
         const grid = document.getElementById('h3-legend-grid');
         for (let row = 4; row >= 0; row--) {
-            const rfPct = row / 4; // 0 = irrigated (bottom), 1 = rainfed (top)
+            const t = row / 4; // 0 = irrigated (bottom), 1 = rainfed (top)
+            const w0 = (1-t)*(1-t), w1 = 2*t*(1-t), w2 = t*t;
             for (let col = 0; col < 5; col++) {
-                let rgb;
-                if (rfPct <= 0.5) {
-                    rgb = lerpColor(TECH_BIV.irrig[col], TECH_BIV.mixed[col], rfPct * 2);
-                } else {
-                    rgb = lerpColor(TECH_BIV.mixed[col], TECH_BIV.rain[col], (rfPct - 0.5) * 2);
-                }
+                const g = TECH_BIV.irrig[col], y = TECH_BIV.mixed[col], b = TECH_BIV.rain[col];
+                const rgb = [
+                    Math.round(w0*g[0] + w1*y[0] + w2*b[0]),
+                    Math.round(w0*g[1] + w1*y[1] + w2*b[1]),
+                    Math.round(w0*g[2] + w1*y[2] + w2*b[2]),
+                ];
                 const cell = document.createElement('div');
                 cell.className = 'h3-legend-cell';
                 cell.style.background = `rgb(${rgb[0]},${rgb[1]},${rgb[2]})`;
