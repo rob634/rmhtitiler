@@ -164,7 +164,9 @@ body { margin: 0; }
     <div class="h3-cg">
         <label>View</label>
         <div class="h3-view-tabs">
-            <button class="h3-view-tab active" data-view="bivariate">SPEI Bivariate</button>
+            <button class="h3-view-tab active" data-view="production">Production</button>
+            <button class="h3-view-tab" data-view="tech-biv">Irrig vs Rain</button>
+            <button class="h3-view-tab" data-view="bivariate">SPEI Bivariate</button>
             <button class="h3-view-tab" data-view="quad">Tech Split</button>
         </div>
     </div>
@@ -297,6 +299,9 @@ const PALETTES = {
     },
 };
 
+// Production-only ramp (amber/gold on dark basemap)
+const PROD_RAMP = [[235,230,210], [215,195,120], [190,160,45], [160,120,10], [125,85,0]];
+
 // Quad-view: 4 fixed ramps (green / blue / orange / red)
 const QUAD = {
     safe_irrig:    [[210,238,210], [150,210,150], [80,178,80],  [25,145,40],  [0,105,20]],
@@ -306,7 +311,7 @@ const QUAD = {
 };
 
 let currentPalette = 'fire';
-let currentView = 'bivariate';
+let currentView = 'production';
 
 const SPEI_WET = 0;
 const SPEI_DRY = -2.5;
@@ -502,6 +507,14 @@ function lerpColor(c1, c2, t) {
     ];
 }
 
+function productionColor(prodBin) {
+    return [...PROD_RAMP[prodBin], 200];
+}
+
+function techBivColor(prodBin, rainfedPct) {
+    return [...lerpColor(QUAD.safe_irrig[prodBin], QUAD.safe_rain[prodBin], rainfedPct), 200];
+}
+
 function bivariateColor(prodBin, spei) {
     const pal = PALETTES[currentPalette];
     const t = speiToT(spei);
@@ -550,7 +563,11 @@ function buildLayers(data) {
             const prodBin = classifyLog(d.production, breaks);
 
             let color;
-            if (currentView === 'quad') {
+            if (currentView === 'production') {
+                color = productionColor(prodBin);
+            } else if (currentView === 'tech-biv') {
+                color = techBivColor(prodBin, d.rainfed_pct || 0);
+            } else if (currentView === 'quad') {
                 const isDrought = d.spei != null && d.spei < DROUGHT_SPEI_THRESHOLD;
                 color = quadColor(prodBin, d.rainfed_pct || 0, isDrought);
             } else {
@@ -604,7 +621,7 @@ function onHover({object, x, y}) {
 
     let html = `<strong>${currentCropName}</strong><br>`;
 
-    if (currentView === 'quad' && object.i_prod != null) {
+    if ((currentView === 'quad' || currentView === 'tech-biv') && object.i_prod != null) {
         const iPct = object.production > 0 ? (object.i_prod / object.production * 100).toFixed(0) : 0;
         const rPct = object.production > 0 ? (object.r_prod / object.production * 100).toFixed(0) : 0;
         html += `Irrigated: <span class="val">${formatMT(object.i_prod)}</span> (${iPct}%)<br>`;
@@ -665,7 +682,47 @@ function updateStats(data) {
 function buildLegend() {
     const container = document.getElementById('h3-legend');
 
-    if (currentView === 'quad') {
+    if (currentView === 'production') {
+        container.innerHTML = `
+            <div class="h3-legend-title">Production Intensity</div>
+            <div class="h3-legend-grid-wrap">
+                <div class="h3-quad-ramp" id="prod-ramp"></div>
+                <div class="h3-quad-prod-labels"><span>Low</span><span>Production &rarr;</span><span>High</span></div>
+            </div>`;
+        const el = document.getElementById('prod-ramp');
+        for (const [r, g, b] of PROD_RAMP) {
+            const cell = document.createElement('div');
+            cell.className = 'h3-quad-ramp-cell';
+            cell.style.background = `rgb(${r},${g},${b})`;
+            el.appendChild(cell);
+        }
+    } else if (currentView === 'tech-biv') {
+        container.innerHTML = `
+            <div class="h3-legend-title">Production &times; Irrigated vs Rainfed</div>
+            <div class="h3-quad-legend">
+                <div class="h3-quad-ramps">
+                    <div class="h3-quad-ramp-wrap">
+                        <div class="h3-quad-ramp" id="tb-irrig"></div>
+                        <div class="h3-quad-ramp-label">Irrigated</div>
+                    </div>
+                    <div class="h3-quad-ramp-wrap">
+                        <div class="h3-quad-ramp" id="tb-rain"></div>
+                        <div class="h3-quad-ramp-label">Rainfed</div>
+                    </div>
+                </div>
+                <div class="h3-quad-prod-labels"><span>Low</span><span>Production &rarr;</span><span>High</span></div>
+            </div>`;
+        const ramps = [['tb-irrig', QUAD.safe_irrig], ['tb-rain', QUAD.safe_rain]];
+        for (const [id, ramp] of ramps) {
+            const el = document.getElementById(id);
+            for (const [r, g, b] of ramp) {
+                const cell = document.createElement('div');
+                cell.className = 'h3-quad-ramp-cell';
+                cell.style.background = `rgb(${r},${g},${b})`;
+                el.appendChild(cell);
+            }
+        }
+    } else if (currentView === 'quad') {
         const thr = DROUGHT_SPEI_THRESHOLD;
         container.innerHTML = `
             <div class="h3-legend-title">Production &times; Technology &times; Drought</div>
@@ -768,7 +825,7 @@ function populateControls() {
         DROUGHT_SPEI_THRESHOLD = parseFloat(e.target.value);
         buildLegend();
         if (currentData.length) {
-            if (currentView === 'quad') buildLayers(currentData); // threshold affects rendering
+            if (currentView === 'quad') buildLayers(currentData);
             updateStats(currentData);
         }
     });
@@ -787,8 +844,9 @@ function populateControls() {
     }
 
     function updateControlVisibility() {
-        document.getElementById('cg-tech').classList.toggle('dimmed', currentView === 'quad');
-        document.getElementById('cg-palette').classList.toggle('dimmed', currentView === 'quad');
+        const dualTech = currentView === 'quad' || currentView === 'tech-biv';
+        document.getElementById('cg-tech').classList.toggle('dimmed', dualTech);
+        document.getElementById('cg-palette').classList.toggle('dimmed', currentView !== 'bivariate');
     }
     updateControlVisibility();
 
@@ -820,7 +878,7 @@ async function refresh() {
     try {
         const t0 = performance.now();
         let result;
-        if (currentView === 'quad') {
+        if (currentView === 'quad' || currentView === 'tech-biv') {
             result = await queryBothTechs(crop, scenario);
         } else {
             const tech = document.getElementById('sel-tech').value;
