@@ -97,13 +97,13 @@ async def api_info():
             "stac_search": "/stac/search",
         },
         "config": {
-            "local_mode": settings.local_mode,
-            "azure_auth": settings.use_azure_auth,
-            "tipg_enabled": settings.enable_tipg,
-            "tipg_catalog_ttl_enabled": settings.tipg_catalog_ttl_enabled,
-            "tipg_catalog_ttl": settings.tipg_catalog_ttl if settings.tipg_catalog_ttl_enabled else None,
-            "stac_api_enabled": settings.enable_stac_api,
-            "planetary_computer_enabled": settings.enable_planetary_computer,
+            "auth_use_cli": settings.auth_use_cli,
+            "enable_storage_auth": settings.enable_storage_auth,
+            "enable_tipg": settings.enable_tipg,
+            "enable_tipg_catalog_ttl": settings.enable_tipg_catalog_ttl,
+            "tipg_catalog_ttl_sec": settings.tipg_catalog_ttl_sec if settings.enable_tipg_catalog_ttl else None,
+            "enable_stac_api": settings.enable_stac_api,
+            "enable_planetary_computer": settings.enable_planetary_computer,
         },
     }
 
@@ -113,8 +113,8 @@ async def refresh_collections(request: Request):
     """
     Webhook to refresh TiPG collection catalog.
 
-    **Authentication**: Requires Azure AD Bearer token when ADMIN_AUTH_ENABLED=true.
-    The calling app's Managed Identity client ID must be in ADMIN_ALLOWED_APP_IDS.
+    **Authentication**: Requires Azure AD Bearer token when GEOTILER_ENABLE_ADMIN_AUTH=true.
+    The calling app's Managed Identity client ID must be in GEOTILER_ADMIN_ALLOWED_APP_IDS.
 
     Call this endpoint after ETL pipelines create new PostGIS tables
     to make them immediately visible in TiPG without waiting for TTL
@@ -133,7 +133,7 @@ async def refresh_collections(request: Request):
         return {
             "status": "error",
             "error": "TiPG is not enabled",
-            "hint": "Set ENABLE_TIPG=true to enable vector tile support",
+            "hint": "Set GEOTILER_ENABLE_TIPG=true to enable vector tile support",
         }
 
     # Import here to avoid circular imports

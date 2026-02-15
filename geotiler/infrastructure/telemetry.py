@@ -56,8 +56,8 @@ def configure_azure_monitor() -> bool:
     try:
         from azure.monitor.opentelemetry import configure_azure_monitor as _configure
 
-        app_name = os.environ.get("APP_NAME", "geotiler")
-        environment = os.environ.get("ENVIRONMENT", "dev")
+        app_name = os.environ.get("GEOTILER_OBS_SERVICE_NAME", "geotiler")
+        environment = os.environ.get("GEOTILER_OBS_ENVIRONMENT", "dev")
 
         _configure(
             connection_string=connection_string,

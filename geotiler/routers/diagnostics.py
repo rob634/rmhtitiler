@@ -97,7 +97,7 @@ async def tipg_diagnostics(request: Request):
     diagnostics = {
         "status": "ok",
         "configured_schemas": settings.tipg_schema_list,
-        "expected_geometry_column": settings.ogc_geometry_column,
+        "expected_geometry_column": settings.tipg_geometry_column,
         "startup": startup_state.to_dict(),
         "connection": {},
         "postgis": {},
@@ -440,7 +440,7 @@ async def _diagnose_schema(pool, schema: str, issues: list) -> dict:
         schema_diag["all_tables_error"] = all_tables_err
 
     # Build detailed table list with geometry column match status
-    expected_col = settings.ogc_geometry_column
+    expected_col = settings.tipg_geometry_column
     all_tables_detail = []
 
     for row in all_tables:

@@ -55,7 +55,7 @@ def create_stac_api(app) -> StacApi:
     """
     global _stac_api
 
-    logger.info(f"Creating STAC API: prefix={settings.stac_router_prefix}")
+    logger.info(f"Creating STAC API: prefix={settings.stac_prefix}")
 
     # Create request models with extensions
     extensions_for_models = [FilterExtension(), FieldsExtension(), SortExtension()]
@@ -76,7 +76,7 @@ def create_stac_api(app) -> StacApi:
 
     # Create router with prefix so routes are mounted at /stac/*
     # StacApi derives router_prefix from router.prefix during __attrs_post_init__
-    stac_router = APIRouter(prefix=settings.stac_router_prefix)
+    stac_router = APIRouter(prefix=settings.stac_prefix)
 
     # Create STAC API settings with geotiler branding
     stac_settings = PgstacSettings(

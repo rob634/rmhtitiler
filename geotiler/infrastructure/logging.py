@@ -85,9 +85,9 @@ def get_global_log_context() -> Dict[str, str]:
 
     if _GLOBAL_LOG_CONTEXT is None:
         _GLOBAL_LOG_CONTEXT = {
-            "app_name": os.environ.get("APP_NAME", "geotiler"),
+            "app_name": os.environ.get("GEOTILER_OBS_SERVICE_NAME", "geotiler"),
             "app_instance": os.environ.get("WEBSITE_INSTANCE_ID", "local")[:16],
-            "environment": os.environ.get("ENVIRONMENT", "dev"),
+            "environment": os.environ.get("GEOTILER_OBS_ENVIRONMENT", "dev"),
         }
 
     return _GLOBAL_LOG_CONTEXT

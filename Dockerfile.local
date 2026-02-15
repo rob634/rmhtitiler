@@ -21,14 +21,13 @@ WORKDIR /app
 COPY geotiler /app/geotiler
 
 # Development settings - uses Azure CLI credentials
-ENV LOCAL_MODE=true
-ENV USE_AZURE_AUTH=true
-ENV ENABLE_PLANETARY_COMPUTER=true
+ENV GEOTILER_AUTH_USE_CLI=true
+ENV GEOTILER_ENABLE_STORAGE_AUTH=true
+ENV GEOTILER_ENABLE_PLANETARY_COMPUTER=true
 
 # Observability settings for local development
-# Set OBSERVABILITY_MODE=true to enable request timing logs
-ENV OBSERVABILITY_MODE=false
-ENV SLOW_REQUEST_THRESHOLD_MS=2000
+ENV GEOTILER_ENABLE_OBSERVABILITY=false
+ENV GEOTILER_OBS_SLOW_THRESHOLD_MS=2000
 
 # Expose port
 EXPOSE 8000

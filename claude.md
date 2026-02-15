@@ -91,23 +91,25 @@ grep "__version__" geotiler/__init__.py
 
 See [docs/WIKI.md](docs/WIKI.md) for complete list. Key variables:
 
+All app vars use `GEOTILER_COMPONENT_SETTING` convention with units in names.
+
 | Variable | Description |
 |----------|-------------|
-| `USE_AZURE_AUTH` | Enable OAuth for blob storage |
-| `LOCAL_MODE` | Use Azure CLI instead of Managed Identity |
-| `POSTGRES_HOST` | PostgreSQL server hostname |
-| `POSTGRES_DB` | PostgreSQL database name |
-| `POSTGRES_USER` | PostgreSQL username |
-| `POSTGRES_AUTH_MODE` | Auth mode: `password`, `key_vault`, or `managed_identity` |
-| `ENABLE_PLANETARY_COMPUTER` | Enable PC credential provider for public data |
-| `ENABLE_TIPG` | Enable TiPG OGC Features + Vector Tiles (default: true) |
-| `TIPG_SCHEMAS` | Comma-separated PostGIS schemas to expose (default: "geo") |
-| `TIPG_ROUTER_PREFIX` | URL prefix for TiPG routes (default: "/vector") |
-| `TIPG_CATALOG_TTL_ENABLED` | Enable automatic catalog refresh (default: false) |
-| `TIPG_CATALOG_TTL` | Catalog refresh interval in seconds when TTL enabled (default: 60) |
-| `ADMIN_AUTH_ENABLED` | Enable Azure AD auth for /admin/* endpoints (default: false) |
-| `ADMIN_ALLOWED_APP_IDS` | Comma-separated MI client IDs allowed to call /admin/* |
-| `AZURE_TENANT_ID` | Azure AD tenant ID for token validation |
+| `GEOTILER_ENABLE_STORAGE_AUTH` | Enable OAuth for blob storage |
+| `GEOTILER_AUTH_USE_CLI` | Use Azure CLI instead of Managed Identity |
+| `GEOTILER_PG_HOST` | PostgreSQL server hostname |
+| `GEOTILER_PG_DB` | PostgreSQL database name |
+| `GEOTILER_PG_USER` | PostgreSQL username |
+| `GEOTILER_PG_AUTH_MODE` | Auth mode: `password`, `key_vault`, or `managed_identity` |
+| `GEOTILER_ENABLE_PLANETARY_COMPUTER` | Enable PC credential provider for public data |
+| `GEOTILER_ENABLE_TIPG` | Enable TiPG OGC Features + Vector Tiles (default: true) |
+| `GEOTILER_TIPG_SCHEMAS` | Comma-separated PostGIS schemas to expose (default: "geo") |
+| `GEOTILER_TIPG_PREFIX` | URL prefix for TiPG routes (default: "/vector") |
+| `GEOTILER_ENABLE_TIPG_CATALOG_TTL` | Enable automatic catalog refresh (default: false) |
+| `GEOTILER_TIPG_CATALOG_TTL_SEC` | Catalog refresh interval in seconds (default: 60) |
+| `GEOTILER_ENABLE_ADMIN_AUTH` | Enable Azure AD auth for /admin/* endpoints (default: false) |
+| `GEOTILER_ADMIN_ALLOWED_APP_IDS` | Comma-separated MI client IDs allowed to call /admin/* |
+| `AZURE_TENANT_ID` | Azure AD tenant ID for token validation (third-party, not prefixed) |
 
 ---
 

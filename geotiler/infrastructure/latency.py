@@ -13,15 +13,15 @@ to diagnose slow requests and identify whether delays are from network I/O
 
 Key Design:
 -----------
-- Zero overhead when OBSERVABILITY_MODE=false (early return, no timing)
+- Zero overhead when GEOTILER_ENABLE_OBSERVABILITY=false (early return, no timing)
 - Full timing + structured logging when enabled
 - Slow operation alerting (configurable threshold)
 - Designed for Application Insights Kusto queries
 
 Environment Variables:
 ----------------------
-OBSERVABILITY_MODE: Enable latency tracking (default: false)
-SLOW_REQUEST_THRESHOLD_MS: Threshold for slow warnings (default: 2000)
+GEOTILER_ENABLE_OBSERVABILITY: Enable latency tracking (default: false)
+GEOTILER_OBS_SLOW_THRESHOLD_MS: Threshold for slow warnings (default: 2000)
 
 Usage:
 ------
@@ -75,20 +75,20 @@ from typing import Any, Callable, Dict, Optional
 logger = logging.getLogger(__name__)
 
 # Slow operation threshold (milliseconds) - configurable via env var
-SLOW_THRESHOLD_MS = int(os.environ.get("SLOW_REQUEST_THRESHOLD_MS", "2000"))
+SLOW_THRESHOLD_MS = int(os.environ.get("GEOTILER_OBS_SLOW_THRESHOLD_MS", "2000"))
 
 
 def _is_observability_enabled() -> bool:
     """
     Check if observability mode is enabled.
 
-    Checks OBSERVABILITY_MODE env var. When false, all latency tracking
+    Checks GEOTILER_ENABLE_OBSERVABILITY env var. When false, all latency tracking
     has zero overhead (early return before any timing).
 
     Returns:
         bool: True if observability features should be active
     """
-    val = os.environ.get("OBSERVABILITY_MODE", "").lower()
+    val = os.environ.get("GEOTILER_ENABLE_OBSERVABILITY", "").lower()
     return val in ("true", "1", "yes")
 
 
@@ -96,14 +96,14 @@ def track_latency(operation_name: str, include_args: bool = False):
     """
     Decorator to track latency for tile rendering and service operations.
 
-    Zero overhead when OBSERVABILITY_MODE=false - the original function
+    Zero overhead when GEOTILER_ENABLE_OBSERVABILITY=false - the original function
     is called directly without any timing or logging.
 
     When enabled, logs structured JSON with:
     - operation: Operation name for filtering
     - duration_ms: Execution time in milliseconds
     - status: 'success' or 'error'
-    - slow: True if duration > SLOW_REQUEST_THRESHOLD_MS
+    - slow: True if duration > GEOTILER_OBS_SLOW_THRESHOLD_MS
 
     Args:
         operation_name: Identifier for this operation (e.g., 'cog.render_tile')

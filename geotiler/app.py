@@ -63,7 +63,7 @@ async def lifespan(app: FastAPI):
     # =========================================================================
     # STARTUP
     # =========================================================================
-    logger.info(f"Starting geotiler v{__version__} (local_mode={settings.local_mode}, storage_auth={settings.use_azure_auth}, pg_auth={settings.postgres_auth_mode})")
+    logger.info(f"Starting geotiler v{__version__} (auth_use_cli={settings.auth_use_cli}, storage_auth={settings.enable_storage_auth}, pg_auth={settings.pg_auth_mode})")
 
     # Initialize database connection (titiler-pgstac)
     await _initialize_database(app)
@@ -76,7 +76,7 @@ async def lifespan(app: FastAPI):
     initialize_storage_auth()
 
     # Start background token refresh
-    if settings.use_azure_auth:
+    if settings.enable_storage_auth:
         app.state.refresh_task = start_token_refresh(app)
 
     # Initialize H3 DuckDB (server-side parquet queries)
@@ -115,9 +115,9 @@ async def _initialize_database(app: FastAPI) -> None:
     if not settings.has_postgres_config:
         logger.warning("=" * 60)
         logger.warning("Missing PostgreSQL environment variables!")
-        logger.warning(f"  POSTGRES_HOST: {settings.postgres_host or '(not set)'}")
-        logger.warning(f"  POSTGRES_DB: {settings.postgres_db or '(not set)'}")
-        logger.warning(f"  POSTGRES_USER: {settings.postgres_user or '(not set)'}")
+        logger.warning(f"  GEOTILER_PG_HOST: {settings.pg_host or '(not set)'}")
+        logger.warning(f"  GEOTILER_PG_DB: {settings.pg_db or '(not set)'}")
+        logger.warning(f"  GEOTILER_PG_USER: {settings.pg_user or '(not set)'}")
         logger.warning("")
         logger.warning("App will start but database features will not work.")
         logger.warning("=" * 60)
@@ -126,7 +126,7 @@ async def _initialize_database(app: FastAPI) -> None:
 
     # Get credential based on auth mode
     try:
-        logger.info(f"PostgreSQL Authentication Mode: {settings.postgres_auth_mode}")
+        logger.info(f"PostgreSQL Authentication Mode: {settings.pg_auth_mode}")
         credential = get_postgres_credential()
 
         if not credential:
@@ -145,9 +145,9 @@ async def _initialize_database(app: FastAPI) -> None:
     database_url = build_database_url(credential)
 
     logger.info(f"Connecting to PostgreSQL...")
-    logger.info(f"  Host: {settings.postgres_host}")
-    logger.info(f"  Database: {settings.postgres_db}")
-    logger.info(f"  User: {settings.postgres_user}")
+    logger.info(f"  Host: {settings.pg_host}")
+    logger.info(f"  Database: {settings.pg_db}")
+    logger.info(f"  User: {settings.pg_user}")
 
     # Connect to database
     try:
@@ -299,13 +299,13 @@ def create_app() -> FastAPI:
         tipg_endpoints = vector.create_tipg_endpoints()
         app.include_router(
             tipg_endpoints.router,
-            prefix=settings.tipg_router_prefix,
+            prefix=settings.tipg_prefix,
             tags=["OGC Vector (TiPG)"],
         )
-        logger.info(f"TiPG router mounted at {settings.tipg_router_prefix}")
+        logger.info(f"TiPG router mounted at {settings.tipg_prefix}")
 
         # Optional: CatalogUpdateMiddleware for automatic catalog refresh
-        if settings.tipg_catalog_ttl_enabled:
+        if settings.enable_tipg_catalog_ttl:
             from tipg.middleware import CatalogUpdateMiddleware
             from tipg.collections import register_collection_catalog
             from tipg.settings import DatabaseSettings as TiPGDatabaseSettings
@@ -314,11 +314,11 @@ def create_app() -> FastAPI:
             app.add_middleware(
                 CatalogUpdateMiddleware,
                 func=register_collection_catalog,
-                ttl=settings.tipg_catalog_ttl,
+                ttl=settings.tipg_catalog_ttl_sec,
                 db_settings=db_settings,
             )
             logger.info(
-                f"TiPG CatalogUpdateMiddleware enabled: TTL={settings.tipg_catalog_ttl}s"
+                f"TiPG CatalogUpdateMiddleware enabled: TTL={settings.tipg_catalog_ttl_sec}s"
             )
 
         # TiPG diagnostics endpoint (for debugging table discovery)
@@ -330,13 +330,13 @@ def create_app() -> FastAPI:
         try:
             # StacApi adds routes directly to app with router_prefix
             stac.create_stac_api(app)
-            logger.info(f"STAC API routes added at {settings.stac_router_prefix}")
+            logger.info(f"STAC API routes added at {settings.stac_prefix}")
         except Exception as e:
             logger.error(f"Failed to create STAC API: {e}")
             logger.warning("STAC API will not be available")
     elif settings.enable_stac_api and not settings.enable_tipg:
         logger.warning("STAC API requires TiPG to be enabled (shared pool)")
-        logger.warning("Set ENABLE_TIPG=true to enable STAC API")
+        logger.warning("Set GEOTILER_ENABLE_TIPG=true to enable STAC API")
 
     # Landing pages for TiTiler components
     app.include_router(cog_landing.router, tags=["Landing Pages"])

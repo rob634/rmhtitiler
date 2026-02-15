@@ -12,9 +12,9 @@ Usage:
         ...
 
 Configuration:
-    ADMIN_AUTH_ENABLED=true         # Enable auth (default: false for local dev)
-    ADMIN_ALLOWED_APP_IDS=<id1>,<id2>  # Comma-separated MI client IDs
-    AZURE_TENANT_ID=<tenant-id>     # Your Azure AD tenant
+    GEOTILER_ENABLE_ADMIN_AUTH=true              # Enable auth (default: false for local dev)
+    GEOTILER_ADMIN_ALLOWED_APP_IDS=<id1>,<id2>  # Comma-separated MI client IDs
+    AZURE_TENANT_ID=<tenant-id>                 # Your Azure AD tenant
 """
 
 import logging
@@ -152,7 +152,7 @@ async def require_admin_auth(request: Request) -> Optional[dict]:
     """
     FastAPI dependency that validates Azure AD tokens for admin endpoints.
 
-    When ADMIN_AUTH_ENABLED=false, this is a no-op (allows all requests).
+    When GEOTILER_ENABLE_ADMIN_AUTH=false, this is a no-op (allows all requests).
     When enabled, validates the Bearer token and checks the caller's app ID.
 
     Args:
@@ -165,7 +165,7 @@ async def require_admin_auth(request: Request) -> Optional[dict]:
         HTTPException: 401 if token missing/invalid, 403 if app not authorized
     """
     # If auth is disabled, allow all requests (local dev mode)
-    if not settings.admin_auth_enabled:
+    if not settings.enable_admin_auth:
         logger.debug("Admin auth disabled, allowing request")
         return None
 
@@ -206,10 +206,10 @@ async def require_admin_auth(request: Request) -> Optional[dict]:
     # Check if this app is allowed
     allowed_apps = settings.admin_allowed_app_id_list
     if not allowed_apps:
-        logger.warning("Admin auth: ADMIN_ALLOWED_APP_IDS not configured")
+        logger.warning("Admin auth: GEOTILER_ADMIN_ALLOWED_APP_IDS not configured")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="Admin auth enabled but ADMIN_ALLOWED_APP_IDS not configured",
+            detail="Admin auth enabled but GEOTILER_ADMIN_ALLOWED_APP_IDS not configured",
         )
 
     if app_id not in allowed_apps:

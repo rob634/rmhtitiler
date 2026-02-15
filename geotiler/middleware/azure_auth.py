@@ -48,7 +48,7 @@ class AzureAuthMiddleware(BaseHTTPMiddleware):
         if path.startswith(_SKIP_AUTH_PREFIXES):
             return await call_next(request)
 
-        if settings.use_azure_auth and settings.azure_storage_account:
+        if settings.enable_storage_auth and settings.storage_account:
             try:
                 # Get OAuth token (uses cache if valid)
                 # Runs in thread pool to avoid blocking event loop during token refresh

@@ -87,14 +87,14 @@ async def readiness(request: Request, response: Response):
         issues.append(f"database: {db_error}")
 
     # Check 2: Storage OAuth token (if Azure auth enabled)
-    if settings.use_azure_auth:
+    if settings.enable_storage_auth:
         token_ok, token_issue = _check_token_ready(storage_token_cache, "storage_oauth")
         if not token_ok:
             ready = False
             issues.append(token_issue)
 
     # Check 3: PostgreSQL OAuth token (if using managed identity)
-    if settings.postgres_auth_mode == "managed_identity":
+    if settings.pg_auth_mode == "managed_identity":
         pg_ok, pg_issue = _check_token_ready(postgres_token_cache, "postgres_oauth")
         if not pg_ok:
             ready = False
@@ -147,8 +147,8 @@ async def health(request: Request, response: Response):
 
     if ping_ms is not None:
         dependencies["database"]["ping_time_ms"] = ping_ms
-    if settings.postgres_host:
-        dependencies["database"]["host"] = settings.postgres_host
+    if settings.pg_host:
+        dependencies["database"]["host"] = settings.pg_host
     if db_error:
         dependencies["database"]["error"] = db_error
         issues.append(f"Database ping failed: {db_error}")
@@ -167,7 +167,7 @@ async def health(request: Request, response: Response):
 
     # Storage OAuth token
     storage_oauth_ok = False
-    if settings.use_azure_auth:
+    if settings.enable_storage_auth:
         token_status = storage_token_cache.get_status()
         if token_status["has_token"]:
             ttl = token_status["ttl_seconds"]
@@ -175,7 +175,7 @@ async def health(request: Request, response: Response):
             dependencies["storage_oauth"] = {
                 "status": "ok" if ttl > 300 else "warning",
                 "expires_in_seconds": ttl,
-                "storage_account": settings.azure_storage_account,
+                "storage_account": settings.storage_account,
                 "required_by": ["cog", "xarray"],
             }
             if ttl <= 300:
@@ -183,7 +183,7 @@ async def health(request: Request, response: Response):
         else:
             dependencies["storage_oauth"] = {
                 "status": "fail",
-                "storage_account": settings.azure_storage_account,
+                "storage_account": settings.storage_account,
                 "required_by": ["cog", "xarray"],
             }
             issues.append("Storage OAuth token not initialized")
@@ -196,7 +196,7 @@ async def health(request: Request, response: Response):
         }
 
     # PostgreSQL OAuth token (managed_identity mode only)
-    if settings.postgres_auth_mode == "managed_identity":
+    if settings.pg_auth_mode == "managed_identity":
         pg_status = postgres_token_cache.get_status()
         if pg_status["has_token"]:
             ttl = pg_status["ttl_seconds"]
@@ -220,7 +220,7 @@ async def health(request: Request, response: Response):
 
     # COG Tiles (TiTiler core)
     cog_available = True
-    if settings.use_azure_auth:
+    if settings.enable_storage_auth:
         cog_available = storage_oauth_ok
 
     services["cog"] = _build_service_status(
@@ -232,7 +232,7 @@ async def health(request: Request, response: Response):
 
     # XArray (Zarr/NetCDF)
     xarray_available = True
-    if settings.use_azure_auth:
+    if settings.enable_storage_auth:
         xarray_available = storage_oauth_ok
 
     services["xarray"] = _build_service_status(
@@ -279,7 +279,7 @@ async def health(request: Request, response: Response):
                 details={
                     "collections_discovered": collection_count,
                     "schemas": settings.tipg_schema_list,
-                    "router_prefix": settings.tipg_router_prefix,
+                    "router_prefix": settings.tipg_prefix,
                 },
             )
         else:
@@ -290,7 +290,7 @@ async def health(request: Request, response: Response):
                 endpoints=[],
                 details={
                     "schemas": settings.tipg_schema_list,
-                    "router_prefix": settings.tipg_router_prefix,
+                    "router_prefix": settings.tipg_prefix,
                 },
             )
             issues.append("TiPG pool not initialized - vector endpoints will fail")
@@ -300,7 +300,7 @@ async def health(request: Request, response: Response):
             available=False,
             description="OGC Features API + Vector Tiles (MVT)",
             endpoints=[],
-            disabled_reason="ENABLE_TIPG=false",
+            disabled_reason="GEOTILER_ENABLE_TIPG=false",
         )
 
     # H3 DuckDB (server-side query engine)
@@ -329,7 +329,7 @@ async def health(request: Request, response: Response):
             available=False,
             description="H3 server-side DuckDB query engine",
             endpoints=[],
-            disabled_reason="ENABLE_H3_DUCKDB=false",
+            disabled_reason="GEOTILER_ENABLE_H3_DUCKDB=false",
         )
 
     # STAC API
@@ -347,7 +347,7 @@ async def health(request: Request, response: Response):
                     "/stac/search",
                 ],
                 details={
-                    "router_prefix": settings.stac_router_prefix,
+                    "router_prefix": settings.stac_prefix,
                     "pool_shared_with": "tipg",
                 },
             )
@@ -357,9 +357,9 @@ async def health(request: Request, response: Response):
                 available=False,
                 description="STAC catalog browsing and search",
                 endpoints=[],
-                disabled_reason="Requires ENABLE_TIPG=true (shared database pool)",
+                disabled_reason="Requires GEOTILER_ENABLE_TIPG=true (shared database pool)",
             )
-            issues.append("STAC API requires ENABLE_TIPG=true")
+            issues.append("STAC API requires GEOTILER_ENABLE_TIPG=true")
         else:
             services["stac_api"] = _build_service_status(
                 name="stac_api",
@@ -374,14 +374,14 @@ async def health(request: Request, response: Response):
             available=False,
             description="STAC catalog browsing and search",
             endpoints=[],
-            disabled_reason="ENABLE_STAC_API=false",
+            disabled_reason="GEOTILER_ENABLE_STAC_API=false",
         )
 
     # =========================================================================
     # OVERALL STATUS
     # =========================================================================
     has_critical_failure = not db_ok or (
-        settings.use_azure_auth and not storage_token_cache.is_valid
+        settings.enable_storage_auth and not storage_token_cache.is_valid
     )
 
     if not issues:
@@ -405,9 +405,9 @@ async def health(request: Request, response: Response):
         "hardware": _get_hardware_info(),
         "issues": issues if issues else None,
         "config": {
-            "postgres_auth_mode": settings.postgres_auth_mode,
-            "azure_auth_enabled": settings.use_azure_auth,
-            "local_mode": settings.local_mode,
+            "pg_auth_mode": settings.pg_auth_mode,
+            "enable_storage_auth": settings.enable_storage_auth,
+            "auth_use_cli": settings.auth_use_cli,
             "tipg_enabled": settings.enable_tipg,
             "tipg_schemas": settings.tipg_schema_list if settings.enable_tipg else None,
             "stac_api_enabled": settings.enable_stac_api,
@@ -455,7 +455,7 @@ def _build_service_status(
         description: Human-readable description
         endpoints: List of endpoint patterns
         details: Optional service-specific details
-        disabled_reason: Reason if service is disabled (e.g., "ENABLE_TIPG=false")
+        disabled_reason: Reason if service is disabled (e.g., "GEOTILER_ENABLE_TIPG=false")
 
     Returns:
         Service status dict with consistent structure

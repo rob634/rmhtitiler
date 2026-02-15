@@ -39,26 +39,26 @@ services:
 
     environment:
       # PostgreSQL connection (uses password mode for local dev)
-      POSTGRES_HOST: database
-      POSTGRES_PORT: 5432
-      POSTGRES_DB: postgis
-      POSTGRES_USER: postgres
-      POSTGRES_PASSWORD: postgres
-      POSTGRES_AUTH_MODE: password
+      GEOTILER_PG_HOST: database
+      GEOTILER_PG_PORT: 5432
+      GEOTILER_PG_DB: postgis
+      GEOTILER_PG_USER: postgres
+      GEOTILER_PG_PASSWORD: postgres
+      GEOTILER_PG_AUTH_MODE: password
 
       # Azure Storage authentication (uses Azure CLI credentials)
-      USE_AZURE_AUTH: "true"
-      LOCAL_MODE: "true"
-      AZURE_STORAGE_ACCOUNT: ${AZURE_STORAGE_ACCOUNT:-rmhgeopipelines}
+      GEOTILER_ENABLE_STORAGE_AUTH: "true"
+      GEOTILER_AUTH_USE_CLI: "true"
+      GEOTILER_STORAGE_ACCOUNT: ${AZURE_STORAGE_ACCOUNT:-rmhgeopipelines}
 
       # Planetary Computer integration
-      ENABLE_PLANETARY_COMPUTER: "true"
+      GEOTILER_ENABLE_PLANETARY_COMPUTER: "true"
 
       # Observability - enable request timing logs
-      OBSERVABILITY_MODE: "true"
-      SLOW_REQUEST_THRESHOLD_MS: "2000"
-      APP_NAME: "geotiler-local"
-      ENVIRONMENT: "dev"
+      GEOTILER_ENABLE_OBSERVABILITY: "true"
+      GEOTILER_OBS_SLOW_THRESHOLD_MS: "2000"
+      GEOTILER_OBS_SERVICE_NAME: "geotiler-local"
+      GEOTILER_OBS_ENVIRONMENT: "dev"
 
     volumes:
       # Mount local data directory for testing

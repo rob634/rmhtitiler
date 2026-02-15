@@ -32,7 +32,7 @@ def get_storage_oauth_token() -> Optional[str]:
     Raises:
         Exception: If token acquisition fails.
     """
-    if not settings.use_azure_auth:
+    if not settings.enable_storage_auth:
         logger.debug("Azure OAuth authentication disabled")
         return None
 
@@ -44,8 +44,8 @@ def get_storage_oauth_token() -> Optional[str]:
         return cached
 
     # Acquire new token
-    mode = "local" if settings.local_mode else "managed_identity"
-    logger.debug(f"Acquiring storage token: account={settings.azure_storage_account} mode={mode}")
+    mode = "local" if settings.auth_use_cli else "managed_identity"
+    logger.debug(f"Acquiring storage token: account={settings.storage_account} mode={mode}")
 
     try:
         from azure.identity import DefaultAzureCredential
@@ -65,7 +65,7 @@ def get_storage_oauth_token() -> Optional[str]:
 
     except Exception as e:
         logger.error(f"Storage token acquisition failed: {type(e).__name__}: {e}")
-        if settings.local_mode:
+        if settings.auth_use_cli:
             logger.error("Troubleshooting: Run 'az login' and verify with 'az account show'")
         else:
             logger.error("Troubleshooting: Verify Managed Identity is enabled and has Storage Blob Data Reader role")
@@ -83,7 +83,7 @@ async def get_storage_oauth_token_async() -> Optional[str]:
     Returns:
         OAuth bearer token for Azure Storage, or None if auth is disabled.
     """
-    if not settings.use_azure_auth:
+    if not settings.enable_storage_auth:
         return None
 
     async with storage_token_cache.async_lock:
@@ -112,8 +112,8 @@ def _acquire_storage_token() -> tuple[Optional[str], Optional[datetime]]:
     Returns:
         Tuple of (token, expires_at) or (None, None) on failure.
     """
-    mode = "local" if settings.local_mode else "managed_identity"
-    logger.debug(f"Acquiring storage token: account={settings.azure_storage_account} mode={mode}")
+    mode = "local" if settings.auth_use_cli else "managed_identity"
+    logger.debug(f"Acquiring storage token: account={settings.storage_account} mode={mode}")
 
     try:
         from azure.identity import DefaultAzureCredential
@@ -130,7 +130,7 @@ def _acquire_storage_token() -> tuple[Optional[str], Optional[datetime]]:
 
     except Exception as e:
         logger.error(f"Storage token acquisition failed: {type(e).__name__}: {e}")
-        if settings.local_mode:
+        if settings.auth_use_cli:
             logger.error("Troubleshooting: Run 'az login'")
         else:
             logger.error("Troubleshooting: Verify Managed Identity is enabled")
@@ -147,20 +147,20 @@ def configure_gdal_auth(token: str) -> None:
     Args:
         token: OAuth bearer token for Azure Storage.
     """
-    if not settings.azure_storage_account:
-        logger.warning("AZURE_STORAGE_ACCOUNT not set, skipping GDAL config")
+    if not settings.storage_account:
+        logger.warning("GEOTILER_STORAGE_ACCOUNT not set, skipping GDAL config")
         return
 
     # Set environment variables (used by GDAL)
-    os.environ["AZURE_STORAGE_ACCOUNT"] = settings.azure_storage_account
+    os.environ["AZURE_STORAGE_ACCOUNT"] = settings.storage_account
     os.environ["AZURE_STORAGE_ACCESS_TOKEN"] = token
 
     # Also set GDAL config options directly (more reliable)
     try:
         from rasterio import _env
-        _env.set_gdal_config("AZURE_STORAGE_ACCOUNT", settings.azure_storage_account)
+        _env.set_gdal_config("AZURE_STORAGE_ACCOUNT", settings.storage_account)
         _env.set_gdal_config("AZURE_STORAGE_ACCESS_TOKEN", token)
-        logger.debug(f"GDAL configured for storage account: {settings.azure_storage_account}")
+        logger.debug(f"GDAL configured for storage account: {settings.storage_account}")
     except Exception as e:
         logger.warning(f"Could not set GDAL config directly: {e}")
 
@@ -172,11 +172,11 @@ def configure_fsspec_auth() -> None:
     adlfs uses DefaultAzureCredential automatically when
     AZURE_STORAGE_ACCOUNT_NAME is set.
     """
-    if not settings.azure_storage_account:
+    if not settings.storage_account:
         return
 
-    os.environ["AZURE_STORAGE_ACCOUNT_NAME"] = settings.azure_storage_account
-    logger.debug(f"fsspec/adlfs configured for account: {settings.azure_storage_account}")
+    os.environ["AZURE_STORAGE_ACCOUNT_NAME"] = settings.storage_account
+    logger.debug(f"fsspec/adlfs configured for account: {settings.storage_account}")
 
 
 def initialize_storage_auth() -> Optional[str]:
@@ -188,12 +188,12 @@ def initialize_storage_auth() -> Optional[str]:
     Returns:
         OAuth token if successful, None if auth is disabled.
     """
-    if not settings.use_azure_auth:
+    if not settings.enable_storage_auth:
         logger.info("Azure Storage authentication is disabled")
         return None
 
-    if not settings.azure_storage_account:
-        logger.error("AZURE_STORAGE_ACCOUNT not set - Azure auth will not work")
+    if not settings.storage_account:
+        logger.error("GEOTILER_STORAGE_ACCOUNT not set - Azure auth will not work")
         return None
 
     try:
@@ -201,12 +201,12 @@ def initialize_storage_auth() -> Optional[str]:
         if token:
             configure_gdal_auth(token)
             configure_fsspec_auth()
-            mode = "Azure CLI" if settings.local_mode else "Managed Identity"
-            logger.info(f"Storage auth initialized: account={settings.azure_storage_account} mode={mode}")
+            mode = "Azure CLI" if settings.auth_use_cli else "Managed Identity"
+            logger.info(f"Storage auth initialized: account={settings.storage_account} mode={mode}")
         return token
     except Exception as e:
         logger.error(f"Failed to initialize storage OAuth: {e}")
-        if settings.local_mode:
+        if settings.auth_use_cli:
             logger.info("TIP: Run 'az login' to authenticate locally")
         return None
 

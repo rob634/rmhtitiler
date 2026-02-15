@@ -42,11 +42,11 @@ async def token_refresh_background_task(app: "FastAPI"):
         logger.debug("Background token refresh triggered")
 
         # Refresh Storage Token (async - runs in thread pool)
-        if settings.use_azure_auth and settings.azure_storage_account:
+        if settings.enable_storage_auth and settings.storage_account:
             await refresh_storage_token_async()
 
         # Refresh PostgreSQL Token (if using managed_identity)
-        if settings.postgres_auth_mode == "managed_identity":
+        if settings.pg_auth_mode == "managed_identity":
             await _refresh_postgres_with_pool_recreation(app)
 
         logger.debug(f"Background refresh complete, next in {BACKGROUND_REFRESH_INTERVAL_SECS // 60}m")

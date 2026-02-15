@@ -164,7 +164,7 @@ async def initialize_tipg(app: "FastAPI") -> None:
     Args:
         app: FastAPI application instance.
     """
-    logger.info(f"Initializing TiPG: schemas={settings.tipg_schema_list} prefix={settings.tipg_router_prefix}")
+    logger.info(f"Initializing TiPG: schemas={settings.tipg_schema_list} prefix={settings.tipg_prefix}")
 
     # Initialize TiPG state tracking (stored in app.state, not module global)
     app.state.tipg_state = TiPGStartupState()
@@ -337,5 +337,5 @@ def create_tipg_endpoints() -> TiPGEndpoints:
     """
     return TiPGEndpoints(
         with_tiles_viewer=True,  # Include MapLibre map viewer
-        router_prefix=settings.tipg_router_prefix,  # URL prefix for generated links
+        router_prefix=settings.tipg_prefix,  # URL prefix for generated links
     )

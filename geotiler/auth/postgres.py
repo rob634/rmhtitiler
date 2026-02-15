@@ -30,7 +30,7 @@ def get_postgres_credential() -> Optional[str]:
         ValueError: If auth mode is invalid.
         Exception: If credential acquisition fails.
     """
-    mode = settings.postgres_auth_mode.lower()
+    mode = settings.pg_auth_mode.lower()
 
     if mode == "password":
         return _get_password_from_env()
@@ -43,20 +43,20 @@ def get_postgres_credential() -> Optional[str]:
 
     else:
         raise ValueError(
-            f"Invalid POSTGRES_AUTH_MODE: {mode}. "
+            f"Invalid GEOTILER_PG_AUTH_MODE: {mode}. "
             "Valid modes: password, key_vault, managed_identity"
         )
 
 
 def _get_password_from_env() -> Optional[str]:
     """Get password from POSTGRES_PASSWORD environment variable."""
-    if not settings.postgres_password:
-        logger.error("POSTGRES_PASSWORD environment variable not set")
+    if not settings.pg_password:
+        logger.error("GEOTILER_PG_PASSWORD not set")
         return None
 
     logger.info("Using PostgreSQL password from environment variable")
-    logger.debug(f"Password length: {len(settings.postgres_password)} characters")
-    return settings.postgres_password
+    logger.debug(f"Password length: {len(settings.pg_password)} characters")
+    return settings.pg_password
 
 
 def _get_password_from_keyvault() -> str:
@@ -69,24 +69,24 @@ def _get_password_from_keyvault() -> str:
     Raises:
         Exception: If Key Vault access fails.
     """
-    if not settings.key_vault_name:
-        raise ValueError("KEY_VAULT_NAME environment variable not set")
+    if not settings.keyvault_name:
+        raise ValueError("GEOTILER_KEYVAULT_NAME not set")
 
-    logger.debug(f"Retrieving password from Key Vault: vault={settings.key_vault_name} secret={settings.key_vault_secret_name}")
+    logger.debug(f"Retrieving password from Key Vault: vault={settings.keyvault_name} secret={settings.keyvault_secret_name}")
 
     try:
         from azure.identity import DefaultAzureCredential
         from azure.keyvault.secrets import SecretClient
 
-        vault_url = f"https://{settings.key_vault_name}.vault.azure.net/"
+        vault_url = f"https://{settings.keyvault_name}.vault.azure.net/"
 
         credential = DefaultAzureCredential()
         client = SecretClient(vault_url=vault_url, credential=credential)
 
-        secret = client.get_secret(settings.key_vault_secret_name)
+        secret = client.get_secret(settings.keyvault_secret_name)
         password = secret.value
 
-        logger.info(f"Password retrieved from Key Vault: vault={settings.key_vault_name}")
+        logger.info(f"Password retrieved from Key Vault: vault={settings.keyvault_name}")
 
         return password
 
@@ -116,16 +116,16 @@ def _get_postgres_oauth_token() -> str:
         return cached
 
     # Acquire new token
-    mode = "local" if settings.local_mode else "managed_identity"
-    logger.debug(f"Acquiring PostgreSQL token: host={settings.postgres_host} user={settings.postgres_user} mode={mode}")
+    mode = "local" if settings.auth_use_cli else "managed_identity"
+    logger.debug(f"Acquiring PostgreSQL token: host={settings.pg_host} user={settings.pg_user} mode={mode}")
 
     try:
         # Use user-assigned MI if client ID is set (production)
         # Otherwise use DefaultAzureCredential (local dev with az login)
-        if settings.postgres_mi_client_id and not settings.local_mode:
+        if settings.pg_mi_client_id and not settings.auth_use_cli:
             from azure.identity import ManagedIdentityCredential
-            credential = ManagedIdentityCredential(client_id=settings.postgres_mi_client_id)
-            logger.debug(f"Using user-assigned MI: {settings.postgres_mi_client_id}")
+            credential = ManagedIdentityCredential(client_id=settings.pg_mi_client_id)
+            logger.debug(f"Using user-assigned MI: {settings.pg_mi_client_id}")
         else:
             from azure.identity import DefaultAzureCredential
             credential = DefaultAzureCredential()
@@ -145,7 +145,7 @@ def _get_postgres_oauth_token() -> str:
 
     except Exception as e:
         logger.error(f"PostgreSQL token acquisition failed: {type(e).__name__}: {e}")
-        if settings.local_mode:
+        if settings.auth_use_cli:
             logger.error("Troubleshooting: Run 'az login' and verify with 'az account show'")
         else:
             logger.error("Troubleshooting: Verify MI is assigned to App Service and database user exists")
@@ -168,9 +168,9 @@ def build_database_url(password: str, search_path: Optional[str] = None) -> str:
     encoded_password = quote_plus(password)
 
     url = (
-        f"postgresql://{settings.postgres_user}:{encoded_password}"
-        f"@{settings.postgres_host}:{settings.postgres_port}"
-        f"/{settings.postgres_db}?sslmode=require"
+        f"postgresql://{settings.pg_user}:{encoded_password}"
+        f"@{settings.pg_host}:{settings.pg_port}"
+        f"/{settings.pg_db}?sslmode=require"
     )
 
     # Add search_path as connection option if specified
@@ -191,7 +191,7 @@ def refresh_postgres_token() -> Optional[str]:
     Returns:
         New OAuth token if successful, None if not using MI or refresh fails.
     """
-    if settings.postgres_auth_mode != "managed_identity":
+    if settings.pg_auth_mode != "managed_identity":
         logger.debug("PostgreSQL token refresh skipped (not using managed_identity)")
         return None
 
@@ -224,7 +224,7 @@ async def get_postgres_credential_async() -> Optional[str]:
     Returns:
         Password or OAuth token for PostgreSQL connection.
     """
-    mode = settings.postgres_auth_mode.lower()
+    mode = settings.pg_auth_mode.lower()
 
     # Password and key_vault modes don't need async coordination
     if mode == "password":
@@ -234,7 +234,7 @@ async def get_postgres_credential_async() -> Optional[str]:
     elif mode == "managed_identity":
         return await _get_postgres_oauth_token_async()
     else:
-        raise ValueError(f"Invalid POSTGRES_AUTH_MODE: {mode}")
+        raise ValueError(f"Invalid GEOTILER_PG_AUTH_MODE: {mode}")
 
 
 async def _get_postgres_oauth_token_async() -> str:
@@ -269,16 +269,16 @@ def _acquire_postgres_token() -> tuple[Optional[str], Optional[datetime]]:
     Returns:
         Tuple of (token, expires_at) or raises exception on failure.
     """
-    mode = "local" if settings.local_mode else "managed_identity"
-    logger.debug(f"Acquiring PostgreSQL token: host={settings.postgres_host} user={settings.postgres_user} mode={mode}")
+    mode = "local" if settings.auth_use_cli else "managed_identity"
+    logger.debug(f"Acquiring PostgreSQL token: host={settings.pg_host} user={settings.pg_user} mode={mode}")
 
     try:
         # Use user-assigned MI if client ID is set (production)
         # Otherwise use DefaultAzureCredential (local dev with az login)
-        if settings.postgres_mi_client_id and not settings.local_mode:
+        if settings.pg_mi_client_id and not settings.auth_use_cli:
             from azure.identity import ManagedIdentityCredential
-            credential = ManagedIdentityCredential(client_id=settings.postgres_mi_client_id)
-            logger.debug(f"Using user-assigned MI: {settings.postgres_mi_client_id}")
+            credential = ManagedIdentityCredential(client_id=settings.pg_mi_client_id)
+            logger.debug(f"Using user-assigned MI: {settings.pg_mi_client_id}")
         else:
             from azure.identity import DefaultAzureCredential
             credential = DefaultAzureCredential()
@@ -295,7 +295,7 @@ def _acquire_postgres_token() -> tuple[Optional[str], Optional[datetime]]:
 
     except Exception as e:
         logger.error(f"PostgreSQL token acquisition failed: {type(e).__name__}: {e}")
-        if settings.local_mode:
+        if settings.auth_use_cli:
             logger.error("Troubleshooting: Run 'az login'")
         else:
             logger.error("Troubleshooting: Verify MI is assigned to App Service")
@@ -311,7 +311,7 @@ async def refresh_postgres_token_async() -> Optional[str]:
     Returns:
         New OAuth token if successful, None if not using MI or refresh fails.
     """
-    if settings.postgres_auth_mode != "managed_identity":
+    if settings.pg_auth_mode != "managed_identity":
         logger.debug("PostgreSQL token refresh skipped (not using managed_identity)")
         return None
 

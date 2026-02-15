@@ -4,20 +4,28 @@ Configuration management for geotiler.
 Uses Pydantic Settings for type-safe configuration with environment variable support.
 All magic numbers are extracted as named constants.
 
+Naming Convention:
+    All application env vars follow GEOTILER_COMPONENT_SETTING with units in names.
+    Third-party vars (AZURE_TENANT_ID, APPLICATIONINSIGHTS_CONNECTION_STRING,
+    GDAL_*, POSTGRES_HOST/DB/USER/PORT/PASSWORD for pgSTAC container) are NOT prefixed.
+
+    Boolean flags read as questions: GEOTILER_ENABLE_*
+    Time values include units: *_SEC, *_MS
+
 Key Configuration Notes:
     - Token TTL constants are tuned for Azure's 1-hour OAuth token lifetime
     - Storage tokens are refreshed in background to ensure GDAL always has valid credentials
     - MosaicJSON is intentionally unsupported (requires static tokens)
 
-Observability Configuration:
-    See infrastructure/telemetry.py for Azure Monitor OpenTelemetry setup.
-    Key environment variables:
-    - APPLICATIONINSIGHTS_CONNECTION_STRING: Enable App Insights telemetry
-    - OBSERVABILITY_MODE: Enable detailed request/latency logging
-    - SLOW_REQUEST_THRESHOLD_MS: Slow request threshold (default: 2000ms)
+Observability (read via os.environ in infrastructure modules):
+    - APPLICATIONINSIGHTS_CONNECTION_STRING: App Insights telemetry (third-party)
+    - GEOTILER_ENABLE_OBSERVABILITY: Enable detailed request/latency logging
+    - GEOTILER_OBS_SLOW_THRESHOLD_MS: Slow request threshold (default: 2000ms)
+    - GEOTILER_OBS_SERVICE_NAME: Service name for correlation (default: geotiler)
+    - GEOTILER_OBS_ENVIRONMENT: Deployment environment (default: dev)
 
 UI Configuration:
-    - SAMPLE_ZARR_URLS: JSON array of Zarr/NetCDF sample datasets for landing pages
+    - GEOTILER_UI_SAMPLE_ZARR_URLS: JSON array of Zarr/NetCDF sample datasets for landing pages
 """
 
 import json
@@ -26,6 +34,7 @@ import os
 from typing import Optional, Dict, List
 from functools import lru_cache
 
+from pydantic import Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -35,9 +44,12 @@ class Settings(BaseSettings):
 
     All settings can be overridden via environment variables.
     Boolean values accept: true/false, 1/0, yes/no (case-insensitive).
+
+    Env var prefix: GEOTILER_ (auto-applied to all fields).
     """
 
     model_config = SettingsConfigDict(
+        env_prefix="GEOTILER_",
         env_file=".env",
         env_file_encoding="utf-8",
         case_sensitive=False,
@@ -45,52 +57,52 @@ class Settings(BaseSettings):
     )
 
     # =========================================================================
-    # Azure Storage Authentication
+    # Auth — GEOTILER_ENABLE_STORAGE_AUTH, GEOTILER_STORAGE_ACCOUNT, GEOTILER_AUTH_USE_CLI
     # =========================================================================
-    use_azure_auth: bool = False
-    """Enable Azure OAuth for blob storage access."""
+    enable_storage_auth: bool = False
+    """Enable Azure OAuth for blob storage access (was USE_AZURE_AUTH)."""
 
-    azure_storage_account: Optional[str] = None
+    storage_account: Optional[str] = None
     """Azure Storage account name for GDAL access."""
 
-    local_mode: bool = True
+    auth_use_cli: bool = True
     """Use Azure CLI credentials instead of Managed Identity (for local dev)."""
 
     # =========================================================================
-    # PostgreSQL Authentication
+    # PostgreSQL — GEOTILER_PG_*
     # =========================================================================
-    postgres_auth_mode: str = "password"
+    pg_auth_mode: str = "password"
     """Authentication mode: 'password', 'key_vault', or 'managed_identity'."""
 
-    postgres_host: Optional[str] = None
+    pg_host: Optional[str] = None
     """PostgreSQL server hostname."""
 
-    postgres_db: Optional[str] = None
+    pg_db: Optional[str] = None
     """PostgreSQL database name."""
 
-    postgres_user: Optional[str] = None
+    pg_user: Optional[str] = None
     """PostgreSQL username."""
 
-    postgres_port: int = 5432
+    pg_port: int = 5432
     """PostgreSQL port."""
 
-    postgres_password: Optional[str] = None
+    pg_password: Optional[str] = None
     """PostgreSQL password (for 'password' auth mode)."""
 
-    postgres_mi_client_id: Optional[str] = None
+    pg_mi_client_id: Optional[str] = None
     """User-assigned Managed Identity client ID for PostgreSQL auth."""
 
     # =========================================================================
-    # Azure Key Vault
+    # Key Vault — GEOTILER_KEYVAULT_*
     # =========================================================================
-    key_vault_name: Optional[str] = None
+    keyvault_name: Optional[str] = None
     """Azure Key Vault name (for 'key_vault' auth mode)."""
 
-    key_vault_secret_name: str = "postgres-password"
+    keyvault_secret_name: str = "postgres-password"
     """Secret name in Key Vault containing PostgreSQL password."""
 
     # =========================================================================
-    # Feature Flags
+    # Feature Flags — GEOTILER_ENABLE_*
     # =========================================================================
     enable_planetary_computer: bool = True
     """Enable Planetary Computer credential provider for climate data."""
@@ -98,27 +110,31 @@ class Settings(BaseSettings):
     enable_tipg: bool = True
     """Enable TiPG OGC Features + Vector Tiles API."""
 
+    enable_stac_api: bool = True
+    """Enable STAC API for catalog browsing and search."""
+
+    enable_h3_duckdb: bool = False
+    """Enable server-side DuckDB for H3 queries. Requires GEOTILER_H3_PARQUET_URL."""
+
     # =========================================================================
-    # TiPG Configuration (OGC Features + Vector Tiles)
+    # TiPG — GEOTILER_TIPG_*
     # =========================================================================
     tipg_schemas: str = "geo"
     """Comma-separated list of PostGIS schemas to expose via TiPG."""
 
-    tipg_router_prefix: str = "/vector"
+    tipg_prefix: str = "/vector"
     """URL prefix for TiPG routes (e.g., /vector/collections)."""
 
-    ogc_geometry_column: str = "geom"
-    """Expected geometry column name (for diagnostics). Should match ETL app's OGC_GEOMETRY_COLUMN."""
+    tipg_geometry_column: str = "geom"
+    """Expected geometry column name (for diagnostics)."""
 
-    tipg_catalog_ttl_enabled: bool = False
+    enable_tipg_catalog_ttl: bool = False
     """Enable automatic catalog refresh via CatalogUpdateMiddleware.
-    When enabled, TiPG will periodically re-scan the database for new tables.
-    Disabled by default - use the /admin/refresh-collections webhook for explicit control."""
+    Disabled by default — use the /admin/refresh-collections webhook instead."""
 
-    tipg_catalog_ttl: int = 60
-    """Catalog refresh interval in seconds (default: 60 = 1 minute).
-    Only applies when tipg_catalog_ttl_enabled=true.
-    Lower values = faster new table detection but more DB queries."""
+    tipg_catalog_ttl_sec: int = 60
+    """Catalog refresh interval in seconds.
+    Only applies when GEOTILER_ENABLE_TIPG_CATALOG_TTL=true."""
 
     @property
     def tipg_schema_list(self) -> list[str]:
@@ -126,27 +142,27 @@ class Settings(BaseSettings):
         return [s.strip() for s in self.tipg_schemas.split(",") if s.strip()]
 
     # =========================================================================
-    # STAC API Configuration (stac-fastapi-pgstac)
+    # STAC — GEOTILER_STAC_*
     # =========================================================================
-    enable_stac_api: bool = True
-    """Enable STAC API for catalog browsing and search."""
-
-    stac_router_prefix: str = "/stac"
+    stac_prefix: str = "/stac"
     """URL prefix for STAC API routes (e.g., /stac/collections)."""
 
     # =========================================================================
-    # Admin Endpoint Authentication (Azure AD)
+    # Admin — GEOTILER_ENABLE_ADMIN_AUTH, GEOTILER_ADMIN_ALLOWED_APP_IDS
     # =========================================================================
-    admin_auth_enabled: bool = False
+    enable_admin_auth: bool = False
     """Enable Azure AD authentication for /admin/* endpoints.
     When disabled, admin endpoints are open (for local dev)."""
 
     admin_allowed_app_ids: str = ""
-    """Comma-separated list of Azure AD app/client IDs allowed to call /admin/* endpoints.
+    """Comma-separated list of Azure AD app/client IDs allowed to call /admin/*.
     Typically the Orchestrator app's Managed Identity client ID."""
 
-    azure_tenant_id: Optional[str] = None
-    """Azure AD tenant ID for token validation. Required when admin_auth_enabled=true."""
+    azure_tenant_id: Optional[str] = Field(
+        default=None, validation_alias="AZURE_TENANT_ID"
+    )
+    """Azure AD tenant ID for token validation.
+    Read from AZURE_TENANT_ID (shared with Azure Identity SDK)."""
 
     @property
     def admin_allowed_app_id_list(self) -> list[str]:
@@ -156,18 +172,15 @@ class Settings(BaseSettings):
         return [s.strip() for s in self.admin_allowed_app_ids.split(",") if s.strip()]
 
     # =========================================================================
-    # UI Sample URLs (Landing Pages)
+    # UI — GEOTILER_UI_*
     # =========================================================================
-    # These are JSON arrays passed via environment variables.
-    # Example: SAMPLE_COG_URLS='[{"label": "...", "url": "...", "description": "..."}]'
-
-    sample_zarr_urls_json: str = "[]"
+    ui_sample_zarr_urls: str = "[]"
     """JSON array of Zarr/NetCDF sample URLs for the /xarray/ landing page."""
 
     @property
     def sample_zarr_urls(self) -> List[dict]:
         """Parse Zarr sample URLs from JSON environment variable."""
-        return self._parse_json_list(self.sample_zarr_urls_json, "SAMPLE_ZARR_URLS")
+        return self._parse_json_list(self.ui_sample_zarr_urls, "GEOTILER_UI_SAMPLE_ZARR_URLS")
 
     def _parse_json_list(self, json_str: str, var_name: str) -> List[dict]:
         """Safely parse a JSON array, returning empty list on error."""
@@ -184,35 +197,10 @@ class Settings(BaseSettings):
             return []
 
     # =========================================================================
-    # Observability (see also: infrastructure/telemetry.py)
-    # =========================================================================
-    # Note: These are read directly via os.environ in infrastructure modules
-    # for zero-import-overhead when disabled. Listed here for documentation.
-    #
-    # APPLICATIONINSIGHTS_CONNECTION_STRING: App Insights connection string
-    #   - When set, enables Azure Monitor OpenTelemetry integration
-    #   - Logs, traces, and HTTP requests flow to App Insights
-    #
-    # OBSERVABILITY_MODE: Enable detailed request/latency logging
-    #   - Default: false (zero overhead)
-    #   - When true: Logs request timing, status codes, response sizes
-    #
-    # SLOW_REQUEST_THRESHOLD_MS: Slow request threshold in milliseconds
-    #   - Default: 2000
-    #   - Requests exceeding this are logged as warnings with [SLOW] tag
-    #
-    # APP_NAME: Service name for correlation (default: geotiler)
-    # ENVIRONMENT: Deployment environment (default: dev)
-
-    # =========================================================================
-    # H3 Explorer
+    # H3 Explorer — GEOTILER_H3_*
     # =========================================================================
     h3_parquet_url: str = ""
-    """URL to the H3 Level 5 GeoParquet file for the crop/drought explorer.
-    Must be set via H3_PARQUET_URL env var. H3 explorer is disabled when empty."""
-
-    enable_h3_duckdb: bool = False
-    """Enable server-side DuckDB for H3 queries. Requires H3_PARQUET_URL."""
+    """URL to the H3 Level 5 GeoParquet file for the crop/drought explorer."""
 
     h3_data_dir: str = "/app/data"
     """Local directory for cached parquet file."""
@@ -226,7 +214,7 @@ class Settings(BaseSettings):
     @property
     def has_postgres_config(self) -> bool:
         """Check if minimum PostgreSQL configuration is present."""
-        return all([self.postgres_host, self.postgres_db, self.postgres_user])
+        return all([self.pg_host, self.pg_db, self.pg_user])
 
 
 # =============================================================================

@@ -20,8 +20,8 @@ performance. For deeper insights into specific operations, use the
 
 Environment Variables:
 ----------------------
-OBSERVABILITY_MODE: Enable request timing (default: false)
-SLOW_REQUEST_THRESHOLD_MS: Threshold for slow warnings (default: 2000)
+GEOTILER_ENABLE_OBSERVABILITY: Enable request timing (default: false)
+GEOTILER_OBS_SLOW_THRESHOLD_MS: Threshold for slow warnings (default: 2000)
 
 Application Insights Queries:
 -----------------------------
@@ -77,7 +77,7 @@ from starlette.responses import Response
 logger = logging.getLogger(__name__)
 
 # Slow threshold from env var
-SLOW_THRESHOLD_MS = int(os.environ.get("SLOW_REQUEST_THRESHOLD_MS", "2000"))
+SLOW_THRESHOLD_MS = int(os.environ.get("GEOTILER_OBS_SLOW_THRESHOLD_MS", "2000"))
 
 # Regex to extract tile coordinates from paths like /cog/tiles/10/512/384.png
 TILE_PATH_PATTERN = re.compile(
@@ -87,7 +87,7 @@ TILE_PATH_PATTERN = re.compile(
 
 def _is_observability_enabled() -> bool:
     """Check if observability mode is enabled."""
-    val = os.environ.get("OBSERVABILITY_MODE", "").lower()
+    val = os.environ.get("GEOTILER_ENABLE_OBSERVABILITY", "").lower()
     return val in ("true", "1", "yes")
 
 
