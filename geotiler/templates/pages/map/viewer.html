@@ -816,7 +816,7 @@ function stacNavigate(level) {
 
 // Render COG catalog (sample URLs + custom input)
 function renderCogCatalog(container) {
-    const samples = {{ sample_cog_urls | tojson }};
+    const samples = [];
     let html = '';
 
     if (samples && samples.length) {

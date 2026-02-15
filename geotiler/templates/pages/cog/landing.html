@@ -31,24 +31,6 @@
         </div>
     </div>
 
-    {% if sample_cog_urls %}
-    <div class="card">
-        <h2 class="card-title">Sample COG URLs</h2>
-        <p style="color: var(--ds-gray); margin-bottom: 15px; font-size: 13px;">
-            Click any URL to use it in the explorer above:
-        </p>
-        <div class="sample-grid">
-            {% for sample in sample_cog_urls %}
-            <div class="sample-card" onclick="setUrl('{{ sample.url }}', 'cog-url')">
-                <div class="sample-label">{{ sample.label }}</div>
-                {% if sample.description %}
-                <div class="sample-description">{{ sample.description }}</div>
-                {% endif %}
-            </div>
-            {% endfor %}
-        </div>
-    </div>
-    {% else %}
     <div class="card">
         <h2 class="card-title">Sample COG URLs</h2>
         <p style="color: var(--ds-gray); margin-bottom: 15px; font-size: 13px;">
@@ -65,7 +47,6 @@
             </div>
         </div>
     </div>
-    {% endif %}
 
     <div class="card">
         <h2 class="card-title">Available Endpoints</h2>

@@ -37,9 +37,7 @@ def get_template_context(request: Request, **kwargs: Any) -> Dict[str, Any]:
         "tipg_enabled": settings.enable_tipg,
         "planetary_computer_enabled": settings.enable_planetary_computer,
         # Sample URLs from configuration
-        "sample_cog_urls": settings.sample_cog_urls,
         "sample_zarr_urls": settings.sample_zarr_urls,
-        "sample_stac_collections": settings.sample_stac_collections,
     }
     context.update(kwargs)
     return context
