@@ -209,15 +209,15 @@
 <div class="config-grid">
     {% set config = health.config %}
     <div class="config-item">
-        <span class="config-label">Azure Auth:</span>
-        <span class="config-value {{ 'config-on' if config.azure_auth_enabled else 'config-off' }}">
-            {{ 'ON' if config.azure_auth_enabled else 'OFF' }}
+        <span class="config-label">Storage Auth:</span>
+        <span class="config-value {{ 'config-on' if config.enable_storage_auth else 'config-off' }}">
+            {{ 'ON' if config.enable_storage_auth else 'OFF' }}
         </span>
     </div>
     <div class="config-item">
-        <span class="config-label">Local Mode:</span>
-        <span class="config-value {{ 'config-on' if config.local_mode else 'config-off' }}">
-            {{ 'ON' if config.local_mode else 'OFF' }}
+        <span class="config-label">CLI Auth:</span>
+        <span class="config-value {{ 'config-on' if config.auth_use_cli else 'config-off' }}">
+            {{ 'ON' if config.auth_use_cli else 'OFF' }}
         </span>
     </div>
     <div class="config-item">
@@ -230,12 +230,6 @@
         <span class="config-label">STAC API:</span>
         <span class="config-value {{ 'config-on' if config.stac_api_enabled else 'config-off' }}">
             {{ 'ON' if config.stac_api_enabled else 'OFF' }}
-        </span>
-    </div>
-    <div class="config-item">
-        <span class="config-label">Planetary Computer:</span>
-        <span class="config-value {{ 'config-on' if config.planetary_computer_enabled else 'config-off' }}">
-            {{ 'ON' if config.planetary_computer_enabled else 'OFF' }}
         </span>
     </div>
 </div>

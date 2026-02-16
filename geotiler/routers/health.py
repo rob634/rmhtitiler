@@ -411,7 +411,6 @@ async def health(request: Request, response: Response):
             "tipg_enabled": settings.enable_tipg,
             "tipg_schemas": settings.tipg_schema_list if settings.enable_tipg else None,
             "stac_api_enabled": settings.enable_stac_api,
-            "planetary_computer_enabled": settings.enable_planetary_computer,
             "h3_duckdb_enabled": settings.enable_h3_duckdb,
         },
     }

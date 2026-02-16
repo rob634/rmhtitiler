@@ -49,7 +49,6 @@ class ComponentType(Enum):
     COG = "cog"              # Cloud Optimized GeoTIFF endpoints
     XARRAY = "xarray"        # Zarr/NetCDF endpoints
     PGSTAC = "pgstac"        # pgSTAC search endpoints
-    PC = "pc"                # Planetary Computer endpoints
     AUTH = "auth"            # Authentication (storage, postgres)
     HEALTH = "health"        # Health probe endpoints
     MIDDLEWARE = "middleware"  # Request middleware

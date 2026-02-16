@@ -35,7 +35,6 @@ def get_template_context(request: Request, **kwargs: Any) -> Dict[str, Any]:
         "version": __version__,
         "stac_api_enabled": settings.enable_stac_api and settings.enable_tipg,
         "tipg_enabled": settings.enable_tipg,
-        "planetary_computer_enabled": settings.enable_planetary_computer,
         # Sample URLs from configuration
         "sample_zarr_urls": settings.sample_zarr_urls,
     }

@@ -24,6 +24,10 @@
     --ds-success: #059669;
     --ds-warning: #d97706;
     --ds-error: #dc2626;
+    --ds-status-healthy: #059669;
+    --ds-status-warning: #d97706;
+    --ds-status-error: #dc2626;
+    --ds-status-error-bg: #fee2e2;
 
     /* Code Colors */
     --ds-code-bg: #1e1e1e;
@@ -843,18 +847,6 @@ tr:hover {
     text-align: center;
 }
 
-.stat-value {
-    font-size: 1.5rem;
-    font-weight: 700;
-    color: var(--ds-blue-primary);
-}
-
-.stat-label {
-    font-size: 0.8rem;
-    color: var(--ds-gray);
-    margin-top: var(--spacing-xs);
-}
-
 .config-table {
     font-size: 0.85rem;
 }
@@ -1222,14 +1214,6 @@ tr:hover {
 .guide-footer a {
     margin: 0 5px;
 }
-
-/* Syntax highlighting for code blocks */
-.kw { color: #569cd6; }
-.str { color: #ce9178; }
-.num { color: #b5cea8; }
-.cmt { color: #6a9955; }
-.fn { color: #dcdcaa; }
-.var { color: #9cdcfe; }
 
 /* ==========================================================================
    Utility Classes

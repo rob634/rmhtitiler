@@ -8,7 +8,6 @@ Creates and configures the TiTiler application with:
 - TiTiler-xarray (Zarr/NetCDF multidimensional data)
 - TiPG (OGC Features API + Vector Tiles for PostGIS)
 - Health probe endpoints (/livez, /readyz, /health)
-- Planetary Computer integration
 - Request timing and observability (when OBSERVABILITY_MODE=true)
 
 Entry Point:
@@ -28,7 +27,7 @@ from geotiler import __version__
 from geotiler.config import settings
 from geotiler.middleware.azure_auth import AzureAuthMiddleware
 from geotiler.infrastructure.middleware import RequestTimingMiddleware
-from geotiler.routers import health, planetary_computer, admin, vector, stac, diagnostics
+from geotiler.routers import health, admin, vector, stac, diagnostics
 from geotiler.routers import cog_landing, xarray_landing, searches_landing, stac_explorer, docs_guide, map_viewer, h3_explorer
 from geotiler.services.background import start_token_refresh
 from geotiler.services.duckdb import initialize_duckdb, close_duckdb
@@ -242,9 +241,9 @@ def create_app() -> FastAPI:
         Configured FastAPI application instance.
     """
     app = FastAPI(
-        title="TiTiler-pgSTAC with Azure OAuth + Xarray + Planetary Computer",
-        description="STAC catalog tile server with Managed Identity authentication, "
-        "Zarr/NetCDF support, and Planetary Computer integration",
+        title="TiTiler-pgSTAC with Azure OAuth + Xarray",
+        description="STAC catalog tile server with Managed Identity authentication "
+        "and Zarr/NetCDF support",
         version=__version__,
         lifespan=lifespan,
     )
@@ -289,10 +288,6 @@ def create_app() -> FastAPI:
 
     # TiTiler endpoints
     _mount_titiler_routers(app)
-
-    # Planetary Computer endpoints
-    if settings.enable_planetary_computer:
-        app.include_router(planetary_computer.router)
 
     # TiPG OGC Features + Vector Tiles
     if settings.enable_tipg:

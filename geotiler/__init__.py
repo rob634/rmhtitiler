@@ -12,7 +12,6 @@ With Azure authentication:
 - Managed Identity for Azure Blob Storage (GDAL env vars)
 - Managed Identity for Azure PostgreSQL
 - Key Vault integration for secrets
-- Planetary Computer credential provider
 
 Dependency Versions (as of v0.5.0)
 ----------------------------------
@@ -30,6 +29,6 @@ Supported Endpoints:
 - /vector/* - OGC Features + Vector Tiles via TiPG (v0.7.0+)
 """
 
-__version__ = "0.8.16.8"
+__version__ = "0.8.17.2"
 
 __all__ = ["__version__"]

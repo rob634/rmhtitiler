@@ -31,7 +31,7 @@ UI Configuration:
 import json
 import logging
 import os
-from typing import Optional, Dict, List
+from typing import Optional, List
 from functools import lru_cache
 
 from pydantic import Field
@@ -104,9 +104,6 @@ class Settings(BaseSettings):
     # =========================================================================
     # Feature Flags — GEOTILER_ENABLE_*
     # =========================================================================
-    enable_planetary_computer: bool = True
-    """Enable Planetary Computer credential provider for climate data."""
-
     enable_tipg: bool = True
     """Enable TiPG OGC Features + Vector Tiles API."""
 
@@ -241,14 +238,6 @@ STORAGE_SCOPE: str = "https://storage.azure.com/.default"
 
 POSTGRES_SCOPE: str = "https://ossrdbms-aad.database.windows.net/.default"
 """OAuth scope for Azure Database for PostgreSQL."""
-
-# Planetary Computer storage accounts
-# Maps storage account name -> default collection ID
-PC_STORAGE_ACCOUNTS: Dict[str, str] = {
-    "rhgeuwest": "cil-gdpcir-cc0",  # Climate Impact Lab CMIP6 projections
-    "ai4edataeuwest": "daymet-daily-na",  # gridMET, Daymet climate data
-}
-
 
 @lru_cache
 def get_settings() -> Settings:

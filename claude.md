@@ -16,7 +16,7 @@ Dynamic tile server for Cloud Optimized GeoTIFFs (COGs), Zarr/NetCDF arrays, and
 
 **Features:**
 - COG tiles via GDAL with Azure Blob Storage OAuth
-- Zarr/NetCDF via titiler.xarray with Planetary Computer support
+- Zarr/NetCDF via titiler.xarray
 - pgSTAC mosaic searches for STAC item collections
 - OGC Features API + Vector Tiles via TiPG for PostGIS tables
 - `/health` endpoint with database ping, version, hardware info
@@ -101,7 +101,6 @@ All app vars use `GEOTILER_COMPONENT_SETTING` convention with units in names.
 | `GEOTILER_PG_DB` | PostgreSQL database name |
 | `GEOTILER_PG_USER` | PostgreSQL username |
 | `GEOTILER_PG_AUTH_MODE` | Auth mode: `password`, `key_vault`, or `managed_identity` |
-| `GEOTILER_ENABLE_PLANETARY_COMPUTER` | Enable PC credential provider for public data |
 | `GEOTILER_ENABLE_TIPG` | Enable TiPG OGC Features + Vector Tiles (default: true) |
 | `GEOTILER_TIPG_SCHEMAS` | Comma-separated PostGIS schemas to expose (default: "geo") |
 | `GEOTILER_TIPG_PREFIX` | URL prefix for TiPG routes (default: "/vector") |

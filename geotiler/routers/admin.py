@@ -103,7 +103,6 @@ async def api_info():
             "enable_tipg_catalog_ttl": settings.enable_tipg_catalog_ttl,
             "tipg_catalog_ttl_sec": settings.tipg_catalog_ttl_sec if settings.enable_tipg_catalog_ttl else None,
             "enable_stac_api": settings.enable_stac_api,
-            "enable_planetary_computer": settings.enable_planetary_computer,
         },
     }
 

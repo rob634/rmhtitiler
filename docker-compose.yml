@@ -25,7 +25,7 @@ services:
       start_period: 30s
 
   # ============================================================================
-  # TiTiler-pgSTAC with Xarray and Planetary Computer support
+  # TiTiler-pgSTAC with Xarray support
   # ============================================================================
   titiler:
     build:
@@ -50,9 +50,6 @@ services:
       GEOTILER_ENABLE_STORAGE_AUTH: "true"
       GEOTILER_AUTH_USE_CLI: "true"
       GEOTILER_STORAGE_ACCOUNT: ${AZURE_STORAGE_ACCOUNT:-rmhgeopipelines}
-
-      # Planetary Computer integration
-      GEOTILER_ENABLE_PLANETARY_COMPUTER: "true"
 
       # Observability - enable request timing logs
       GEOTILER_ENABLE_OBSERVABILITY: "true"

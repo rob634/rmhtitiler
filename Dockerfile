@@ -1,5 +1,5 @@
-# Production Dockerfile for TiTiler-pgSTAC with Azure OAuth authentication,
-# Xarray/Zarr support, and Planetary Computer integration
+# Production Dockerfile for TiTiler-pgSTAC with Azure OAuth authentication
+# and Xarray/Zarr support
 FROM ghcr.io/stac-utils/titiler-pgstac:1.9.0
 #Use the JFROG Artifactory image for production deployments
 #FROM artifactory.worldbank.org/itsdt-docker-virtual/titiler-pgstac:1.9.0
@@ -20,7 +20,6 @@ COPY geotiler /app/geotiler
 # Production settings — GEOTILER_COMPONENT_SETTING convention
 ENV GEOTILER_AUTH_USE_CLI=false
 ENV GEOTILER_ENABLE_STORAGE_AUTH=true
-ENV GEOTILER_ENABLE_PLANETARY_COMPUTER=true
 ENV GEOTILER_ENABLE_TIPG=true
 ENV GEOTILER_TIPG_SCHEMAS=geo
 ENV GEOTILER_ENABLE_STAC_API=true

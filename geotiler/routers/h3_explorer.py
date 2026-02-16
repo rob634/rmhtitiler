@@ -25,6 +25,14 @@ router = APIRouter(tags=["H3 Explorer"])
 
 # Region definitions for parameterized H3 views
 REGIONS = {
+    "global": {
+        "name": "Global",
+        "title": "Crop Production & Drought Risk",
+        "center": [20, 15],
+        "zoom": 2.5,
+        "country_codes": [],
+        "exclude_codes": [],
+    },
     "menaap": {
         "name": "MENAAP",
         "title": "MENAAP — Crop Production & Drought Risk",
@@ -69,18 +77,16 @@ def _is_duckdb_ready(request: Request) -> bool:
 @router.get("/h3", response_class=HTMLResponse, include_in_schema=False)
 async def h3_explorer(request: Request):
     """
-    H3 Crop Production & Drought Risk Explorer.
+    H3 Crop Production & Drought Risk Explorer (global view).
 
-    Interactive bivariate choropleth showing production intensity
-    crossed with SPEI-12 drought projections at H3 Level 5 resolution.
+    Interactive choropleth showing production intensity crossed with
+    SPEI-12 drought projections at H3 Level 5 resolution.
+    Uses the region template with no country filter (shows all data).
     """
+    region = REGIONS["global"]
     server_side = _is_duckdb_ready(request)
-
-    context = get_template_context(
-        request,
-        h3_server_side=server_side,
-    )
-    return templates.TemplateResponse("pages/h3/explorer.html", context)
+    context = get_template_context(request, h3_server_side=server_side, **region)
+    return templates.TemplateResponse("pages/h3/region.html", context)
 
 
 @router.get("/h3/menaap", response_class=HTMLResponse, include_in_schema=False)
