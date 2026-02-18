@@ -17,6 +17,9 @@ RUN mkdir -p /app/data
 # Copy application package
 COPY geotiler /app/geotiler
 
+# Copy PSU centroids data
+COPY centroids_for_merge.csv /app/data/centroids.csv
+
 # Production settings — GEOTILER_COMPONENT_SETTING convention
 ENV GEOTILER_AUTH_USE_CLI=false
 ENV GEOTILER_ENABLE_STORAGE_AUTH=true
@@ -25,6 +28,7 @@ ENV GEOTILER_TIPG_SCHEMAS=geo
 ENV GEOTILER_ENABLE_STAC_API=true
 ENV GEOTILER_STAC_PREFIX=/stac
 ENV GEOTILER_ENABLE_H3_DUCKDB=false
+ENV GEOTILER_CENTROIDS_CSV_PATH=/app/data/centroids.csv
 
 # Observability (set APPLICATIONINSIGHTS_CONNECTION_STRING to enable telemetry)
 ENV GEOTILER_ENABLE_OBSERVABILITY=false

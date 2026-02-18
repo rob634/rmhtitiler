@@ -56,6 +56,31 @@ body { margin: 0; }
 .h3-cg select:focus { outline: none; border-color: #64acbe; }
 .h3-cg.dimmed { opacity: 0.35; pointer-events: none; }
 
+.h3-export-btn {
+    display: flex; align-items: center; gap: 5px; align-self: flex-end;
+    background: rgba(255,255,255,0.08); color: #b0b0b0;
+    border: 1px solid rgba(255,255,255,0.18); border-radius: 6px;
+    padding: 7px 12px; font-size: 12px; font-weight: 600; cursor: pointer;
+    letter-spacing: 0.5px; transition: all 0.15s; white-space: nowrap;
+}
+.h3-export-btn:hover { background: rgba(255,255,255,0.14); color: #e0e0e0; border-color: rgba(255,255,255,0.3); }
+.h3-export-btn:active { transform: scale(0.97); }
+.h3-export-btn:disabled { opacity: 0.4; cursor: default; transform: none; }
+
+.h3-toggle-btn {
+    display: flex; align-items: center; gap: 5px; align-self: flex-end;
+    background: rgba(255,255,255,0.08); color: #b0b0b0;
+    border: 1px solid rgba(255,255,255,0.18); border-radius: 6px;
+    padding: 7px 12px; font-size: 12px; font-weight: 600; cursor: pointer;
+    letter-spacing: 0.5px; transition: all 0.15s; white-space: nowrap;
+}
+.h3-toggle-btn:hover { background: rgba(255,255,255,0.14); color: #e0e0e0; border-color: rgba(255,255,255,0.3); }
+.h3-toggle-btn.active {
+    background: rgba(40, 120, 200, 0.25); color: #6cb8ff;
+    border-color: rgba(100, 160, 255, 0.5);
+    box-shadow: 0 0 8px rgba(80, 140, 255, 0.25);
+}
+
 /* ---- View Tabs ---- */
 .h3-view-tabs {
     display: flex; gap: 2px; background: rgba(255,255,255,0.04);
@@ -197,12 +222,22 @@ body { margin: 0; }
         </select>
     </div>
     <div class="h3-cg">
-        <label>Climate Scenario (2050)</label>
+        <label>SPEI-12 Drought Scenario</label>
         <select id="sel-scenario">
-            <option value="spei12_ssp370_median">SSP3-7.0 &mdash; Median</option>
-            <option value="spei12_ssp370_p10">SSP3-7.0 &mdash; 10th Percentile (Driest)</option>
-            <option value="spei12_ssp585_median" selected>SSP5-8.5 &mdash; Median</option>
-            <option value="spei12_ssp585_p10">SSP5-8.5 &mdash; 10th Percentile (Driest)</option>
+            <optgroup label="Observed (ERA5 Reanalysis)">
+                <option value="spei12_era5_2024_mean">2024 &mdash; Annual Mean</option>
+                <option value="spei12_era5_2024_min">2024 &mdash; Worst Month</option>
+                <option value="spei12_era5_2023_mean">2023 &mdash; Annual Mean</option>
+                <option value="spei12_era5_2023_min">2023 &mdash; Worst Month</option>
+                <option value="spei12_era5_2022_mean">2022 &mdash; Annual Mean</option>
+                <option value="spei12_era5_2022_min">2022 &mdash; Worst Month</option>
+            </optgroup>
+            <optgroup label="Projected 2050 (CMIP6)">
+                <option value="spei12_ssp585_median" selected>SSP5-8.5 &mdash; Median</option>
+                <option value="spei12_ssp585_p10">SSP5-8.5 &mdash; 10th Percentile (Driest)</option>
+                <option value="spei12_ssp370_median">SSP3-7.0 &mdash; Median</option>
+                <option value="spei12_ssp370_p10">SSP3-7.0 &mdash; 10th Percentile (Driest)</option>
+            </optgroup>
         </select>
     </div>
     <div class="h3-cg">
@@ -217,6 +252,22 @@ body { margin: 0; }
         <label>Palette</label>
         <select id="sel-palette"></select>
     </div>
+    <button id="btn-centroids" class="h3-toggle-btn" title="Toggle PSU centroid sites">
+        <svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor">
+            <circle cx="8" cy="8" r="3"/>
+            <circle cx="3" cy="4" r="2"/>
+            <circle cx="13" cy="5" r="2"/>
+            <circle cx="5" cy="13" r="2"/>
+            <circle cx="12" cy="12" r="2"/>
+        </svg>
+        PSU Sites
+    </button>
+    <button id="btn-export" class="h3-export-btn" title="Export map as PNG">
+        <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round">
+            <path d="M8 2v8M4.5 7L8 10.5 11.5 7M3 13h10"/>
+        </svg>
+        PNG
+    </button>
     <div id="h3-status">Initializing...</div>
 </div>
 
@@ -361,6 +412,10 @@ const queryCache = new Map();
 let borderGeoJSON = null;
 let regionPolygons = [];
 const regionHexCache = new Map();
+
+// PSU centroids overlay
+let showCentroids = false;
+let centroidsData = null;
 
 // ============================================================
 // Country Boundary Loading
@@ -568,6 +623,7 @@ function initMap() {
         container: 'h3-map',
         style: 'https://basemaps.cartocdn.com/gl/dark-matter-gl-style/style.json',
         center: {{ center | tojson }}, zoom: {{ zoom }}, maxZoom: 14, antialias: true,
+        preserveDrawingBuffer: true,
     });
     map.addControl(new maplibregl.NavigationControl(), 'top-right');
     map.addControl(new maplibregl.ScaleControl({maxWidth: 150}), 'bottom-right');
@@ -625,6 +681,21 @@ function buildLayers(data) {
         }));
     }
 
+    if (showCentroids && centroidsData) {
+        layers.push(new deck.ScatterplotLayer({
+            id: 'psu-centroids', data: centroidsData,
+            getPosition: d => [d.lon, d.lat],
+            getFillColor: [255, 185, 50, 220],
+            getLineColor: [180, 120, 20, 255],
+            radiusMinPixels: 2, radiusMaxPixels: 8,
+            radiusScale: 200, lineWidthMinPixels: 0.5,
+            stroked: true, pickable: true, autoHighlight: true,
+            highlightColor: [255, 255, 100, 255],
+            onHover: onCentroidHover,
+            parameters: {depthTest: false},
+        }));
+    }
+
     if (borderGeoJSON) {
         layers.push(new deck.GeoJsonLayer({
             id: 'country-borders', data: borderGeoJSON,
@@ -667,6 +738,17 @@ function onHover({object, x, y}) {
     html += `<div class="tt-row"><span class="tt-lbl">SPEI-12</span><span class="spei-val ${speiClass}">${speiLabel}</span></div>`;
 
     tooltip.innerHTML = html;
+    tooltip.style.display = 'block';
+    tooltip.style.left = `${x + 14}px`;
+    tooltip.style.top = `${y + 14}px`;
+}
+
+function onCentroidHover({object, x, y}) {
+    if (!object) { tooltip.style.display = 'none'; return; }
+    tooltip.innerHTML = `<strong>PSU Site</strong>`
+        + `<div class="tt-row"><span class="tt-lbl">ID</span><span class="tt-val">${object.id}</span></div>`
+        + `<div class="tt-row"><span class="tt-lbl">Lat</span><span class="tt-val">${object.lat.toFixed(4)}</span></div>`
+        + `<div class="tt-row"><span class="tt-lbl">Lon</span><span class="tt-val">${object.lon.toFixed(4)}</span></div>`;
     tooltip.style.display = 'block';
     tooltip.style.left = `${x + 14}px`;
     tooltip.style.top = `${y + 14}px`;
@@ -943,6 +1025,208 @@ async function refresh() {
 
 // ============================================================
 // Helpers
+// ============================================================
+
+// ============================================================
+// PNG Export
+// ============================================================
+
+function finishExport(canvas, cropName) {
+    canvas.toBlob(blob => {
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        const date = new Date().toISOString().slice(0, 10);
+        a.download = `H3_${cropName.replace(/\s+/g, '_')}_${currentView}_${date}.png`;
+        a.href = url;
+        a.click();
+        URL.revokeObjectURL(url);
+
+        const btn = document.getElementById('btn-export');
+        btn.disabled = false;
+        btn.innerHTML = `<svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M8 2v8M4.5 7L8 10.5 11.5 7M3 13h10"/></svg> PNG`;
+    }, 'image/png');
+}
+
+function captureMap() {
+    const btn = document.getElementById('btn-export');
+    btn.disabled = true;
+    btn.textContent = 'Exporting...';
+
+    // Small delay lets the browser finish any pending renders
+    requestAnimationFrame(() => { requestAnimationFrame(() => {
+        try {
+            const container = document.getElementById('h3-map');
+            const canvases = container.querySelectorAll('canvas');
+            const w = container.offsetWidth;
+            const h = container.offsetHeight;
+            const dpr = window.devicePixelRatio || 1;
+
+            const out = document.createElement('canvas');
+            out.width = w * dpr;
+            out.height = h * dpr;
+            const ctx = out.getContext('2d');
+            ctx.scale(dpr, dpr);
+
+            // Composite all map canvases (MapLibre basemap + deck.gl overlay)
+            for (const c of canvases) {
+                ctx.drawImage(c, 0, 0, w, h);
+            }
+
+            // Stamp info bar at the top
+            const crop = document.getElementById('sel-crop');
+            const cropName = crop.options[crop.selectedIndex].text;
+            const scenario = document.getElementById('sel-scenario');
+            const scenarioName = scenario.options[scenario.selectedIndex].text;
+            const tech = document.getElementById('sel-tech');
+            const techName = tech.options[tech.selectedIndex].text;
+            const threshold = document.getElementById('sel-threshold');
+            const thresholdName = threshold.options[threshold.selectedIndex].text;
+
+            const title = `${cropName} (${techName}) \u2014 ${scenarioName} \u2014 ${thresholdName}`;
+
+            const barH = 36;
+            ctx.fillStyle = 'rgba(10, 10, 20, 0.85)';
+            ctx.fillRect(0, 0, w, barH);
+            ctx.font = '600 13px -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif';
+            ctx.fillStyle = '#d0d0d0';
+            ctx.textBaseline = 'middle';
+            ctx.fillText(title, 14, barH / 2);
+
+            // Stamp stats at bottom-right
+            const stats = [
+                ['Harvested Area', document.getElementById('stat-area').textContent],
+                ['Area at Risk', document.getElementById('stat-area-risk').textContent],
+                ['Production', document.getElementById('stat-prod').textContent],
+                ['Prod at Risk', document.getElementById('stat-risk').textContent],
+            ];
+
+            const statH = 18;
+            const blockH = stats.length * statH + 16;
+            const blockW = 280;
+            const bx = w - blockW - 12;
+            const by = h - blockH - 12;
+
+            ctx.fillStyle = 'rgba(10, 10, 20, 0.82)';
+            ctx.roundRect(bx, by, blockW, blockH, 6);
+            ctx.fill();
+
+            ctx.font = '600 11px -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif';
+            for (let i = 0; i < stats.length; i++) {
+                const y = by + 12 + i * statH;
+                ctx.fillStyle = '#a0a0a0';
+                ctx.textBaseline = 'top';
+                ctx.textAlign = 'left';
+                ctx.fillText(stats[i][0], bx + 10, y);
+                ctx.fillStyle = i % 2 === 1 ? '#c85a5a' : '#d0d0d0';
+                ctx.textAlign = 'right';
+                ctx.fillText(stats[i][1], bx + blockW - 10, y);
+            }
+            ctx.textAlign = 'left';
+
+            // Render legend onto the canvas via SVG foreignObject
+            const legendEl = document.getElementById('h3-legend');
+            const legendRect = legendEl.getBoundingClientRect();
+            const mapRect = container.getBoundingClientRect();
+            const lx = legendRect.left - mapRect.left;
+            const ly = legendRect.top - mapRect.top;
+            const lw = legendRect.width;
+            const lh = legendRect.height;
+
+            const legendClone = legendEl.cloneNode(true);
+            legendClone.style.position = 'static';
+            legendClone.style.margin = '0';
+
+            const svgNS = 'http://www.w3.org/2000/svg';
+            const svgEl = document.createElementNS(svgNS, 'svg');
+            svgEl.setAttribute('xmlns', svgNS);
+            svgEl.setAttribute('width', lw);
+            svgEl.setAttribute('height', lh);
+            const fo = document.createElementNS(svgNS, 'foreignObject');
+            fo.setAttribute('width', '100%');
+            fo.setAttribute('height', '100%');
+            const body = document.createElement('div');
+            body.setAttribute('xmlns', 'http://www.w3.org/1999/xhtml');
+
+            // Inline all computed styles so the SVG renderer has them
+            function inlineStyles(src, dst) {
+                const cs = window.getComputedStyle(src);
+                for (const prop of cs) {
+                    try { dst.style.setProperty(prop, cs.getPropertyValue(prop)); } catch {}
+                }
+                for (let i = 0; i < src.children.length; i++) {
+                    inlineStyles(src.children[i], dst.children[i]);
+                }
+            }
+            inlineStyles(legendEl, legendClone);
+
+            body.appendChild(legendClone);
+            fo.appendChild(body);
+            svgEl.appendChild(fo);
+
+            const svgData = new XMLSerializer().serializeToString(svgEl);
+            const svgBlob = new Blob([svgData], { type: 'image/svg+xml;charset=utf-8' });
+            const svgUrl = URL.createObjectURL(svgBlob);
+            const legendImg = new Image();
+
+            legendImg.onload = () => {
+                ctx.drawImage(legendImg, lx, ly, lw, lh);
+                URL.revokeObjectURL(svgUrl);
+                finishExport(out, cropName);
+            };
+            legendImg.onerror = () => {
+                // Fallback: export without legend if SVG rendering fails
+                console.warn('Legend render failed, exporting without legend');
+                URL.revokeObjectURL(svgUrl);
+                finishExport(out, cropName);
+            };
+            legendImg.src = svgUrl;
+
+        } catch (e) {
+            console.error('Export failed:', e);
+            alert('Export failed \u2014 see console');
+            btn.disabled = false;
+            btn.innerHTML = `<svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M8 2v8M4.5 7L8 10.5 11.5 7M3 13h10"/></svg> PNG`;
+        }
+    }); });
+}
+
+document.getElementById('btn-export').addEventListener('click', captureMap);
+
+// ============================================================
+// PSU Centroids Toggle
+// ============================================================
+
+async function loadCentroids() {
+    if (centroidsData) return;
+    try {
+        const resp = await fetch('/h3/centroids');
+        if (!resp.ok) {
+            const err = await resp.json().catch(() => ({}));
+            console.warn('Centroids unavailable:', err.error || resp.status);
+            return;
+        }
+        const result = await resp.json();
+        centroidsData = result.data;
+        console.log('Loaded ' + result.count + ' PSU centroids');
+    } catch (e) {
+        console.warn('Failed to load centroids:', e);
+    }
+}
+
+document.getElementById('btn-centroids').addEventListener('click', async () => {
+    const btn = document.getElementById('btn-centroids');
+    showCentroids = !showCentroids;
+    btn.classList.toggle('active', showCentroids);
+
+    if (showCentroids && !centroidsData) {
+        btn.disabled = true;
+        await loadCentroids();
+        btn.disabled = false;
+    }
+
+    if (currentData.length || centroidsData) buildLayers(currentData);
+});
+
 // ============================================================
 
 function setLoading(msg) {

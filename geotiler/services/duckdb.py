@@ -96,8 +96,13 @@ VALID_CROPS = frozenset([
 VALID_TECHS = frozenset(["a", "i", "r"])
 
 VALID_SCENARIOS = frozenset([
+    # 2050 climate projections
     "spei12_ssp370_median", "spei12_ssp370_p10",
     "spei12_ssp585_median", "spei12_ssp585_p10",
+    # ERA5 observed (annual mean / annual min)
+    "spei12_era5_2022_mean", "spei12_era5_2022_min",
+    "spei12_era5_2023_mean", "spei12_era5_2023_min",
+    "spei12_era5_2024_mean", "spei12_era5_2024_min",
 ])
 
 

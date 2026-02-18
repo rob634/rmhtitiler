@@ -47,6 +47,8 @@ Dockerfile.local
 data/
 *.tif
 *.tiff
+# Keep centroids CSV (needed for PSU overlay)
+!centroids_for_merge.csv
 
 # Tests
 tests/
