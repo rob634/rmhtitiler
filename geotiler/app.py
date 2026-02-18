@@ -241,11 +241,34 @@ def create_app() -> FastAPI:
         Configured FastAPI application instance.
     """
     app = FastAPI(
-        title="TiTiler-pgSTAC with Azure OAuth + Xarray",
-        description="STAC catalog tile server with Managed Identity authentication "
-        "and Zarr/NetCDF support",
+        title="geotiler",
+        description=(
+            "Geospatial tile server with Azure Managed Identity authentication.\n\n"
+            "| Prefix | Service |\n"
+            "|--------|---------|\n"
+            "| `/cog/*` | Cloud Optimized GeoTIFF tiles |\n"
+            "| `/xarray/*` | Zarr / NetCDF multidimensional data |\n"
+            "| `/searches/*` | pgSTAC dynamic mosaic searches |\n"
+            "| `/stac/*` | STAC catalog browsing and search |\n"
+            "| `/vector/*` | OGC Features API + Vector Tiles (TiPG) |\n"
+            "| `/h3/*` | H3 Crop Production & Drought Risk Explorer |\n"
+        ),
         version=__version__,
         lifespan=lifespan,
+        openapi_tags=[
+            {"name": "Health", "description": "Liveness, readiness, and detailed health probes."},
+            {"name": "Cloud Optimized GeoTIFF", "description": "COG tile serving via GDAL `/vsiaz/`."},
+            {"name": "Multidimensional (Zarr/NetCDF)", "description": "Zarr and NetCDF tile serving via xarray."},
+            {"name": "STAC Search", "description": "pgSTAC dynamic mosaic search and tile rendering."},
+            {"name": "STAC Catalog", "description": "STAC API for catalog browsing, search, and filtering."},
+            {"name": "OGC Vector -- Features", "description": "OGC Features API endpoints (TiPG)."},
+            {"name": "OGC Vector -- Tiles", "description": "OGC Vector Tiles endpoints (TiPG)."},
+            {"name": "OGC Vector -- Common", "description": "OGC API common endpoints (TiPG)."},
+            {"name": "Diagnostics", "description": "Database and TiPG table-discovery diagnostics."},
+            {"name": "H3 Explorer", "description": "H3 Crop Production & Drought Risk Explorer."},
+            {"name": "API Info", "description": "API metadata and endpoint listing."},
+            {"name": "Admin", "description": "Admin dashboard and operational webhooks."},
+        ],
     )
 
     # =========================================================================
@@ -353,5 +376,9 @@ def create_app() -> FastAPI:
 
     # Admin console (HTML at /, JSON at /api)
     app.include_router(admin.router)
+
+    # Post-process OpenAPI spec (fix upstream tags/descriptions)
+    from geotiler.openapi import customize_openapi
+    app.openapi = lambda: customize_openapi(app)
 
     return app

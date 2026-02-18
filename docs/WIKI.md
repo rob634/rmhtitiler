@@ -15,8 +15,10 @@
    - [Health & Status](#health--status-endpoints)
    - [COG Endpoints](#cog-endpoints)
    - [Xarray/Zarr Endpoints](#xarrayzarr-endpoints)
-   - [Planetary Computer Endpoints](#planetary-computer-endpoints)
    - [pgSTAC Search Endpoints](#pgstac-search-endpoints)
+   - [STAC API Endpoints](#stac-api-endpoints)
+   - [OGC Vector Endpoints](#ogc-vector-endpoints-tipg)
+   - [H3 Explorer Endpoints](#h3-explorer-endpoints)
    - [Data Extraction Endpoints](#data-extraction-endpoints)
 6. [URL Formats](#url-formats)
 7. [Query Parameters](#query-parameters)
@@ -34,8 +36,10 @@
 |---------|-------------|
 | **COG Tiles** | Cloud Optimized GeoTIFFs via GDAL |
 | **Zarr/NetCDF** | Multidimensional data via xarray |
-| **STAC Integration** | Query-based mosaics via pgSTAC |
-| **Planetary Computer** | Access to public climate datasets |
+| **STAC Search** | Query-based mosaics via pgSTAC |
+| **STAC Catalog** | Browsing and search via stac-fastapi-pgstac |
+| **OGC Vector** | OGC Features API + Vector Tiles via TiPG |
+| **H3 Explorer** | Crop Production & Drought Risk via DuckDB + Parquet |
 | **Azure Authentication** | OAuth via Managed Identity (no secrets) |
 
 ### Key Capabilities
@@ -86,34 +90,35 @@ This document uses **logical names** instead of Azure resource names. See [WIKI_
 ## Architecture
 
 ```
-┌─────────────────────────────────────────────────────────────────────────────┐
-│                         TiTiler Raster Service                               │
-├─────────────────────────────────────────────────────────────────────────────┤
-│                                                                             │
-│  ┌─────────────┐   ┌─────────────┐   ┌─────────────┐   ┌─────────────┐     │
-│  │   /cog/*    │   │  /xarray/*  │   │    /pc/*    │   │ /searches/* │     │
-│  │   (COGs)    │   │   (Zarr)    │   │  (Climate)  │   │  (pgSTAC)   │     │
-│  └──────┬──────┘   └──────┬──────┘   └──────┬──────┘   └──────┬──────┘     │
-│         │                 │                 │                 │             │
-│         ▼                 ▼                 ▼                 ▼             │
-│  ┌─────────────────────────────────────────────────────────────────────┐   │
-│  │                      Azure Auth Middleware                           │   │
-│  │         OAuth Token Acquisition + Environment Configuration          │   │
-│  └─────────────────────────────────────────────────────────────────────┘   │
-│         │                 │                 │                 │             │
-│         ▼                 ▼                 ▼                 ▼             │
-│  ┌───────────┐     ┌───────────┐     ┌───────────┐     ┌───────────┐       │
-│  │   GDAL    │     │  fsspec/  │     │  obstore  │     │  asyncpg  │       │
-│  │  /vsiaz/  │     │   adlfs   │     │ + PC SAS  │     │  pgSTAC   │       │
-│  └─────┬─────┘     └─────┬─────┘     └─────┬─────┘     └─────┬─────┘       │
-│        │                 │                 │                 │              │
-└────────┼─────────────────┼─────────────────┼─────────────────┼──────────────┘
-         │                 │                 │                 │
-         ▼                 ▼                 ▼                 ▼
-┌─────────────────┐ ┌─────────────────┐ ┌─────────────────┐ ┌─────────────────┐
-│ Silver Storage  │ │ Silver Storage  │ │ Planetary       │ │ Business        │
-│ Account (COGs)  │ │ Account (Zarr)  │ │ Computer        │ │ Database        │
-└─────────────────┘ └─────────────────┘ └─────────────────┘ └─────────────────┘
+┌──────────────────────────────────────────────────────────────────────────────────────┐
+│                              geotiler Tile Service                                    │
+├──────────────────────────────────────────────────────────────────────────────────────┤
+│                                                                                      │
+│  ┌──────────┐  ┌──────────┐  ┌──────────┐  ┌──────────┐  ┌──────────┐  ┌──────────┐ │
+│  │ /cog/*   │  │/xarray/* │  │/searches/│  │ /stac/*  │  │/vector/* │  │  /h3/*   │ │
+│  │ (COGs)   │  │ (Zarr)   │  │ (pgSTAC) │  │ (STAC)   │  │ (TiPG)   │  │(DuckDB)  │ │
+│  └────┬─────┘  └────┬─────┘  └────┬─────┘  └────┬─────┘  └────┬─────┘  └────┬─────┘ │
+│       │              │             │             │             │             │        │
+│       ▼              ▼             ▼             ▼             ▼             ▼        │
+│  ┌──────────────────────────────────────────────────────────────────────────────────┐ │
+│  │                         Azure Auth Middleware                                    │ │
+│  │            OAuth Token Acquisition + Environment Configuration                   │ │
+│  └──────────────────────────────────────────────────────────────────────────────────┘ │
+│       │              │             │             │             │             │        │
+│       ▼              ▼             ▼             ▼             ▼             ▼        │
+│  ┌──────────┐  ┌──────────┐  ┌─────────────────────────┐  ┌──────────┐  ┌──────────┐│
+│  │  GDAL    │  │ fsspec/  │  │       asyncpg           │  │  TiPG    │  │ DuckDB   ││
+│  │ /vsiaz/  │  │  adlfs   │  │  pgSTAC + stac-fastapi  │  │          │  │          ││
+│  └────┬─────┘  └────┬─────┘  └────────────┬────────────┘  └────┬─────┘  └────┬─────┘│
+│       │              │                     │                    │             │       │
+└───────┼──────────────┼─────────────────────┼────────────────────┼─────────────┼───────┘
+        │              │                     │                    │             │
+        ▼              ▼                     ▼                    ▼             ▼
+┌────────────────┐ ┌────────────────┐ ┌────────────────┐ ┌────────────────┐ ┌──────────┐
+│ Silver Storage │ │ Silver Storage │ │ Business       │ │ Business       │ │ Parquet  │
+│ Account (COGs) │ │ Account (Zarr) │ │ Database       │ │ Database       │ │ (Blob)   │
+└────────────────┘ └────────────────┘ │ (pgSTAC)       │ │ (PostGIS)      │ └──────────┘
+                                      └────────────────┘ └────────────────┘
 ```
 
 ### Internal Components
@@ -123,8 +128,10 @@ This document uses **logical names** instead of Azure resource names. See [WIKI_
 | **TilerFactory** | COG tile serving | `titiler.core` |
 | **XarrayTilerFactory** | Zarr/NetCDF tile serving | `titiler.xarray` |
 | **MosaicTilerFactory** | pgSTAC search-based mosaics | `titiler.pgstac` |
+| **StacApi** | STAC catalog browsing and search | `stac-fastapi-pgstac` |
+| **TiPG Endpoints** | OGC Features API + Vector Tiles | `tipg` |
+| **DuckDB Service** | H3 server-side parquet queries | `duckdb` |
 | **AzureAuthMiddleware** | OAuth token injection | Custom |
-| **PC Credential Provider** | Planetary Computer SAS tokens | `obstore` |
 
 ### Storage Account Compatibility
 
@@ -143,7 +150,7 @@ TiTiler works with **both** Azure storage account types:
 
 ## Authentication
 
-### Three Authentication Mechanisms
+### Authentication Mechanisms
 
 ```
 ┌─────────────────────────────────────────────────────────────────────────────┐
@@ -162,45 +169,44 @@ TiTiler works with **both** Azure storage account types:
 │     • OAuth tokens for Azure Database for PostgreSQL                        │
 │     • Uses App Reader Identity for read-only access                         │
 │     • Also supports Key Vault or password-based auth                        │
-│     • Endpoints: /searches/*, /mosaic/*                                     │
-│                                                                             │
-│  3. PLANETARY COMPUTER CREDENTIAL PROVIDER (External Climate Data)          │
-│     ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━           │
-│     • Gets temporary SAS tokens from PC's API                               │
-│     • Grants read access to THEIR public storage accounts                   │
-│     • Tokens are cached and auto-refreshed                                  │
-│     • Endpoints: /pc/*                                                      │
+│     • Endpoints: /searches/*, /stac/*, /vector/*                            │
 │                                                                             │
 └─────────────────────────────────────────────────────────────────────────────┘
 ```
 
 ### Environment Variables
 
+All app variables use the `GEOTILER_COMPONENT_SETTING` naming convention.
+
 | Variable | Purpose | Example |
 |----------|---------|---------|
-| `USE_AZURE_AUTH` | Enable Azure OAuth | `true` |
-| `AZURE_STORAGE_ACCOUNT` | **Silver Storage Account** name | `{silver-storage-account}` |
-| `LOCAL_MODE` | Use Azure CLI (dev) vs MI (prod) | `true` / `false` |
-| `ENABLE_PLANETARY_COMPUTER` | Enable Planetary Computer integration | `true` |
-| `POSTGRES_AUTH_MODE` | DB auth: `managed_identity`, `key_vault`, `password` | `managed_identity` |
-| `POSTGRES_HOST` | **Business Database** server FQDN | `{db-server}.postgres.database.azure.com` |
-| `POSTGRES_DB` | Database name | `geoapp` |
-| `POSTGRES_USER` | DB username (**App Reader Identity** name) | `{reader-identity-name}` |
-| `POSTGRES_PORT` | PostgreSQL port | `5432` |
-| `POSTGRES_MI_CLIENT_ID` | User-assigned MI client ID (for `managed_identity` mode) | `{client-id-guid}` |
-| `POSTGRES_PASSWORD` | DB password (for `password` mode only) | `{password}` |
-| `KEY_VAULT_NAME` | Key Vault name (for `key_vault` mode only) | `{keyvault-name}` |
-| `KEY_VAULT_SECRET_NAME` | Secret name in Key Vault (for `key_vault` mode) | `postgres-password` |
+| `GEOTILER_ENABLE_STORAGE_AUTH` | Enable Azure OAuth for blob storage | `true` |
+| `GEOTILER_AUTH_USE_CLI` | Use Azure CLI (dev) vs MI (prod) | `true` / `false` |
+| `GEOTILER_PG_AUTH_MODE` | DB auth: `managed_identity`, `key_vault`, `password` | `managed_identity` |
+| `GEOTILER_PG_HOST` | **Business Database** server FQDN | `{db-server}.postgres.database.azure.com` |
+| `GEOTILER_PG_DB` | Database name | `geoapp` |
+| `GEOTILER_PG_USER` | DB username (**App Reader Identity** name) | `{reader-identity-name}` |
+| `GEOTILER_PG_PORT` | PostgreSQL port | `5432` |
+| `GEOTILER_PG_MI_CLIENT_ID` | User-assigned MI client ID (for `managed_identity` mode) | `{client-id-guid}` |
+| `GEOTILER_PG_PASSWORD` | DB password (for `password` mode only) | `{password}` |
+| `GEOTILER_KEY_VAULT_NAME` | Key Vault name (for `key_vault` mode only) | `{keyvault-name}` |
+| `GEOTILER_KEY_VAULT_SECRET_NAME` | Secret name in Key Vault (for `key_vault` mode) | `postgres-password` |
+| `GEOTILER_ENABLE_TIPG` | Enable TiPG OGC Features + Vector Tiles | `true` |
+| `GEOTILER_TIPG_SCHEMAS` | Comma-separated PostGIS schemas | `geo` |
+| `GEOTILER_TIPG_PREFIX` | URL prefix for TiPG routes | `/vector` |
+| `GEOTILER_ENABLE_STAC_API` | Enable STAC API (requires TiPG) | `true` |
+| `GEOTILER_STAC_PREFIX` | URL prefix for STAC routes | `/stac` |
+| `GEOTILER_ENABLE_H3_DUCKDB` | Enable H3 server-side DuckDB queries | `false` |
+| `GEOTILER_H3_PARQUET_URL` | Parquet file URL for H3 DuckDB | *(required if DuckDB enabled)* |
+| `AZURE_TENANT_ID` | Azure AD tenant ID (third-party, not prefixed) | `{tenant-guid}` |
 
 #### Observability Settings
 
 | Variable | Purpose | Default |
 |----------|---------|---------|
 | `APPLICATIONINSIGHTS_CONNECTION_STRING` | App Insights connection string (enables telemetry) | *(none)* |
-| `OBSERVABILITY_MODE` | Enable detailed request/latency logging | `false` |
-| `SLOW_REQUEST_THRESHOLD_MS` | Slow request threshold in milliseconds | `2000` |
-| `APP_NAME` | Service name for log correlation | `geotiler` |
-| `ENVIRONMENT` | Deployment environment (dev/qa/prod) | `dev` |
+| `GEOTILER_ENABLE_OBSERVABILITY` | Enable detailed request/latency logging | `false` |
+| `GEOTILER_OBS_SLOW_REQUEST_THRESHOLD_MS` | Slow request threshold in milliseconds | `2000` |
 
 ---
 
@@ -218,21 +224,24 @@ https://{titiler-service-url}
 
 | Endpoint | Method | Description |
 |----------|--------|-------------|
-| `/` | GET | API info and endpoint list |
-| `/healthz` | GET | Readiness probe with DB status |
+| `/` | GET | Admin dashboard (HTML) |
+| `/api` | GET | JSON API information and endpoint list |
 | `/livez` | GET | Liveness probe (simple OK) |
-| `/docs` | GET | Interactive OpenAPI documentation |
+| `/readyz` | GET | Readiness probe with DB connectivity |
+| `/health` | GET | Detailed health with version, hardware, dependencies |
+| `/docs` | GET | Interactive OpenAPI documentation (Swagger UI) |
 | `/openapi.json` | GET | OpenAPI specification |
 
 **Health Response Example:**
 ```json
 {
   "status": "healthy",
-  "azure_auth_enabled": true,
-  "local_mode": false,
-  "storage_account": "{silver-storage-account}",
-  "token_expires_in_seconds": 3245,
-  "database": "connected"
+  "version": "0.8.18.0",
+  "database": { "status": "connected", "latency_ms": 12 },
+  "storage_auth": { "enabled": true, "token_expires_in_sec": 3245 },
+  "tipg": { "status": "ok", "collections": 7 },
+  "stac_api": { "enabled": true },
+  "system": { "cpu_count": 4, "memory_mb": 3500 }
 }
 ```
 
@@ -248,7 +257,7 @@ Endpoints for operational management and ETL pipeline integration.
 |----------|--------|-------------|
 | `/admin/refresh-collections` | POST | Refresh TiPG collection catalog (picks up new PostGIS tables) |
 
-**Authentication:** When `ADMIN_AUTH_ENABLED=true`, requires an Azure AD Bearer token. The calling app's Managed Identity client ID must be listed in `ADMIN_ALLOWED_APP_IDS`.
+**Authentication:** When `GEOTILER_ENABLE_ADMIN_AUTH=true`, requires an Azure AD Bearer token. The calling app's Managed Identity client ID must be listed in `GEOTILER_ADMIN_ALLOWED_APP_IDS`.
 
 **Refresh Collections Response:**
 ```json
@@ -285,11 +294,11 @@ response = requests.post(
 
 | Variable | Required | Default | Description |
 |----------|----------|---------|-------------|
-| `ADMIN_AUTH_ENABLED` | No | `false` | Enable Azure AD auth for /admin/* endpoints |
-| `ADMIN_ALLOWED_APP_IDS` | If auth enabled | - | Comma-separated MI client IDs allowed to call /admin/* |
+| `GEOTILER_ENABLE_ADMIN_AUTH` | No | `false` | Enable Azure AD auth for /admin/* endpoints |
+| `GEOTILER_ADMIN_ALLOWED_APP_IDS` | If auth enabled | - | Comma-separated MI client IDs allowed to call /admin/* |
 | `AZURE_TENANT_ID` | If auth enabled | - | Azure AD tenant ID for token validation |
-| `TIPG_CATALOG_TTL_ENABLED` | No | `false` | Enable automatic catalog refresh on a timer |
-| `TIPG_CATALOG_TTL` | No | `60` | Auto-refresh interval in seconds (when TTL enabled) |
+| `GEOTILER_ENABLE_TIPG_CATALOG_TTL` | No | `false` | Enable automatic catalog refresh on a timer |
+| `GEOTILER_TIPG_CATALOG_TTL_SEC` | No | `60` | Auto-refresh interval in seconds (when TTL enabled) |
 
 ---
 
@@ -414,63 +423,6 @@ Multidimensional data endpoints using xarray + fsspec/adlfs.
 
 ---
 
-### Planetary Computer Endpoints
-
-**Prefix:** `/pc`
-
-Access to Microsoft Planetary Computer's public climate datasets with automatic SAS token handling.
-
-> **Note:** Planetary Computer is an **external** data source (not part of our platform). These endpoints fetch data from Microsoft's public storage accounts, not from **Silver Storage Account**.
-
-#### Known Planetary Computer Storage Accounts
-
-| Storage Account | Default Collection | Description |
-|-----------------|-------------------|-------------|
-| `rhgeuwest` | `cil-gdpcir-cc0` | Climate Impact Lab CMIP6 downscaled projections |
-| `ai4edataeuwest` | `daymet-daily-na` | gridMET and Daymet meteorological data |
-
-#### Endpoints
-
-| Endpoint | Method | Description |
-|----------|--------|-------------|
-| `/pc/collections` | GET | List known PC storage accounts |
-| `/pc/variables` | GET | List variables in PC Zarr dataset |
-| `/pc/info` | GET | Get dataset/variable metadata |
-| `/pc/tiles/{z}/{x}/{y}.png` | GET | Get tile from PC data |
-| `/pc/{tms}/tilejson.json` | GET | Get TileJSON |
-| `/pc/{tms}/map.html` | GET | Interactive map viewer |
-
-#### Example URLs
-
-```bash
-# List collections
-/pc/collections
-
-# List variables in CMIP6 dataset (external Planetary Computer data)
-/pc/variables?url=https://rhgeuwest.blob.core.windows.net/cil-gdpcir/ScenarioMIP/NUIST/NESM3/ssp585/r1i1p1f1/day/tasmax/v1.1.zarr
-
-# Get info
-/pc/info?url=https://rhgeuwest.blob.core.windows.net/cil-gdpcir/ScenarioMIP/NUIST/NESM3/ssp585/r1i1p1f1/day/tasmax/v1.1.zarr&variable=tasmax
-
-# Get tile
-/pc/tiles/0/0/0.png?url=https://rhgeuwest.blob.core.windows.net/cil-gdpcir/ScenarioMIP/NUIST/NESM3/ssp585/r1i1p1f1/day/tasmax/v1.1.zarr&variable=tasmax
-```
-
-#### CMIP6 Dataset URLs (Planetary Computer)
-
-```
-# Maximum Temperature (SSP585)
-https://rhgeuwest.blob.core.windows.net/cil-gdpcir/ScenarioMIP/NUIST/NESM3/ssp585/r1i1p1f1/day/tasmax/v1.1.zarr
-
-# Minimum Temperature
-https://rhgeuwest.blob.core.windows.net/cil-gdpcir/ScenarioMIP/NUIST/NESM3/ssp585/r1i1p1f1/day/tasmin/v1.1.zarr
-
-# Precipitation
-https://rhgeuwest.blob.core.windows.net/cil-gdpcir/ScenarioMIP/NUIST/NESM3/ssp585/r1i1p1f1/day/pr/v1.1.zarr
-```
-
----
-
 ### pgSTAC Search Endpoints
 
 **Prefix:** `/searches`
@@ -507,6 +459,91 @@ curl -X POST "https://{titiler-service-url}/searches/register" \
 ```bash
 /searches/{search_id}/tiles/WebMercatorQuad/10/512/384.png?assets=visual
 ```
+
+---
+
+### STAC API Endpoints
+
+**Prefix:** `/stac`
+
+STAC catalog browsing and search via stac-fastapi-pgstac. Requires TiPG to be enabled (shared asyncpg pool).
+
+| Endpoint | Method | Description |
+|----------|--------|-------------|
+| `/stac` | GET | STAC API landing page |
+| `/stac/conformance` | GET | OGC conformance classes |
+| `/stac/collections` | GET | List all STAC collections |
+| `/stac/collections/{collection_id}` | GET | Get collection metadata |
+| `/stac/collections/{collection_id}/items` | GET | List items in a collection |
+| `/stac/collections/{collection_id}/items/{item_id}` | GET | Get a single item |
+| `/stac/search` | GET/POST | Search items by spatial/temporal/property filters |
+| `/stac/queryables` | GET | List queryable properties (cross-collection) |
+| `/stac/collections/{collection_id}/queryables` | GET | List queryable properties (per-collection) |
+
+#### Example URLs
+
+```bash
+# List collections
+curl https://{titiler-service-url}/stac/collections | jq
+
+# Search items by bounding box
+curl -X POST "https://{titiler-service-url}/stac/search" \
+  -H "Content-Type: application/json" \
+  -d '{"bbox": [-80, 35, -75, 40], "limit": 10}'
+
+# Get items from a collection
+curl "https://{titiler-service-url}/stac/collections/my-collection/items?limit=5" | jq
+```
+
+---
+
+### OGC Vector Endpoints (TiPG)
+
+**Prefix:** `/vector`
+
+OGC Features API + Vector Tiles for PostGIS tables via TiPG.
+
+| Endpoint | Method | Description |
+|----------|--------|-------------|
+| `/vector/collections` | GET | List PostGIS collections |
+| `/vector/collections/{collection_id}` | GET | Get collection metadata |
+| `/vector/collections/{collection_id}/items` | GET | Query features (GeoJSON) |
+| `/vector/collections/{collection_id}/items/{item_id}` | GET | Get a single feature |
+| `/vector/collections/{collection_id}/tiles/{tms}/{z}/{x}/{y}` | GET | Get vector tile (MVT) |
+| `/vector/collections/{collection_id}/tilejson.json` | GET | Get TileJSON for vector tiles |
+| `/vector/conformance` | GET | OGC API conformance classes |
+| `/vector/diagnostics` | GET | TiPG table-discovery diagnostics |
+| `/vector/diagnostics/verbose` | GET | Verbose database diagnostics |
+| `/vector/diagnostics/table/{table_name}` | GET | Deep diagnostics for a specific table |
+
+#### Example URLs
+
+```bash
+# List vector collections
+curl https://{titiler-service-url}/vector/collections | jq
+
+# Query features from a collection
+curl "https://{titiler-service-url}/vector/collections/my_table/items?limit=10" | jq
+
+# Get vector tile
+curl "https://{titiler-service-url}/vector/collections/my_table/tiles/WebMercatorQuad/10/512/384"
+
+# Run diagnostics
+curl https://{titiler-service-url}/vector/diagnostics | jq
+```
+
+---
+
+### H3 Explorer Endpoints
+
+**Prefix:** `/h3`
+
+H3 Crop Production & Drought Risk Explorer with optional server-side DuckDB queries.
+
+| Endpoint | Method | Description |
+|----------|--------|-------------|
+| `/h3` | GET | Interactive H3 Explorer map (HTML) |
+| `/h3/query` | GET | Server-side DuckDB query (when `GEOTILER_ENABLE_H3_DUCKDB=true`) |
 
 ---
 
@@ -695,14 +732,6 @@ https://{silver-storage-account}.blob.core.windows.net/silver-cogs/test-zarr/era
 /xarray/tiles/WebMercatorQuad/0/0/0@1x.png?url=https://{silver-storage-account}.blob.core.windows.net/silver-cogs/test-zarr/era5-global-sample.zarr/era5-global-sample.zarr&variable=air_temperature_at_2_metres&decode_times=false&bidx=1&colormap_name=turbo&rescale=220,320
 ```
 
-### Planetary Computer Public Data (External)
-
-| Dataset | URL |
-|---------|-----|
-| **gridMET** | `https://ai4edataeuwest.blob.core.windows.net/gridmet/gridmet.zarr` |
-| **Daymet Hawaii** | `https://daymeteuwest.blob.core.windows.net/daymet-zarr/daily/hi.zarr` |
-| **Daymet PR** | `https://daymeteuwest.blob.core.windows.net/daymet-zarr/daily/pr.zarr` |
-
 ---
 
 ## Error Reference
@@ -714,7 +743,7 @@ https://{silver-storage-account}.blob.core.windows.net/silver-cogs/test-zarr/era
 | **Static noise / meaningless image** | Missing `bidx` - all time steps aggregated | Add `&bidx=1` to select a time step |
 | `Maximum array limit reached` | Missing `bidx` for temporal Zarr | Add `&bidx=1` |
 | `unable to decode time units` | CMIP6 noleap calendar | Add `&decode_times=false` |
-| `403 Forbidden` | OAuth token expired | Check `/healthz`, restart app |
+| `403 Forbidden` | OAuth token expired | Check `/health`, restart app |
 | `404 Not Found` | Invalid URL path | Verify blob/container exists |
 | `500 Internal Server Error` | Various | Check logs, verify URL format |
 | `permission denied for table X` | Missing SELECT grant | See note below on `ALTER DEFAULT PRIVILEGES` |
@@ -777,7 +806,7 @@ https://{silver-storage-account}.blob.core.windows.net/silver-cogs/test-zarr/era
 
 ### Health Check
 ```bash
-curl https://{titiler-service-url}/healthz
+curl https://{titiler-service-url}/health
 ```
 
 ### Interactive Viewers

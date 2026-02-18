@@ -25,7 +25,7 @@ from geotiler.routers.vector import get_tipg_startup_state_from_app
 
 logger = logging.getLogger(__name__)
 
-router = APIRouter(prefix="/vector", tags=["Diagnostics"])
+router = APIRouter(prefix="/vector")
 
 
 async def _run_query(pool, query: str, *args) -> tuple[list[dict], Optional[str]]:

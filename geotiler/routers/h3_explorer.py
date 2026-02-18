@@ -11,17 +11,41 @@ backed by DuckDB (ENABLE_H3_DUCKDB=true required).
 Stack: deck.gl (PolygonLayer) + MapLibre + h3-js
 """
 
+import asyncio
+import csv
 import time
 import logging
 
 from fastapi import APIRouter, Query, Request
 from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse
 
+from geotiler.config import settings
 from geotiler.templates_utils import templates, get_template_context
 
 logger = logging.getLogger(__name__)
 
 router = APIRouter(tags=["H3 Explorer"])
+
+# Lazy-loaded centroids cache (populated on first /h3/centroids request)
+_centroids_cache: list[dict] | None = None
+
+
+def _load_centroids() -> list[dict]:
+    """Read PSU centroids from CSV. Runs in thread via asyncio.to_thread()."""
+    path = settings.centroids_csv_path
+    result = []
+    with open(path, newline="") as f:
+        reader = csv.DictReader(f)
+        for row in reader:
+            try:
+                result.append({
+                    "id": row["ID"],
+                    "lat": float(row["PSU_LATITUDE"]),
+                    "lon": float(row["PSU_LONGITUDE"]),
+                })
+            except (KeyError, ValueError):
+                continue
+    return result
 
 # Region definitions for parameterized H3 views
 REGIONS = {
@@ -151,3 +175,27 @@ async def h3_query(
     except Exception as e:
         logger.error(f"H3 query error: {e}")
         return JSONResponse({"error": "Query failed"}, status_code=500)
+
+
+@router.get("/h3/centroids", include_in_schema=False)
+async def h3_centroids():
+    """
+    Return PSU centroid points for overlay on the H3 map.
+
+    Lazy-loads from CSV on first request and caches in memory.
+    Requires GEOTILER_CENTROIDS_CSV_PATH to be set.
+    """
+    global _centroids_cache
+
+    if not settings.centroids_csv_path:
+        return JSONResponse({"error": "Centroids not configured"}, status_code=404)
+
+    if _centroids_cache is None:
+        try:
+            _centroids_cache = await asyncio.to_thread(_load_centroids)
+            logger.info(f"Loaded {len(_centroids_cache)} PSU centroids")
+        except Exception as e:
+            logger.error(f"Failed to load centroids: {e}")
+            return JSONResponse({"error": "Failed to load centroids"}, status_code=500)
+
+    return JSONResponse({"data": _centroids_cache, "count": len(_centroids_cache)})

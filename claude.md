@@ -22,13 +22,20 @@ Dynamic tile server for Cloud Optimized GeoTIFFs (COGs), Zarr/NetCDF arrays, and
 - `/health` endpoint with database ping, version, hardware info
 
 **Key endpoints:**
+- `GET /livez` - Liveness probe (simple OK)
+- `GET /readyz` - Readiness probe (database connectivity)
 - `GET /health` - Health check with full diagnostics
 - `GET /cog/info?url=...` - COG metadata
 - `GET /cog/tiles/{z}/{x}/{y}` - Tile rendering
-- `GET /searches/register` - Create pgSTAC mosaic search
+- `POST /searches/register` - Create pgSTAC mosaic search
+- `GET /stac/collections` - List STAC collections
+- `GET|POST /stac/search` - Search STAC items
 - `GET /vector/collections` - List PostGIS collections (TiPG)
 - `GET /vector/collections/{id}/items` - Query features (GeoJSON)
 - `GET /vector/collections/{id}/tiles/{tms}/{z}/{x}/{y}` - Vector tiles (MVT)
+- `GET /vector/diagnostics` - TiPG table-discovery diagnostics
+- `GET /h3` - H3 Explorer (interactive map)
+- `GET /h3/query` - H3 DuckDB server-side query
 - `POST /admin/refresh-collections` - Webhook to refresh TiPG catalog (ETL integration, see note below)
 
 **TiPG Multi-Instance Warning:** In multi-instance deployments (ASE), the refresh webhook only updates ONE instance. Other instances keep stale catalogs until they restart or TTL refresh triggers. See `docs/TIPG_CATALOG_ARCHITECTURE.md` for details and workarounds.
@@ -44,6 +51,7 @@ Dynamic tile server for Cloud Optimized GeoTIFFs (COGs), Zarr/NetCDF arrays, and
 | `geotiler/routers/health.py` | Health probe endpoints |
 | `geotiler/routers/vector.py` | TiPG integration (OGC Features + Vector Tiles) |
 | `geotiler/routers/admin.py` | Admin dashboard + refresh-collections webhook |
+| `geotiler/openapi.py` | OpenAPI schema post-processor (fixes upstream tags/descriptions) |
 | `geotiler/auth/admin_auth.py` | Azure AD token validation for admin endpoints |
 | `Dockerfile` | Production image (Managed Identity) |
 | `Dockerfile.local` | Local dev image (Azure CLI credentials) |
