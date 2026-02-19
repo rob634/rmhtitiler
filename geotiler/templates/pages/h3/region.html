@@ -803,7 +803,7 @@ function buildLegend() {
             <div class="h3-legend-title">Production &times; Technology &times; Drought</div>
             <div class="h3-quad-legend">
                 <div>
-                    <div class="h3-quad-zone-label safe">Safe Zone (SPEI &ge; ${thr})</div>
+                    <div class="h3-quad-zone-label safe">Production (SPEI &ge; ${thr})</div>
                     <div class="h3-quad-ramps">
                         <div class="h3-quad-ramp-wrap">
                             <div class="h3-quad-ramp" id="q-safe-irrig"></div>
@@ -1117,7 +1117,7 @@ function drawLegendToCanvas(ctx, canvasH) {
 
         const thr = DROUGHT_SPEI_THRESHOLD;
         const zones = [
-            { label: `Safe Zone (SPEI \u2265 ${thr})`, color: '#2ab873', ramps: [
+            { label: `Production (SPEI \u2265 ${thr})`, color: '#2ab873', ramps: [
                 { label: 'Irrigated', colors: QUAD.safe_irrig },
                 { label: 'Rainfed', colors: QUAD.safe_rain },
             ]},
