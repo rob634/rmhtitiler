@@ -205,9 +205,6 @@ class Settings(BaseSettings):
     h3_parquet_filename: str = "h3_data.parquet"
     """Filename for the local parquet cache."""
 
-    centroids_csv_path: str = ""
-    """Path to PSU centroids CSV file. Empty = centroids endpoint disabled."""
-
     # =========================================================================
     # Computed Properties
     # =========================================================================

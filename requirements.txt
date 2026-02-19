@@ -11,13 +11,13 @@
 
 # --- Azure Authentication -------------------------------------------------
 # OAuth tokens via Managed Identity for storage and PostgreSQL
-azure-identity>=1.15.0
+azure-identity>=1.16.1
 # Key Vault access for password retrieval (key_vault auth mode)
 azure-keyvault-secrets>=4.7.0
 
 # --- Xarray / Zarr --------------------------------------------------------
 # Multidimensional data support (Zarr, NetCDF)
-titiler.xarray>=0.18.0
+titiler.xarray>=0.24.0,<0.25.0
 # Azure Data Lake filesystem for fsspec (Zarr access via abfs://)
 adlfs>=2024.4.1
 
@@ -41,8 +41,8 @@ stac-fastapi.pgstac>=4.0.0
 
 # --- Admin Endpoint Authentication ----------------------------------------
 # Azure AD JWT token validation for /admin/* endpoints
-PyJWT>=2.8.0
-cryptography>=41.0.0
+PyJWT>=2.10.1
+cryptography>=44.0.1
 
 # --- H3 Explorer (optional, gated by ENABLE_H3_DUCKDB) --------------------
-duckdb>=1.0.0
+duckdb>=1.1.0

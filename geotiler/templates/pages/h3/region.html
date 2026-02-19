@@ -252,16 +252,6 @@ body { margin: 0; }
         <label>Palette</label>
         <select id="sel-palette"></select>
     </div>
-    <button id="btn-centroids" class="h3-toggle-btn" title="Toggle PSU centroid sites">
-        <svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor">
-            <circle cx="8" cy="8" r="3"/>
-            <circle cx="3" cy="4" r="2"/>
-            <circle cx="13" cy="5" r="2"/>
-            <circle cx="5" cy="13" r="2"/>
-            <circle cx="12" cy="12" r="2"/>
-        </svg>
-        PSU Sites
-    </button>
     <button id="btn-export" class="h3-export-btn" title="Export map as PNG">
         <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round">
             <path d="M8 2v8M4.5 7L8 10.5 11.5 7M3 13h10"/>
@@ -412,10 +402,6 @@ const queryCache = new Map();
 let borderGeoJSON = null;
 let regionPolygons = [];
 const regionHexCache = new Map();
-
-// PSU centroids overlay
-let showCentroids = false;
-let centroidsData = null;
 
 // ============================================================
 // Country Boundary Loading
@@ -681,21 +667,6 @@ function buildLayers(data) {
         }));
     }
 
-    if (showCentroids && centroidsData) {
-        layers.push(new deck.ScatterplotLayer({
-            id: 'psu-centroids', data: centroidsData,
-            getPosition: d => [d.lon, d.lat],
-            getFillColor: [255, 185, 50, 220],
-            getLineColor: [180, 120, 20, 255],
-            radiusMinPixels: 2, radiusMaxPixels: 8,
-            radiusScale: 200, lineWidthMinPixels: 0.5,
-            stroked: true, pickable: true, autoHighlight: true,
-            highlightColor: [255, 255, 100, 255],
-            onHover: onCentroidHover,
-            parameters: {depthTest: false},
-        }));
-    }
-
     if (borderGeoJSON) {
         layers.push(new deck.GeoJsonLayer({
             id: 'country-borders', data: borderGeoJSON,
@@ -738,17 +709,6 @@ function onHover({object, x, y}) {
     html += `<div class="tt-row"><span class="tt-lbl">SPEI-12</span><span class="spei-val ${speiClass}">${speiLabel}</span></div>`;
 
     tooltip.innerHTML = html;
-    tooltip.style.display = 'block';
-    tooltip.style.left = `${x + 14}px`;
-    tooltip.style.top = `${y + 14}px`;
-}
-
-function onCentroidHover({object, x, y}) {
-    if (!object) { tooltip.style.display = 'none'; return; }
-    tooltip.innerHTML = `<strong>PSU Site</strong>`
-        + `<div class="tt-row"><span class="tt-lbl">ID</span><span class="tt-val">${object.id}</span></div>`
-        + `<div class="tt-row"><span class="tt-lbl">Lat</span><span class="tt-val">${object.lat.toFixed(4)}</span></div>`
-        + `<div class="tt-row"><span class="tt-lbl">Lon</span><span class="tt-val">${object.lon.toFixed(4)}</span></div>`;
     tooltip.style.display = 'block';
     tooltip.style.left = `${x + 14}px`;
     tooltip.style.top = `${y + 14}px`;
@@ -1027,6 +987,180 @@ async function refresh() {
 // Helpers
 // ============================================================
 
+const FONT = '-apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif';
+
+function drawLegendToCanvas(ctx, canvasH) {
+    // Position: bottom-left, matching CSS #h3-legend
+    const pad = 14;
+    const cellSize = 24;
+    const gap = 1;
+
+    if (currentView === 'production') {
+        // Single horizontal ramp
+        const rampW = PROD_RAMP.length * (cellSize + gap) - gap;
+        const boxW = rampW + pad * 2 + 4;
+        const boxH = 62;
+        const bx = 12, by = canvasH - boxH - 32;
+
+        ctx.fillStyle = 'rgba(30, 32, 48, 0.92)';
+        ctx.beginPath(); ctx.roundRect(bx, by, boxW, boxH, 10); ctx.fill();
+
+        ctx.font = `600 12px ${FONT}`;
+        ctx.fillStyle = '#b0b0b0';
+        ctx.textBaseline = 'top';
+        ctx.textAlign = 'left';
+        ctx.fillText('Production Intensity', bx + pad, by + pad);
+
+        const ry = by + pad + 18;
+        for (let i = 0; i < PROD_RAMP.length; i++) {
+            const [r, g, b] = PROD_RAMP[i];
+            ctx.fillStyle = `rgb(${r},${g},${b})`;
+            ctx.fillRect(bx + pad + i * (cellSize + gap), ry, cellSize, 14);
+        }
+
+        ctx.font = `10px ${FONT}`;
+        ctx.fillStyle = '#888';
+        ctx.textAlign = 'left';
+        ctx.fillText('Low', bx + pad, ry + 18);
+        ctx.textAlign = 'right';
+        ctx.fillText('High', bx + pad + rampW, ry + 18);
+        ctx.textAlign = 'left';
+
+    } else if (currentView === 'bivariate' || currentView === 'tech-biv') {
+        // 5x5 grid legend
+        const gridW = 5 * (cellSize + gap) - gap;
+        const boxW = gridW + pad * 2 + 28;  // extra for Y-axis label
+        const boxH = gridW + pad * 2 + 36;  // extra for title + X-axis label
+        const bx = 12, by = canvasH - boxH - 32;
+
+        ctx.fillStyle = 'rgba(30, 32, 48, 0.92)';
+        ctx.beginPath(); ctx.roundRect(bx, by, boxW, boxH, 10); ctx.fill();
+
+        // Title
+        const isTech = currentView === 'tech-biv';
+        const titleText = isTech
+            ? 'Production \u00d7 Irrigated vs Rainfed'
+            : `Production \u00d7 Drought Risk (${PALETTES[currentPalette].name})`;
+        ctx.font = `600 12px ${FONT}`;
+        ctx.fillStyle = '#b0b0b0';
+        ctx.textBaseline = 'top';
+        ctx.textAlign = 'left';
+        ctx.fillText(titleText, bx + pad, by + pad);
+
+        // Y-axis label (rotated)
+        const yLabel = isTech ? 'Rainfed share \u2192' : 'Drought risk \u2192';
+        ctx.save();
+        ctx.translate(bx + pad + 2, by + pad + 18 + gridW / 2);
+        ctx.rotate(-Math.PI / 2);
+        ctx.font = `11px ${FONT}`;
+        ctx.fillStyle = '#a0a0a0';
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'top';
+        ctx.fillText(yLabel, 0, 0);
+        ctx.restore();
+
+        // Grid
+        const gx = bx + pad + 20;
+        const gy = by + pad + 18;
+        for (let row = 4; row >= 0; row--) {
+            const t = row / 4;
+            for (let col = 0; col < 5; col++) {
+                let rgb;
+                if (isTech) {
+                    const tx = col / 4, ty = t;
+                    const {BL, BR, TL, TR} = TECH_BIV_CORNERS;
+                    rgb = [
+                        Math.round((1-tx)*(1-ty)*BL[0] + tx*(1-ty)*BR[0] + (1-tx)*ty*TL[0] + tx*ty*TR[0]),
+                        Math.round((1-tx)*(1-ty)*BL[1] + tx*(1-ty)*BR[1] + (1-tx)*ty*TL[1] + tx*ty*TR[1]),
+                        Math.round((1-tx)*(1-ty)*BL[2] + tx*(1-ty)*BR[2] + (1-tx)*ty*TL[2] + tx*ty*TR[2]),
+                    ];
+                } else {
+                    const pal = PALETTES[currentPalette];
+                    rgb = lerpColor(pal.safe[col], pal.drought[col], t);
+                }
+                ctx.fillStyle = `rgb(${rgb[0]},${rgb[1]},${rgb[2]})`;
+                const cx = gx + col * (cellSize + gap);
+                const cy = gy + (4 - row) * (cellSize + gap);
+                ctx.fillRect(cx, cy, cellSize, cellSize);
+            }
+        }
+
+        // X-axis labels
+        const tickY = gy + 5 * (cellSize + gap) + 2;
+        ctx.font = `10px ${FONT}`;
+        ctx.fillStyle = '#888';
+        ctx.textAlign = 'left';
+        ctx.fillText('Low', gx, tickY);
+        ctx.textAlign = 'center';
+        ctx.fillText('Production \u2192', gx + gridW / 2, tickY);
+        ctx.textAlign = 'right';
+        ctx.fillText('High', gx + gridW, tickY);
+        ctx.textAlign = 'left';
+
+    } else if (currentView === 'quad') {
+        // Quad: 2 zones x 2 ramps each
+        const rampCellW = 20;
+        const rampH = 16;
+        const rampW = 5 * (rampCellW + gap) - gap;
+        const boxW = rampW * 2 + pad * 2 + 20;
+        const boxH = 140;
+        const bx = 12, by = canvasH - boxH - 32;
+
+        ctx.fillStyle = 'rgba(30, 32, 48, 0.92)';
+        ctx.beginPath(); ctx.roundRect(bx, by, boxW, boxH, 10); ctx.fill();
+
+        ctx.font = `600 12px ${FONT}`;
+        ctx.fillStyle = '#b0b0b0';
+        ctx.textBaseline = 'top';
+        ctx.textAlign = 'left';
+        ctx.fillText('Production \u00d7 Technology \u00d7 Drought', bx + pad, by + pad);
+
+        const thr = DROUGHT_SPEI_THRESHOLD;
+        const zones = [
+            { label: `Safe Zone (SPEI \u2265 ${thr})`, color: '#2ab873', ramps: [
+                { label: 'Irrigated', colors: QUAD.safe_irrig },
+                { label: 'Rainfed', colors: QUAD.safe_rain },
+            ]},
+            { label: `Drought Zone (SPEI < ${thr})`, color: '#e63946', ramps: [
+                { label: 'Irrigated', colors: QUAD.drought_irrig },
+                { label: 'Rainfed', colors: QUAD.drought_rain },
+            ]},
+        ];
+
+        let zy = by + pad + 20;
+        for (const zone of zones) {
+            ctx.font = `600 12px ${FONT}`;
+            ctx.fillStyle = zone.color;
+            ctx.fillText(zone.label, bx + pad, zy);
+            zy += 16;
+
+            for (let ri = 0; ri < zone.ramps.length; ri++) {
+                const ramp = zone.ramps[ri];
+                const rx = bx + pad + ri * (rampW + 12);
+                for (let i = 0; i < ramp.colors.length; i++) {
+                    const [r, g, b] = ramp.colors[i];
+                    ctx.fillStyle = `rgb(${r},${g},${b})`;
+                    ctx.fillRect(rx + i * (rampCellW + gap), zy, rampCellW, rampH);
+                }
+                ctx.font = `10px ${FONT}`;
+                ctx.fillStyle = '#999';
+                ctx.textAlign = 'center';
+                ctx.fillText(ramp.label, rx + rampW / 2, zy + rampH + 2);
+                ctx.textAlign = 'left';
+            }
+            zy += rampH + 16;
+        }
+
+        // Production axis labels
+        ctx.font = `10px ${FONT}`;
+        ctx.fillStyle = '#888';
+        ctx.fillText('Low', bx + pad, zy);
+        ctx.textAlign = 'right';
+        ctx.fillText('High', bx + pad + rampW * 2 + 12, zy);
+        ctx.textAlign = 'left';
+    }
+}
+
 // ============================================================
 // PNG Export
 // ============================================================
@@ -1123,63 +1257,9 @@ function captureMap() {
             }
             ctx.textAlign = 'left';
 
-            // Render legend onto the canvas via SVG foreignObject
-            const legendEl = document.getElementById('h3-legend');
-            const legendRect = legendEl.getBoundingClientRect();
-            const mapRect = container.getBoundingClientRect();
-            const lx = legendRect.left - mapRect.left;
-            const ly = legendRect.top - mapRect.top;
-            const lw = legendRect.width;
-            const lh = legendRect.height;
-
-            const legendClone = legendEl.cloneNode(true);
-            legendClone.style.position = 'static';
-            legendClone.style.margin = '0';
-
-            const svgNS = 'http://www.w3.org/2000/svg';
-            const svgEl = document.createElementNS(svgNS, 'svg');
-            svgEl.setAttribute('xmlns', svgNS);
-            svgEl.setAttribute('width', lw);
-            svgEl.setAttribute('height', lh);
-            const fo = document.createElementNS(svgNS, 'foreignObject');
-            fo.setAttribute('width', '100%');
-            fo.setAttribute('height', '100%');
-            const body = document.createElement('div');
-            body.setAttribute('xmlns', 'http://www.w3.org/1999/xhtml');
-
-            // Inline all computed styles so the SVG renderer has them
-            function inlineStyles(src, dst) {
-                const cs = window.getComputedStyle(src);
-                for (const prop of cs) {
-                    try { dst.style.setProperty(prop, cs.getPropertyValue(prop)); } catch {}
-                }
-                for (let i = 0; i < src.children.length; i++) {
-                    inlineStyles(src.children[i], dst.children[i]);
-                }
-            }
-            inlineStyles(legendEl, legendClone);
-
-            body.appendChild(legendClone);
-            fo.appendChild(body);
-            svgEl.appendChild(fo);
-
-            const svgData = new XMLSerializer().serializeToString(svgEl);
-            const svgBlob = new Blob([svgData], { type: 'image/svg+xml;charset=utf-8' });
-            const svgUrl = URL.createObjectURL(svgBlob);
-            const legendImg = new Image();
-
-            legendImg.onload = () => {
-                ctx.drawImage(legendImg, lx, ly, lw, lh);
-                URL.revokeObjectURL(svgUrl);
-                finishExport(out, cropName);
-            };
-            legendImg.onerror = () => {
-                // Fallback: export without legend if SVG rendering fails
-                console.warn('Legend render failed, exporting without legend');
-                URL.revokeObjectURL(svgUrl);
-                finishExport(out, cropName);
-            };
-            legendImg.src = svgUrl;
+            // Draw legend directly via Canvas 2D (reliable across all browsers)
+            drawLegendToCanvas(ctx, h);
+            finishExport(out, cropName);
 
         } catch (e) {
             console.error('Export failed:', e);
@@ -1191,41 +1271,6 @@ function captureMap() {
 }
 
 document.getElementById('btn-export').addEventListener('click', captureMap);
-
-// ============================================================
-// PSU Centroids Toggle
-// ============================================================
-
-async function loadCentroids() {
-    if (centroidsData) return;
-    try {
-        const resp = await fetch('/h3/centroids');
-        if (!resp.ok) {
-            const err = await resp.json().catch(() => ({}));
-            console.warn('Centroids unavailable:', err.error || resp.status);
-            return;
-        }
-        const result = await resp.json();
-        centroidsData = result.data;
-        console.log('Loaded ' + result.count + ' PSU centroids');
-    } catch (e) {
-        console.warn('Failed to load centroids:', e);
-    }
-}
-
-document.getElementById('btn-centroids').addEventListener('click', async () => {
-    const btn = document.getElementById('btn-centroids');
-    showCentroids = !showCentroids;
-    btn.classList.toggle('active', showCentroids);
-
-    if (showCentroids && !centroidsData) {
-        btn.disabled = true;
-        await loadCentroids();
-        btn.disabled = false;
-    }
-
-    if (currentData.length || centroidsData) buildLayers(currentData);
-});
 
 // ============================================================
 

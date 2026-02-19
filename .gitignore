@@ -35,3 +35,6 @@ docker-compose.yml
 
 # Test data
 data/
+
+# Excel exports
+*.xlsx
