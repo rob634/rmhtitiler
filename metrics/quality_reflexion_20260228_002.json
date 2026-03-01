@@ -1,0 +1,114 @@
+{
+  "run_id": "reflexion_20260228_002",
+  "pipeline": "reflexion",
+  "timestamp": "2026-02-28T10:00:00Z",
+  "task_description": "Harden download orchestration, router semaphore, and CSV serializer",
+  "task_complexity": "large",
+  "scope_files": ["services/download.py", "routers/download.py", "services/serializers.py"],
+  "scope_lines": 1018,
+
+  "token_summary": {
+    "total_tokens": 275200,
+    "by_agent": {"R": 119034, "F": 53694, "P": 56577, "J": 45895},
+    "duration_sec": 887,
+    "tokens_per_line": 270
+  },
+
+  "section_completeness": {
+    "R": {
+      "inferred_purpose": 2,
+      "contracts_and_interfaces": 2,
+      "invariants": 2,
+      "implicit_assumptions": 2,
+      "dependency_map": 2,
+      "brittleness_map": 2,
+      "state_analysis": 2
+    },
+    "F": {
+      "fault_description": 2,
+      "trigger": 2,
+      "blast_radius": 2,
+      "current_behavior": 2,
+      "severity_rating": 2,
+      "likelihood_rating": 2
+    },
+    "P": {
+      "fault_targeted": 2,
+      "location": 2,
+      "before_after": 2,
+      "rationale": 2,
+      "happy_path_impact": 2,
+      "risk": 2,
+      "grouping": 2
+    },
+    "J": {
+      "per_patch_evaluation": 2,
+      "implementation_plan": 2,
+      "residual_risks": 2,
+      "monitoring_recommendations": 2,
+      "key_insight": 2
+    }
+  },
+  "section_completeness_score": 1.0,
+
+  "r_quality": {
+    "assumptions_found": 7,
+    "brittle_count": 4,
+    "fragile_count": 3,
+    "solid_count": 0,
+    "confirmed_by_f": 7,
+    "f_faults_total": 14,
+    "r_anticipation": 0.50,
+    "purpose_accuracy": "correct",
+    "purpose_accuracy_notes": "R correctly inferred 'data download proxy' with defense-in-depth security"
+  },
+
+  "f_quality": {
+    "faults_found": 14,
+    "by_severity": {"critical": 3, "high": 5, "medium": 4, "low": 2},
+    "severity_concentration": 0.571,
+    "faults_per_100_lines": 1.38,
+    "all_have_current_behavior": true,
+    "f_thoroughness": 1.0
+  },
+
+  "p_quality": {
+    "patches_proposed": 9,
+    "faults_targeted": 11,
+    "faults_unpatched": 3,
+    "patch_coverage": 0.786,
+    "deferred_architectural": 3,
+    "deferral_ratio": 0.214,
+    "multi_fault_patches": 1,
+    "multi_fault_patches_notes": "Patch 1 targets F-1, F-2, and partially F-12"
+  },
+
+  "j_quality": {
+    "approved": 7,
+    "approved_with_modifications": 2,
+    "rejected": 0,
+    "approval_rate": 1.0,
+    "modification_rate": 0.222,
+    "modifications": [
+      "Patch 1: Must remove old semaphore.release() from finally blocks to prevent double-release",
+      "Patch 3: Catch only asyncpg exception types, use logger.error not warning"
+    ]
+  },
+
+  "scaling_metrics": {
+    "tokens_per_line": 270,
+    "faults_per_100_lines": 1.38,
+    "r_anticipation": 0.50,
+    "patch_coverage": 0.786,
+    "deferral_ratio": 0.214,
+    "severity_concentration": 0.571,
+    "approval_rate": 1.0,
+    "modification_rate": 0.222
+  },
+
+  "cross_validation": {
+    "v_findings_chained": ["C2", "C3", "C13"],
+    "v_findings_confirmed": ["C2 (semaphore timing = F-1)", "C3 (async exceptions = F-3)"],
+    "novel_faults_beyond_v": 12
+  }
+}

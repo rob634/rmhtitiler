@@ -1,0 +1,118 @@
+{
+  "run_id": "reflexion_20260228_004",
+  "pipeline": "reflexion",
+  "timestamp": "2026-02-28T14:00:00Z",
+  "task_description": "Harden blob streaming client and TiTiler ASGI transport client",
+  "task_complexity": "medium",
+  "scope_files": ["services/blob_stream.py", "services/download_clients.py"],
+  "scope_lines": 394,
+
+  "token_summary": {
+    "total_tokens": 188234,
+    "by_agent": {"R": 39133, "F": 56763, "P": 38951, "J": 53387},
+    "duration_sec": 637,
+    "tokens_per_line": 478
+  },
+
+  "section_completeness": {
+    "R": {
+      "inferred_purpose": 2,
+      "contracts_and_interfaces": 2,
+      "invariants": 2,
+      "implicit_assumptions": 2,
+      "dependency_map": 2,
+      "brittleness_map": 2,
+      "state_analysis": 2
+    },
+    "F": {
+      "fault_description": 2,
+      "trigger": 2,
+      "blast_radius": 2,
+      "current_behavior": 2,
+      "severity_rating": 2,
+      "likelihood_rating": 2
+    },
+    "P": {
+      "fault_targeted": 2,
+      "location": 2,
+      "before_after": 2,
+      "rationale": 2,
+      "happy_path_impact": 2,
+      "risk": 2,
+      "grouping": 2
+    },
+    "J": {
+      "per_patch_evaluation": 2,
+      "implementation_plan": 2,
+      "residual_risks": 2,
+      "monitoring_recommendations": 2,
+      "key_insight": 2
+    }
+  },
+  "section_completeness_score": 1.0,
+
+  "r_quality": {
+    "assumptions_found": 6,
+    "brittle_count": 2,
+    "fragile_count": 4,
+    "solid_count": 0,
+    "confirmed_by_f": 4,
+    "f_faults_total": 12,
+    "r_anticipation": 0.333,
+    "purpose_accuracy": "correct",
+    "purpose_accuracy_notes": "R correctly inferred 'geospatial data proxy' mediating between browsers and backend storage/processing"
+  },
+
+  "f_quality": {
+    "faults_found": 12,
+    "by_severity": {"critical": 1, "high": 3, "medium": 5, "low": 3},
+    "severity_concentration": 0.333,
+    "faults_per_100_lines": 3.05,
+    "all_have_current_behavior": true,
+    "f_thoroughness": 1.0
+  },
+
+  "p_quality": {
+    "patches_proposed": 6,
+    "faults_targeted": 6,
+    "faults_unpatched": 6,
+    "patch_coverage": 0.500,
+    "deferred_architectural": 4,
+    "deferred_infrastructure": 1,
+    "deferred_configuration": 1,
+    "deferral_ratio": 0.500,
+    "multi_fault_patches": 0
+  },
+
+  "j_quality": {
+    "approved": 5,
+    "approved_with_modifications": 1,
+    "rejected": 0,
+    "approval_rate": 1.0,
+    "modification_rate": 0.167,
+    "modifications": [
+      "Patch 1: Must also apply same error.message fix to download.py line 543"
+    ]
+  },
+
+  "scaling_metrics": {
+    "tokens_per_line": 478,
+    "faults_per_100_lines": 3.05,
+    "r_anticipation": 0.333,
+    "patch_coverage": 0.500,
+    "deferral_ratio": 0.500,
+    "severity_concentration": 0.333,
+    "approval_rate": 1.0,
+    "modification_rate": 0.167
+  },
+
+  "cross_validation": {
+    "v_findings_chained": ["C9", "C11", "C12"],
+    "v_findings_confirmed": [
+      "C9 (_chunk_size dead config = FAULT-04)",
+      "C11 (check_size_limit trust boundary = related to FAULT-06 TOCTOU)",
+      "C12 (retry_after crash = FAULT-03)"
+    ],
+    "novel_faults_beyond_v": 9
+  }
+}

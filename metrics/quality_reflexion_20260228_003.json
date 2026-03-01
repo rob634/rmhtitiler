@@ -1,0 +1,117 @@
+{
+  "run_id": "reflexion_20260228_003",
+  "pipeline": "reflexion",
+  "timestamp": "2026-02-28T12:00:00Z",
+  "task_description": "Harden SSRF asset resolver and PostGIS vector query service",
+  "task_complexity": "medium",
+  "scope_files": ["services/asset_resolver.py", "services/vector_query.py"],
+  "scope_lines": 563,
+
+  "token_summary": {
+    "total_tokens": 252339,
+    "by_agent": {"R": 40700, "F": 101406, "P": 60233, "J": 50000},
+    "duration_sec": 900,
+    "tokens_per_line": 448,
+    "notes": "J token count is estimated — exact value lost in context compaction"
+  },
+
+  "section_completeness": {
+    "R": {
+      "inferred_purpose": 2,
+      "contracts_and_interfaces": 2,
+      "invariants": 2,
+      "implicit_assumptions": 2,
+      "dependency_map": 2,
+      "brittleness_map": 2,
+      "state_analysis": 2
+    },
+    "F": {
+      "fault_description": 2,
+      "trigger": 2,
+      "blast_radius": 2,
+      "current_behavior": 2,
+      "severity_rating": 2,
+      "likelihood_rating": 2
+    },
+    "P": {
+      "fault_targeted": 2,
+      "location": 2,
+      "before_after": 2,
+      "rationale": 2,
+      "happy_path_impact": 2,
+      "risk": 2,
+      "grouping": 2
+    },
+    "J": {
+      "per_patch_evaluation": 2,
+      "implementation_plan": 2,
+      "residual_risks": 2,
+      "monitoring_recommendations": 2,
+      "key_insight": 2
+    }
+  },
+  "section_completeness_score": 1.0,
+
+  "r_quality": {
+    "assumptions_found": 6,
+    "brittle_count": 1,
+    "fragile_count": 5,
+    "solid_count": 3,
+    "confirmed_by_f": 5,
+    "f_faults_total": 12,
+    "r_anticipation": 0.417,
+    "purpose_accuracy": "correct",
+    "purpose_accuracy_notes": "R correctly identified SSRF-protected asset resolver and parameterized spatial query service"
+  },
+
+  "f_quality": {
+    "faults_found": 12,
+    "by_severity": {"critical": 2, "high": 2, "medium": 5, "low": 3},
+    "severity_concentration": 0.333,
+    "faults_per_100_lines": 2.13,
+    "all_have_current_behavior": true,
+    "f_thoroughness": 1.0
+  },
+
+  "p_quality": {
+    "patches_proposed": 7,
+    "faults_targeted": 7,
+    "faults_unpatched": 5,
+    "patch_coverage": 0.583,
+    "deferred_architectural": 5,
+    "deferral_ratio": 0.417,
+    "multi_fault_patches": 0
+  },
+
+  "j_quality": {
+    "approved": 6,
+    "approved_with_modifications": 1,
+    "rejected": 0,
+    "approval_rate": 1.0,
+    "modification_rate": 0.143,
+    "modifications": [
+      "Estimated: ~1 modification (exact details lost in context compaction)"
+    ],
+    "notes": "J output partially lost in context compaction. All 7 patches were applied to codebase."
+  },
+
+  "scaling_metrics": {
+    "tokens_per_line": 448,
+    "faults_per_100_lines": 2.13,
+    "r_anticipation": 0.417,
+    "patch_coverage": 0.583,
+    "deferral_ratio": 0.417,
+    "severity_concentration": 0.333,
+    "approval_rate": 1.0,
+    "modification_rate": 0.143
+  },
+
+  "cross_validation": {
+    "v_findings_chained": ["C5", "C7"],
+    "v_findings_confirmed": ["C5 (DNS fail-open = FAULT-01)", "C7 (catalog handling issues = FAULT-05)"],
+    "novel_faults_beyond_v": 10
+  },
+
+  "patches_applied": true,
+  "patches_applied_to": ["services/asset_resolver.py", "services/vector_query.py", "services/download.py"]
+}
