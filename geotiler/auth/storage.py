@@ -151,9 +151,10 @@ def configure_gdal_auth(token: str) -> None:
         logger.warning("GEOTILER_STORAGE_ACCOUNT not set, skipping GDAL config")
         return
 
-    # Set environment variables (used by GDAL)
+    # Set environment variables (used by GDAL, obstore)
     os.environ["AZURE_STORAGE_ACCOUNT"] = settings.storage_account
-    os.environ["AZURE_STORAGE_ACCESS_TOKEN"] = token
+    os.environ["AZURE_STORAGE_ACCESS_TOKEN"] = token  # GDAL /vsiaz/
+    os.environ["AZURE_STORAGE_TOKEN"] = token  # obstore (titiler.xarray)
 
     # Also set GDAL config options directly (more reliable)
     try:
