@@ -3,8 +3,12 @@ Entry point for running geotiler as a module.
 
 Usage:
     python -m geotiler
-    python -m geotiler --host 0.0.0.0 --port 8000
+
+Environment Variables:
+    PORT: Server port (default: 8000)
 """
+
+import os
 
 import uvicorn
 
@@ -14,7 +18,7 @@ def main():
     uvicorn.run(
         "geotiler.main:app",
         host="0.0.0.0",
-        port=8000,
+        port=int(os.environ.get("PORT", "8000")),
         reload=False,
     )
 

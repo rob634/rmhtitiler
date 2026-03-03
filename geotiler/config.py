@@ -31,7 +31,7 @@ UI Configuration:
 import json
 import logging
 import os
-from typing import Optional, List
+from typing import Literal, Optional, List
 from functools import lru_cache
 
 from pydantic import Field
@@ -71,7 +71,7 @@ class Settings(BaseSettings):
     # =========================================================================
     # PostgreSQL — GEOTILER_PG_*
     # =========================================================================
-    pg_auth_mode: str = "password"
+    pg_auth_mode: Literal["password", "key_vault", "managed_identity"] = "password"
     """Authentication mode: 'password', 'key_vault', or 'managed_identity'."""
 
     pg_host: Optional[str] = None
@@ -192,6 +192,51 @@ class Settings(BaseSettings):
         except json.JSONDecodeError as e:
             logging.warning(f"Failed to parse {var_name} as JSON: {e}")
             return []
+
+    # =========================================================================
+    # Downloads — GEOTILER_ENABLE_DOWNLOADS, GEOTILER_DOWNLOAD_*
+    # =========================================================================
+    enable_downloads: bool = False
+    """Enable download endpoints at /api/download/*."""
+
+    download_raster_max_bbox_area_deg: float = 25.0
+    """Maximum bounding box area in square degrees for raster crops."""
+
+    download_vector_max_features: int = 100_000
+    """Maximum features returned per vector subset query."""
+
+    download_vector_query_timeout_sec: int = 180
+    """PostgreSQL statement_timeout for vector download queries."""
+
+    download_proxy_max_size_mb: int = 500
+    """Maximum blob size (MB) for proxied full-asset downloads."""
+
+    download_blob_chunk_size: int = 4_194_304  # 4 MB
+    """Chunk size in bytes for streaming blob downloads."""
+
+    download_timeout_sec: int = 200
+    """Internal timeout for download operations (must be < 240s platform timeout)."""
+
+    download_max_concurrent: int = 3
+    """Maximum concurrent download streams per replica."""
+
+    download_allowed_hosts: str = ""
+    """Comma-separated allowed hostnames for asset_href.
+    If empty, defaults to storage_account + '.blob.core.windows.net'."""
+
+    @property
+    def download_allowed_host_list(self) -> list[str]:
+        """Parse comma-separated allowed hosts into list.
+
+        Falls back to storage_account.blob.core.windows.net if no explicit hosts configured.
+
+        Spec: Component 1 — download_allowed_host_list property
+        """
+        if self.download_allowed_hosts:
+            return [h.strip() for h in self.download_allowed_hosts.split(",") if h.strip()]
+        if self.storage_account:
+            return [f"{self.storage_account}.blob.core.windows.net"]
+        return []
 
     # =========================================================================
     # H3 Explorer — GEOTILER_H3_*

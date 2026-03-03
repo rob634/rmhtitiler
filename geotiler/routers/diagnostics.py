@@ -15,15 +15,29 @@ Verbose mode mirrors rmhgeoapi health.py queries for direct comparison.
 """
 
 import logging
+import re
 from typing import Any, Optional
 
-from fastapi import APIRouter, Request, Query
+from fastapi import APIRouter, Depends, HTTPException, Request, Query
 
+from geotiler.auth.admin_auth import require_admin_auth
 from geotiler.config import settings
 from geotiler.services.database import get_app_state_from_request
 from geotiler.routers.vector import get_tipg_startup_state_from_app
 
 logger = logging.getLogger(__name__)
+
+_IDENTIFIER_RE = re.compile(r'^[a-zA-Z_][a-zA-Z0-9_]*$')
+
+
+def _validate_sql_identifier(value: str, name: str) -> None:
+    """Validate a SQL identifier (schema/table name) against injection."""
+    if not _IDENTIFIER_RE.match(value):
+        raise HTTPException(
+            status_code=400,
+            detail=f"Invalid {name}: must contain only letters, digits, and underscores"
+        )
+
 
 router = APIRouter(prefix="/vector")
 
@@ -62,7 +76,7 @@ async def _run_query_single(pool, query: str, *args) -> tuple[Any, Optional[str]
         return None, str(e)
 
 
-@router.get("/diagnostics")
+@router.get("/diagnostics", dependencies=[Depends(require_admin_auth)])
 async def tipg_diagnostics(request: Request):
     """
     Run comprehensive diagnostics for TiPG table discovery.
@@ -477,7 +491,7 @@ async def _diagnose_schema(pool, schema: str, issues: list) -> dict:
     return schema_diag
 
 
-@router.get("/diagnostics/verbose")
+@router.get("/diagnostics/verbose", dependencies=[Depends(require_admin_auth)])
 async def verbose_diagnostics(
     request: Request,
     schema: str = Query(default="geo", description="Schema to diagnose"),
@@ -506,6 +520,8 @@ async def verbose_diagnostics(
     Returns:
         Comprehensive database state for comparison with rmhgeoapi.
     """
+    _validate_sql_identifier(schema, "schema")
+
     app_state = get_app_state_from_request(request)
     pool = getattr(app_state, "pool", None) if app_state else None
 
@@ -1059,7 +1075,7 @@ async def verbose_diagnostics(
     return result
 
 
-@router.get("/diagnostics/table/{table_name}")
+@router.get("/diagnostics/table/{table_name}", dependencies=[Depends(require_admin_auth)])
 async def table_diagnostics(
     request: Request,
     table_name: str,
@@ -1074,6 +1090,9 @@ async def table_diagnostics(
         Comprehensive table metadata including all columns, constraints,
         geometry registration status, and permissions.
     """
+    _validate_sql_identifier(schema, "schema")
+    _validate_sql_identifier(table_name, "table_name")
+
     app_state = get_app_state_from_request(request)
     pool = getattr(app_state, "pool", None) if app_state else None
 

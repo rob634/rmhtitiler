@@ -222,7 +222,12 @@ def refresh_storage_token() -> Optional[str]:
     """
     logger.debug("Refreshing storage token (sync)")
 
-    # Invalidate cache to force new token
+    # Save old cache state so we can restore if acquisition fails.
+    # invalidate() is needed to force get_storage_oauth_token() to acquire,
+    # but if acquisition fails, the old token (still valid) must survive.
+    old_token = storage_token_cache.token
+    old_expires = storage_token_cache.expires_at
+
     storage_token_cache.invalidate()
 
     try:
@@ -232,6 +237,10 @@ def refresh_storage_token() -> Optional[str]:
         return token
     except Exception as e:
         logger.error(f"Storage token refresh failed: {e}")
+        # Restore old token — it may still be valid for minutes
+        if old_token and old_expires:
+            storage_token_cache.set(old_token, old_expires)
+            logger.warning("Restored previous cached token (may still be valid)")
         return None
 
 
@@ -247,9 +256,8 @@ async def refresh_storage_token_async() -> Optional[str]:
     logger.debug("Refreshing storage token (async)")
 
     async with storage_token_cache.async_lock:
-        # Invalidate cache to force new token
-        storage_token_cache.invalidate_unlocked()
-
+        # Acquire new token BEFORE invalidating old one.
+        # If acquisition fails, the old (still-valid) token remains usable.
         try:
             token, expires_at = await asyncio.to_thread(_acquire_storage_token)
             if token and expires_at:
@@ -258,4 +266,5 @@ async def refresh_storage_token_async() -> Optional[str]:
             return token
         except Exception as e:
             logger.error(f"Storage token refresh failed: {e}")
+            logger.warning("Keeping existing cached token (may still be valid)")
             return None

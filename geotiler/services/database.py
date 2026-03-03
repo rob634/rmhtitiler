@@ -15,7 +15,7 @@ import time
 import logging
 from typing import Tuple, Optional, TYPE_CHECKING
 
-from psycopg_pool import ConnectionPool
+from psycopg_pool import ConnectionPool, PoolClosed
 from starlette.datastructures import State
 
 from geotiler.auth.cache import db_error_cache
@@ -109,6 +109,11 @@ def _ping_database_impl(pool: Optional[ConnectionPool]) -> Tuple[bool, Optional[
             conn.execute("SELECT 1")
         db_error_cache.record_success()
         return True, None
+    except PoolClosed:
+        # Transient: background task is recreating the pool.
+        # Don't record as error — this resolves within seconds.
+        logger.debug("Health ping hit closed pool during recreation")
+        return False, "pool_recreating"
     except Exception as e:
         error = f"{type(e).__name__}: {str(e)}"
         db_error_cache.record_error(error)
@@ -139,6 +144,12 @@ def _ping_database_with_timing_impl(
         ping_ms = round((time.monotonic() - start) * 1000, 2)
         db_error_cache.record_success()
         return True, None, ping_ms
+    except PoolClosed:
+        # Transient: background task is recreating the pool.
+        # Don't record as error — this resolves within seconds.
+        ping_ms = round((time.monotonic() - start) * 1000, 2)
+        logger.debug("Health ping hit closed pool during recreation")
+        return False, "pool_recreating", ping_ms
     except Exception as e:
         ping_ms = round((time.monotonic() - start) * 1000, 2)
         error = f"{type(e).__name__}: {str(e)}"

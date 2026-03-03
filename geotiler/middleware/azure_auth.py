@@ -8,6 +8,7 @@ import logging
 
 from fastapi import Request
 from starlette.middleware.base import BaseHTTPMiddleware
+from starlette.responses import JSONResponse
 
 from geotiler.config import settings
 from geotiler.auth.storage import (
@@ -24,6 +25,8 @@ _SKIP_AUTH_PREFIXES = (
     "/livez", "/readyz", "/health",
     "/static/", "/docs", "/redoc", "/openapi.json",
     "/api", "/_health-fragment",
+    "/vector", "/h3",   # PostGIS/DuckDB — no blob storage auth needed
+    "/admin",            # uses its own Azure AD auth
 )
 
 
@@ -67,6 +70,13 @@ class AzureAuthMiddleware(BaseHTTPMiddleware):
 
             except Exception as e:
                 logger.error(f"Error in Azure OAuth authentication: {e}", exc_info=True)
+                return JSONResponse(
+                    status_code=503,
+                    content={
+                        "detail": "Storage authentication unavailable",
+                        "error": type(e).__name__,
+                    },
+                )
 
         response = await call_next(request)
         return response

@@ -12,6 +12,7 @@ the rest of the app (TiTiler, TiPG, STAC) continues normally.
 import asyncio
 import logging
 import os
+import threading
 import time
 from datetime import datetime, timezone
 from pathlib import Path
@@ -74,7 +75,7 @@ class DuckDBStartupState:
             "init_error": self.init_error,
             "last_init_time": self.last_init_time.isoformat() if self.last_init_time else None,
             "row_count": self.row_count,
-            "columns": self.columns,
+            "column_count": len(self.columns) if self.columns else 0,
             "parquet_path": self.parquet_path,
             "download_time_ms": self.download_time_ms,
         }
@@ -229,6 +230,7 @@ async def initialize_duckdb(app: "FastAPI") -> None:
         app.state.duckdb_conn = conn
         app.state.duckdb_columns = columns
         app.state.duckdb_query_cache = {}
+        app.state.duckdb_lock = threading.Lock()
         state.record_success(parquet_path, row_count, columns, download_ms)
 
         logger.info(
@@ -257,14 +259,25 @@ async def close_duckdb(app: "FastAPI") -> None:
 # QUERY
 # =============================================================================
 
-def _run_query(conn: duckdb.DuckDBPyConnection, prod_col: str, harv_col: str, scenario: str) -> list[dict]:
-    """Execute H3 query synchronously. Called via asyncio.to_thread()."""
+def _run_query(
+    conn: duckdb.DuckDBPyConnection,
+    lock: threading.Lock,
+    prod_col: str,
+    harv_col: str,
+    scenario: str,
+) -> list[dict]:
+    """Execute H3 query synchronously. Called via asyncio.to_thread().
+
+    Acquires the threading.Lock to serialize access to the DuckDB connection,
+    which is not thread-safe.
+    """
     sql = f"""
         SELECT h3_index, "{prod_col}" as production, "{harv_col}" as harv_area_ha, "{scenario}" as spei
         FROM h3_data
         WHERE "{prod_col}" > 0 AND "{prod_col}" IS NOT NULL
     """
-    rows = conn.execute(sql).fetchall()
+    with lock:
+        rows = conn.execute(sql).fetchall()
     return [
         {"h3_index": r[0], "production": r[1], "harv_area_ha": r[2] or 0, "spei": r[3]}
         for r in rows
@@ -289,11 +302,17 @@ async def query_h3_data(
     if not conn:
         raise RuntimeError("DuckDB not initialized")
 
-    # Check server-side cache
+    lock: threading.Lock = getattr(app.state, "duckdb_lock", None)
+    if not lock:
+        raise RuntimeError("DuckDB lock not initialized")
+
+    # Check server-side cache (lock protects against concurrent dict mutation)
     cache_key = (crop, tech, scenario)
     query_cache = getattr(app.state, "duckdb_query_cache", None)
-    if query_cache is not None and cache_key in query_cache:
-        return query_cache[cache_key], True
+    if query_cache is not None:
+        with lock:
+            if cache_key in query_cache:
+                return query_cache[cache_key], True
 
     prod_col = f"{crop}_{tech}_production_mt"
     harv_col = f"{crop}_{tech}_harv_area_ha"
@@ -307,12 +326,13 @@ async def query_h3_data(
     if scenario not in columns:
         raise ValueError(f"Scenario column not found: {scenario}")
 
-    result = await asyncio.to_thread(_run_query, conn, prod_col, harv_col, scenario)
+    result = await asyncio.to_thread(_run_query, conn, lock, prod_col, harv_col, scenario)
 
-    # Store in cache (LRU eviction at max size)
+    # Store in cache (FIFO eviction at max size)
     if query_cache is not None:
-        if len(query_cache) >= _QUERY_CACHE_MAX:
-            query_cache.pop(next(iter(query_cache)))
-        query_cache[cache_key] = result
+        with lock:
+            if len(query_cache) >= _QUERY_CACHE_MAX:
+                query_cache.pop(next(iter(query_cache)))
+            query_cache[cache_key] = result
 
     return result, False

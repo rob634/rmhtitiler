@@ -19,6 +19,8 @@ The /health endpoint returns a structured response with:
 import sys
 import os
 import logging
+import time
+from datetime import datetime, timezone
 from typing import Optional, Tuple
 
 from fastapi import APIRouter, Request, Response
@@ -126,6 +128,7 @@ async def health(request: Request, response: Response):
         - healthy: All systems operational (HTTP 200)
         - degraded: App running but some features unavailable (HTTP 503)
     """
+    health_start = time.monotonic()
     services = {}
     dependencies = {}
     issues = []
@@ -397,9 +400,20 @@ async def health(request: Request, response: Response):
     # =========================================================================
     # RESPONSE
     # =========================================================================
+    # Compute uptime from app startup
+    startup_time = getattr(request.app.state, "startup_time", None)
+    uptime_seconds = None
+    if startup_time:
+        uptime_seconds = round(time.time() - startup_time)
+
+    response_time_ms = round((time.monotonic() - health_start) * 1000, 1)
+
     return {
         "status": overall_status,
         "version": __version__,
+        "timestamp": datetime.now(timezone.utc).isoformat(),
+        "uptime_seconds": uptime_seconds,
+        "response_time_ms": response_time_ms,
         "services": services,
         "dependencies": dependencies,
         "hardware": _get_hardware_info(),
@@ -498,7 +512,7 @@ def _get_hardware_info() -> dict:
             "total_ram_gb": round(mem.total / (1024**3), 2),
             "available_ram_mb": round(mem.available / (1024**2), 1),
             "ram_utilization_percent": round(mem.percent, 1),
-            "cpu_utilization_percent": round(psutil.cpu_percent(interval=None), 1),
+            "cpu_utilization_percent": round(psutil.cpu_percent(interval=0.1), 1),
             "process_rss_mb": round(process.memory_info().rss / (1024**2), 1),
             "python_version": sys.version.split()[0],
             "platform": sys.platform,

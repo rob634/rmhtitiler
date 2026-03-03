@@ -28,10 +28,10 @@ Usage:
 
 Environment Variables:
     APPLICATIONINSIGHTS_CONNECTION_STRING: Enable App Insights telemetry
-    OBSERVABILITY_MODE: Enable detailed request/latency logging (default: false)
-    SLOW_REQUEST_THRESHOLD_MS: Slow request threshold in ms (default: 2000)
-    APP_NAME: Service name for correlation (default: geotiler)
-    ENVIRONMENT: Deployment environment (default: dev)
+    GEOTILER_ENABLE_OBSERVABILITY: Enable detailed request/latency logging (default: false)
+    GEOTILER_OBS_SLOW_THRESHOLD_MS: Slow request threshold in ms (default: 2000)
+    GEOTILER_OBS_SERVICE_NAME: Service name for correlation (default: geotiler)
+    GEOTILER_OBS_ENVIRONMENT: Deployment environment (default: dev)
 """
 
 import os

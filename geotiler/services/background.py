@@ -37,19 +37,28 @@ async def token_refresh_background_task(app: "FastAPI"):
         app: FastAPI application instance (passed explicitly, no globals).
     """
     while True:
-        await asyncio.sleep(BACKGROUND_REFRESH_INTERVAL_SECS)
+        try:
+            await asyncio.sleep(BACKGROUND_REFRESH_INTERVAL_SECS)
 
-        logger.debug("Background token refresh triggered")
+            logger.debug("Background token refresh triggered")
 
-        # Refresh Storage Token (async - runs in thread pool)
-        if settings.enable_storage_auth and settings.storage_account:
-            await refresh_storage_token_async()
+            # Refresh Storage Token (async - runs in thread pool)
+            if settings.enable_storage_auth and settings.storage_account:
+                await refresh_storage_token_async()
 
-        # Refresh PostgreSQL Token (if using managed_identity)
-        if settings.pg_auth_mode == "managed_identity":
-            await _refresh_postgres_with_pool_recreation(app)
+            # Refresh PostgreSQL Token (if using managed_identity)
+            if settings.pg_auth_mode == "managed_identity":
+                await _refresh_postgres_with_pool_recreation(app)
 
-        logger.debug(f"Background refresh complete, next in {BACKGROUND_REFRESH_INTERVAL_SECS // 60}m")
+            logger.debug(f"Background refresh complete, next in {BACKGROUND_REFRESH_INTERVAL_SECS // 60}m")
+
+        except asyncio.CancelledError:
+            logger.info("Background token refresh task cancelled (shutdown)")
+            raise
+        except Exception as e:
+            # Don't let transient errors kill the background loop
+            logger.error(f"Background refresh loop error: {e}", exc_info=True)
+            # Continue — next iteration will retry after sleep
 
 
 async def _refresh_postgres_with_pool_recreation(app: "FastAPI"):
@@ -79,17 +88,27 @@ async def _refresh_postgres_with_pool_recreation(app: "FastAPI"):
         new_database_url = build_database_url(new_token)
 
         # 1. Refresh titiler-pgstac pool (psycopg, app.state.dbpool)
+        #    Atomic swap: create new pool first, then close old pool.
+        #    If new pool fails, old pool stays alive (stale token may still work).
         from titiler.pgstac.db import close_db_connection, connect_to_db
         from titiler.pgstac.settings import PostgresSettings
 
         try:
-            await close_db_connection(app)
+            old_pool = getattr(app.state, "dbpool", None)
             db_settings = PostgresSettings(database_url=new_database_url)
             await connect_to_db(app, settings=db_settings)
             logger.debug("titiler-pgstac pool recreated with fresh token")
 
+            # New pool is live on app.state.dbpool — close old pool
+            if old_pool:
+                try:
+                    old_pool.close()
+                except Exception as close_err:
+                    logger.warning(f"Error closing old pgstac pool: {close_err}")
+
         except Exception as pool_err:
             logger.error(f"Failed to recreate titiler-pgstac pool: {pool_err}")
+            logger.warning("Keeping existing pool (old token may still be valid)")
 
         # 2. Refresh TiPG pool (asyncpg, app.state.pool)
         if settings.enable_tipg:

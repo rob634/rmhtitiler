@@ -15,14 +15,15 @@ Entry Point:
     and structured logging before FastAPI is imported.
 """
 
+import asyncio
 import logging
+import time
 from contextlib import asynccontextmanager
 from pathlib import Path
 
 from fastapi import FastAPI
+from fastapi.responses import HTMLResponse
 from fastapi.staticfiles import StaticFiles
-from starlette.templating import Jinja2Templates
-
 from geotiler import __version__
 from geotiler.config import settings
 from geotiler.middleware.azure_auth import AzureAuthMiddleware
@@ -74,14 +75,28 @@ async def lifespan(app: FastAPI):
     # Initialize storage OAuth
     initialize_storage_auth()
 
-    # Start background token refresh
-    if settings.enable_storage_auth:
+    # Start background token refresh (needed for storage OAuth AND/OR pg MI tokens)
+    needs_background_refresh = (
+        settings.enable_storage_auth
+        or settings.pg_auth_mode == "managed_identity"
+    )
+    if needs_background_refresh:
         app.state.refresh_task = start_token_refresh(app)
 
     # Initialize H3 DuckDB (server-side parquet queries)
     if settings.enable_h3_duckdb and settings.h3_parquet_url:
         await initialize_duckdb(app)
 
+    # Initialize download subsystem (concurrency semaphore)
+    if settings.enable_downloads:
+        app.state.download_semaphore = asyncio.Semaphore(settings.download_max_concurrent)
+        logger.info(
+            f"Download endpoints enabled: max_concurrent={settings.download_max_concurrent}, "
+            f"raster_max_bbox_area={settings.download_raster_max_bbox_area_deg} deg², "
+            f"proxy_max_size={settings.download_proxy_max_size_mb} MB"
+        )
+
+    app.state.startup_time = time.time()
     logger.info(f"Startup complete: geotiler v{__version__}")
 
     yield  # Application runs here
@@ -90,6 +105,14 @@ async def lifespan(app: FastAPI):
     # SHUTDOWN
     # =========================================================================
     logger.info("Shutting down geotiler...")
+
+    # Cancel background refresh task
+    if hasattr(app.state, "refresh_task"):
+        app.state.refresh_task.cancel()
+        try:
+            await app.state.refresh_task
+        except asyncio.CancelledError:
+            pass
 
     # Close H3 DuckDB
     if settings.enable_h3_duckdb:
@@ -252,8 +275,10 @@ def create_app() -> FastAPI:
             "| `/stac/*` | STAC catalog browsing and search |\n"
             "| `/vector/*` | OGC Features API + Vector Tiles (TiPG) |\n"
             "| `/h3/*` | H3 Crop Production & Drought Risk Explorer |\n"
+            "| `/api/download/*` | Raster crop, vector subset, asset proxy downloads |\n"
         ),
         version=__version__,
+        docs_url=None,  # Custom /docs route below (fixes Swagger UI double-encoding)
         lifespan=lifespan,
         openapi_tags=[
             {"name": "Health", "description": "Liveness, readiness, and detailed health probes."},
@@ -267,6 +292,7 @@ def create_app() -> FastAPI:
             {"name": "Diagnostics", "description": "Database and TiPG table-discovery diagnostics."},
             {"name": "H3 Explorer", "description": "H3 Crop Production & Drought Risk Explorer."},
             {"name": "API Info", "description": "API metadata and endpoint listing."},
+            {"name": "Download", "description": "Raster crop, vector subset, and asset proxy downloads."},
             {"name": "Admin", "description": "Admin dashboard and operational webhooks."},
         ],
     )
@@ -275,13 +301,9 @@ def create_app() -> FastAPI:
     # Static Files & Templates
     # =========================================================================
     static_dir = Path(__file__).parent / "static"
-    templates_dir = Path(__file__).parent / "templates"
 
     # Mount static files (CSS, JS)
     app.mount("/static", StaticFiles(directory=static_dir), name="static")
-
-    # Configure Jinja2 templates (store in app.state for router access)
-    app.state.templates = Jinja2Templates(directory=templates_dir)
 
     # =========================================================================
     # Middleware (order matters - first added = outermost = runs first)
@@ -374,11 +396,59 @@ def create_app() -> FastAPI:
     # H3 Crop Production & Drought Risk Explorer
     app.include_router(h3_explorer.router, tags=["H3 Explorer"])
 
+    # Download endpoints (raster crop, vector subset, asset proxy)
+    if settings.enable_downloads:
+        from geotiler.routers import download
+        app.include_router(download.router, tags=["Download"])
+        logger.info("Download router mounted at /api/download")
+
     # Admin console (HTML at /, JSON at /api)
     app.include_router(admin.router)
 
     # Post-process OpenAPI spec (fix upstream tags/descriptions)
     from geotiler.openapi import customize_openapi
     app.openapi = lambda: customize_openapi(app)
+
+    # Custom Swagger UI with requestInterceptor to fix double-encoding.
+    # Swagger UI encodes query param values (/ → %2F) then re-encodes the
+    # percent sign (%2F → %252F). The interceptor reverses the second pass.
+    @app.get("/docs", include_in_schema=False)
+    async def custom_swagger_ui():
+        return HTMLResponse(
+            """<!DOCTYPE html>
+<html>
+<head>
+<link type="text/css" rel="stylesheet" href="https://cdn.jsdelivr.net/npm/swagger-ui-dist@5/swagger-ui.css">
+<link rel="shortcut icon" href="https://fastapi.tiangolo.com/img/favicon.png">
+<title>geotiler - Swagger UI</title>
+</head>
+<body>
+<div id="swagger-ui"></div>
+<script src="https://cdn.jsdelivr.net/npm/swagger-ui-dist@5/swagger-ui-bundle.js"></script>
+<script>
+SwaggerUIBundle({
+    url: '/openapi.json',
+    oauth2RedirectUrl: window.location.origin + '/docs/oauth2-redirect',
+    dom_id: '#swagger-ui',
+    deepLinking: true,
+    showExtensions: true,
+    showCommonExtensions: true,
+    presets: [
+        SwaggerUIBundle.presets.apis,
+        SwaggerUIBundle.SwaggerUIStandalonePreset,
+    ],
+    layout: "BaseLayout",
+    requestInterceptor: (req) => {
+        // Fix Swagger UI double-encoding of query parameters.
+        // e.g. /vsiaz/path → %2Fvsiaz%2Fpath → %252Fvsiaz%252Fpath
+        // This regex reverses the second encoding pass.
+        req.url = req.url.replace(/%25([0-9A-Fa-f]{2})/g, '%$1');
+        return req;
+    },
+});
+</script>
+</body>
+</html>"""
+        )
 
     return app

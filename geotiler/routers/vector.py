@@ -10,6 +10,7 @@ Key integration points:
 - Pool refreshes synchronized with token refresh cycle
 """
 
+import asyncio
 import logging
 from datetime import datetime, timezone
 from typing import TYPE_CHECKING, Optional
@@ -73,11 +74,15 @@ class TiPGStartupState:
         self.search_path_used = search_path
 
     def record_failure(self, init_type: str, error: str):
-        """Record failed initialization."""
+        """Record failed initialization (clears stale collection data)."""
         self.last_init_time = datetime.now(timezone.utc)
         self.last_init_type = init_type
         self.init_success = False
         self.init_error = error
+        # Clear stale collection data so diagnostics don't mix
+        # failed status with old successful collection counts
+        self.collections_discovered = 0
+        self.collection_ids = []
 
     def to_dict(self) -> dict:
         """Convert to dict for diagnostics endpoint."""
@@ -266,15 +271,31 @@ async def refresh_tipg_pool(app: "FastAPI") -> None:
     Args:
         app: FastAPI application instance.
     """
-    if not hasattr(app.state, "pool"):
-        logger.debug("TiPG pool not initialized, skipping refresh")
+    # Guard: only refresh if TiPG was attempted (tipg_state exists from initialize_tipg).
+    # If pool is missing but tipg_state exists, startup failed — allow retry.
+    if not hasattr(app.state, "tipg_state"):
+        logger.debug("TiPG never initialized, skipping refresh")
         return
 
+    # Prevent concurrent refresh (admin webhook + background task)
+    if not hasattr(app.state, "_tipg_refresh_lock"):
+        app.state._tipg_refresh_lock = asyncio.Lock()
+
+    if app.state._tipg_refresh_lock.locked():
+        logger.info("TiPG pool refresh already in progress, skipping")
+        return
+
+    async with app.state._tipg_refresh_lock:
+        await _refresh_tipg_pool_inner(app)
+
+
+async def _refresh_tipg_pool_inner(app: "FastAPI") -> None:
+    """Inner implementation of TiPG pool refresh (caller holds lock)."""
     logger.info("Refreshing TiPG connection pool...")
 
     try:
-        # Close existing pool
-        await tipg_close_db_connection(app)
+        # Save reference to old pool for atomic swap
+        old_pool = getattr(app.state, "pool", None)
 
         # Build schemas list for search_path
         schemas = settings.tipg_schema_list.copy()
@@ -287,17 +308,25 @@ async def refresh_tipg_pool(app: "FastAPI") -> None:
         postgres_settings = get_tipg_postgres_settings(schemas=schemas)
         db_settings = get_tipg_database_settings()
 
-        # Create new pool
+        # Create new pool (overwrites app.state.pool atomically)
+        # If this fails, old pool remains on app.state.pool (stale token may still work)
         await tipg_connect_to_db(app, settings=postgres_settings, schemas=schemas)
 
         # Re-register collection catalog
         await register_collection_catalog(app, db_settings=db_settings)
 
-        # Re-establish STAC API database aliases
+        # Re-establish STAC API database aliases (pointing to new pool)
         if settings.enable_stac_api:
             app.state.readpool = app.state.pool
             app.state.writepool = app.state.pool
             app.state.get_connection = stac_get_connection
+
+        # New pool is live — close old pool
+        if old_pool and old_pool is not app.state.pool:
+            try:
+                await old_pool.close()
+            except Exception as close_err:
+                logger.warning(f"Error closing old TiPG pool: {close_err}")
 
         # Record refresh state
         collection_count = 0
