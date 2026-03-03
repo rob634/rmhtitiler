@@ -17,7 +17,7 @@ azure-keyvault-secrets>=4.7.0
 
 # --- Xarray / Zarr --------------------------------------------------------
 # Multidimensional data support (Zarr, NetCDF)
-titiler.xarray>=0.24.0,<0.25.0
+titiler.xarray[minimal]>=0.24.0,<0.25.0
 # Azure Data Lake filesystem for fsspec (Zarr access via abfs://)
 adlfs>=2024.4.1
 
