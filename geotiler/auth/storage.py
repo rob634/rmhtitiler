@@ -166,18 +166,78 @@ def configure_gdal_auth(token: str) -> None:
         logger.warning(f"Could not set GDAL config directly: {e}")
 
 
+class _CachedTokenCredential:
+    """
+    Async TokenCredential that delegates to the app's storage_token_cache.
+
+    adlfs uses the async Azure BlobServiceClient, which calls
+    credential.get_token() on each blob request. This credential
+    always returns the latest token from our shared cache, so background
+    token refreshes are automatically picked up without clearing
+    fsspec's filesystem instance cache.
+    """
+
+    async def get_token(self, *scopes, **kwargs):
+        from azure.core.credentials import AccessToken
+
+        token = storage_token_cache.token
+        expires_at = storage_token_cache.expires_at
+        if token and expires_at:
+            return AccessToken(token, int(expires_at.timestamp()))
+        raise Exception("No cached storage token available for adlfs")
+
+    async def close(self):
+        pass
+
+    async def __aenter__(self):
+        return self
+
+    async def __aexit__(self, *args):
+        pass
+
+
+# Singleton — reused across fsspec filesystem instances
+_cached_credential = _CachedTokenCredential()
+_fsspec_configured = False
+
+
 def configure_fsspec_auth() -> None:
     """
     Configure fsspec/adlfs for Azure Zarr access.
 
-    adlfs uses DefaultAzureCredential automatically when
-    AZURE_STORAGE_ACCOUNT_NAME is set.
+    Passes the app's pre-acquired bearer token to adlfs via fsspec config
+    and a shared credential object. This avoids adlfs trying its own
+    DefaultAzureCredential (which fails silently in some Azure environments
+    and falls back to anonymous access).
     """
+    global _fsspec_configured
+
     if not settings.storage_account:
         return
 
     os.environ["AZURE_STORAGE_ACCOUNT_NAME"] = settings.storage_account
-    logger.debug(f"fsspec/adlfs configured for account: {settings.storage_account}")
+
+    if not _fsspec_configured:
+        try:
+            import fsspec
+
+            fsspec.config.conf["abfs"] = {
+                "account_name": settings.storage_account,
+                "credential": _cached_credential,
+            }
+
+            # Clear any previously-cached anonymous filesystem instances
+            try:
+                from adlfs import AzureBlobFileSystem
+                AzureBlobFileSystem.clear_instance_cache()
+            except (ImportError, AttributeError):
+                pass
+
+            _fsspec_configured = True
+            logger.info(f"fsspec/adlfs configured with managed credential for account: {settings.storage_account}")
+        except Exception as e:
+            logger.warning(f"Could not configure fsspec credential: {e}")
+            logger.debug(f"fsspec/adlfs configured for account: {settings.storage_account}")
 
 
 def initialize_storage_auth() -> Optional[str]:
