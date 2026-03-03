@@ -1,0 +1,33 @@
+{# System page - health monitoring dashboard #}
+{# Implements: Resolved Spec - Phase 3 Run 3.3 (System) #}
+{% extends "base.html" %}
+{% from "components/macros.html" import status_indicator, badge %}
+
+{% block title %}System{% endblock %}
+
+{% block head %}
+<script src="https://unpkg.com/htmx.org@1.9.10"></script>
+{% endblock %}
+
+{% block content %}
+<div class="page-header">
+    <h1>System Status</h1>
+    <p class="page-description">Service health, dependency status, and runtime diagnostics.</p>
+</div>
+
+<!-- Health content loaded via HTMX (auto-refreshes every 30s) -->
+<div id="health-content"
+     hx-get="/system/_health-fragment"
+     hx-trigger="load, every 30s"
+     hx-swap="innerHTML">
+    <div class="loading-state">
+        <div class="spinner"></div>
+        <p>Loading system status...</p>
+    </div>
+</div>
+
+<div style="margin-top: var(--space-xl);">
+    <a href="/health" class="btn btn-secondary">View Raw JSON</a>
+    <a href="/" class="btn btn-secondary">Admin Dashboard</a>
+</div>
+{% endblock %}

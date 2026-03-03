@@ -1,20 +1,15 @@
 {# Navigation bar component #}
-{# Pass 'nav_active' variable to highlight current page (e.g., '/cog/', '/guide/') #}
+{# Implements: Resolved Spec - Phase 1 Run 1.1 (4-link navbar per ARB plan) #}
+{# Pass 'nav_active' variable to highlight current page (e.g., '/', '/catalog') #}
+{% set nav_active = nav_active|default('') %}
 <nav class="navbar">
     <a href="/" class="navbar-brand">
         geotiler <span class="version">v{{ version }}</span>
     </a>
     <div class="navbar-links">
-        <a href="/cog/" class="{{ 'active' if nav_active == '/cog/' else '' }}">COG</a>
-        <a href="/xarray/" class="{{ 'active' if nav_active == '/xarray/' else '' }}">XArray</a>
-        <a href="/searches/" class="{{ 'active' if nav_active == '/searches/' else '' }}">Searches</a>
-        <a href="/vector" class="{{ 'active' if nav_active == '/vector' else '' }}">Vector</a>
-        {% if stac_api_enabled %}
-        <a href="/stac-explorer" class="{{ 'active' if nav_active == '/stac-explorer' else '' }}">STAC</a>
-        {% endif %}
-        <a href="/map" class="{{ 'active' if nav_active == '/map' else '' }}">Map</a>
-        <a href="/h3" class="{{ 'active' if nav_active == '/h3' else '' }}">H3</a>
-        <a href="/guide/" class="{{ 'active' if nav_active and nav_active.startswith('/guide') else '' }}">Guide</a>
-        <a href="/docs" class="{{ 'active' if nav_active == '/docs' else '' }}">API Docs</a>
+        <a href="/" class="{{ 'active' if nav_active == '/' else '' }}">Home</a>
+        <a href="/catalog" class="{{ 'active' if nav_active == '/catalog' else '' }}">Catalog</a>
+        <a href="/reference" class="{{ 'active' if nav_active == '/reference' else '' }}">Reference</a>
+        <a href="/system" class="{{ 'active' if nav_active == '/system' else '' }}">System</a>
     </div>
 </nav>

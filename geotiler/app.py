@@ -28,7 +28,7 @@ from geotiler import __version__
 from geotiler.config import settings
 from geotiler.middleware.azure_auth import AzureAuthMiddleware
 from geotiler.infrastructure.middleware import RequestTimingMiddleware
-from geotiler.routers import health, admin, vector, stac, diagnostics
+from geotiler.routers import health, admin, vector, stac, diagnostics, home, catalog, reference, system, viewer
 from geotiler.routers import cog_landing, xarray_landing, searches_landing, stac_explorer, docs_guide, map_viewer, h3_explorer
 from geotiler.services.background import start_token_refresh
 from geotiler.services.duckdb import initialize_duckdb, close_duckdb
@@ -330,6 +330,19 @@ def create_app() -> FastAPI:
 
     # Health probes
     app.include_router(health.router)
+
+    # Homepage
+    app.include_router(home.router)
+
+    # Catalog pages
+    app.include_router(catalog.router)
+
+    # Reference & System pages
+    app.include_router(reference.router)
+    app.include_router(system.router)
+
+    # Map viewers
+    app.include_router(viewer.router)
 
     # TiTiler endpoints
     _mount_titiler_routers(app)

@@ -1,0 +1,87 @@
+{# H3 Explorer - hexagonal choropleth viewer with deck.gl #}
+{# Implements: Resolved Spec - Phase 4 Run 4.3 (H3 Viewer) #}
+{% extends "base.html" %}
+{% from "components/macros.html" import sidebar_panel, form_group, badge, loading_state %}
+
+{% block title %}H3 Explorer{% endblock %}
+{% block head %}
+<link href="https://unpkg.com/maplibre-gl@4/dist/maplibre-gl.css" rel="stylesheet">
+{% endblock %}
+
+{% block main_class %}{% endblock %}
+
+{% block content %}
+<div class="viewer-layout">
+    <div class="viewer-sidebar">
+        <h2>H3 Crop & Drought Explorer</h2>
+        <p class="text-muted">Hexagonal grid at H3 resolution 5.</p>
+
+        <!-- Crop selector -->
+        <div class="form-group">
+            <label class="form-label" for="crop-select">Crop</label>
+            <select id="crop-select" class="form-select" onchange="queryH3()">
+                <option value="wheat">Wheat</option>
+                <option value="rice">Rice</option>
+                <option value="maize">Maize</option>
+                <option value="soybean">Soybean</option>
+                <option value="barley">Barley</option>
+                <option value="sorghum">Sorghum</option>
+                <option value="millet">Millet</option>
+            </select>
+        </div>
+
+        <!-- Technology selector -->
+        <div class="form-group">
+            <label class="form-label" for="tech-select">Technology</label>
+            <select id="tech-select" class="form-select" onchange="queryH3()">
+                <option value="irrigated">Irrigated</option>
+                <option value="rainfed">Rainfed</option>
+            </select>
+        </div>
+
+        <!-- Scenario selector -->
+        <div class="form-group">
+            <label class="form-label" for="scenario-select">Drought Scenario</label>
+            <select id="scenario-select" class="form-select" onchange="queryH3()">
+                <option value="baseline">Baseline</option>
+                <option value="drought_mild">Mild Drought</option>
+                <option value="drought_severe">Severe Drought</option>
+                <option value="drought_extreme">Extreme Drought</option>
+            </select>
+        </div>
+
+        <!-- Color palette -->
+        <div class="form-group">
+            <label class="form-label" for="palette-select">Color Palette</label>
+            <select id="palette-select" class="form-select" onchange="updatePalette()">
+                <option value="emergency_red">Emergency Red</option>
+                <option value="viridis">Viridis</option>
+                <option value="plasma">Plasma</option>
+                <option value="ylgnbu">Yellow-Green-Blue</option>
+                <option value="rdylgn">Red-Yellow-Green</option>
+                <option value="spectral">Spectral</option>
+                <option value="hot">Hot</option>
+            </select>
+        </div>
+
+        <!-- Stats panel -->
+        <div id="h3-stats" class="hidden" style="margin-top: var(--space-lg);">
+            <h3>Query Results</h3>
+            <div id="h3-count" class="text-muted"></div>
+            <div id="h3-legend"></div>
+        </div>
+    </div>
+
+    <div id="map" class="map-full"></div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script src="https://unpkg.com/maplibre-gl@4/dist/maplibre-gl.js"></script>
+<script src="https://unpkg.com/deck.gl@9/dist.min.js"></script>
+<script src="https://unpkg.com/h3-js@4"></script>
+<script src="{{ url_for('static', path='js/viewer-h3.js') }}?v={{ version }}"></script>
+<script>
+    document.addEventListener('DOMContentLoaded', () => initH3Viewer());
+</script>
+{% endblock %}

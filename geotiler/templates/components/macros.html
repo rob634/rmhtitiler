@@ -1,4 +1,5 @@
 {# Reusable Jinja2 macros for UI components #}
+{# Implements: Resolved Spec - Phase 1 Run 1.1 (15 existing + 9 new macros) #}
 
 {# ============================================================================
    Status Badges
@@ -96,6 +97,10 @@
 {{ callout('success', title, content) }}
 {% endmacro %}
 
+{% macro callout_error(title, content) %}
+{{ callout('error', title, content) }}
+{% endmacro %}
+
 
 {# ============================================================================
    Code Blocks
@@ -169,5 +174,98 @@
         </a>
         {% endfor %}
     </ul>
+</div>
+{% endmacro %}
+
+
+{# ============================================================================
+   New Component Macros (Phase 1 additions)
+   ============================================================================ #}
+
+{% macro card(title, subtitle='', body='', footer='', href='') %}
+{% if href %}
+<a href="{{ href }}" class="card card-link">
+{% else %}
+<div class="card">
+{% endif %}
+    <h3>{{ title }}</h3>
+    {% if subtitle %}<p class="text-muted">{{ subtitle }}</p>{% endif %}
+    {% if body %}<div class="card-body">{{ body }}</div>{% endif %}
+    {% if footer %}<div class="card-footer">{{ footer }}</div>{% endif %}
+{% if href %}
+</a>
+{% else %}
+</div>
+{% endif %}
+{% endmacro %}
+
+{% macro badge(text, variant='default') %}
+<span class="badge badge-{{ variant }}">{{ text }}</span>
+{% endmacro %}
+
+{% macro map_container(id='map', height='calc(100vh - 52px)') %}
+<div id="{{ id }}" style="width:100%;height:{{ height }}"></div>
+{% endmacro %}
+
+{% macro sidebar_panel(title, collapsible=false) %}
+{% if collapsible %}
+<details class="sidebar-panel">
+    <summary>{{ title }}</summary>
+    <div class="sidebar-panel-body">{{ caller() }}</div>
+</details>
+{% else %}
+<div class="sidebar-panel">
+    <div class="sidebar-panel-title">{{ title }}</div>
+    <div class="sidebar-panel-body">{{ caller() }}</div>
+</div>
+{% endif %}
+{% endmacro %}
+
+{% macro form_group(label, id, type='text', placeholder='', name='', value='', required=false) %}
+<div class="form-group">
+    <label class="form-label" for="{{ id }}">{{ label }}</label>
+    <input type="{{ type }}" id="{{ id }}" name="{{ name or id }}"
+           class="form-input" placeholder="{{ placeholder }}"
+           value="{{ value }}"
+           {{ 'required' if required else '' }}>
+</div>
+{% endmacro %}
+
+{% macro data_table(headers, rows) %}
+<table class="data-table">
+    <thead>
+        <tr>
+            {% for header in headers %}
+            <th>{{ header }}</th>
+            {% endfor %}
+        </tr>
+    </thead>
+    <tbody>
+        {% for row in rows %}
+        <tr>
+            {% for cell in row %}
+            <td>{{ cell }}</td>
+            {% endfor %}
+        </tr>
+        {% endfor %}
+    </tbody>
+</table>
+{% endmacro %}
+
+{% macro status_indicator(status) %}
+<span class="status-indicator {{ status }}">{{ status }}</span>
+{% endmacro %}
+
+{% macro empty_state(message, icon='') %}
+<div class="empty-state">
+    {% if icon %}<div class="empty-state-icon">{{ icon }}</div>{% endif %}
+    <p>{{ message }}</p>
+</div>
+{% endmacro %}
+
+{% macro loading_state(message='Loading...') %}
+<div class="loading-state">
+    <div class="spinner"></div>
+    <p>{{ message }}</p>
 </div>
 {% endmacro %}

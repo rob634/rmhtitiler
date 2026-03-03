@@ -1,0 +1,53 @@
+{# Unified Catalog - browse all collections #}
+{# Implements: Resolved Spec - Phase 3 Run 3.1 (Unified Catalog) #}
+{% extends "base.html" %}
+{% from "components/macros.html" import card, badge, empty_state, loading_state %}
+
+{% block title %}Catalog{% endblock %}
+
+{% block content %}
+<div class="page-header">
+    <h1>Data Catalog</h1>
+    <p class="page-description">Browse all available geospatial datasets.</p>
+</div>
+
+<!-- Search and filter bar -->
+<div class="filter-group">
+    <input type="text" id="catalog-search" class="form-input search-bar"
+           placeholder="Search collections by name or description...">
+    <div class="btn-group">
+        <button class="btn btn-primary btn-sm" data-filter="all" onclick="filterCatalog('all')">All</button>
+        <button class="btn btn-secondary btn-sm" data-filter="raster" onclick="filterCatalog('raster')">Raster</button>
+        <button class="btn btn-secondary btn-sm" data-filter="vector" onclick="filterCatalog('vector')">Vector</button>
+    </div>
+</div>
+
+<!-- Collection grid (populated by JS) -->
+<div id="catalog-grid" class="card-grid">
+    {{ loading_state("Loading collections...") }}
+</div>
+
+<!-- Empty state (hidden by default) -->
+<div id="catalog-empty" class="hidden">
+    {{ empty_state("No collections match your search.", "") }}
+</div>
+
+<!-- Tab links to type-specific catalogs -->
+<div style="margin-top: var(--space-xl); text-align: center;">
+    {% if stac_api_enabled %}
+    <a href="/catalog/stac" class="btn btn-secondary">STAC Collections</a>
+    {% endif %}
+    {% if tipg_enabled %}
+    <a href="/catalog/vector" class="btn btn-secondary">Vector Collections</a>
+    {% endif %}
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script src="{{ url_for('static', path='js/catalog.js') }}?v={{ version }}"></script>
+<script>
+    document.addEventListener('DOMContentLoaded', () => {
+        loadUnifiedCatalog({{ stac_api_enabled | tojson }}, {{ tipg_enabled | tojson }});
+    });
+</script>
+{% endblock %}

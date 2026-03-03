@@ -1,0 +1,45 @@
+{# Homepage - geotiler entry point #}
+{# Implements: Resolved Spec - Phase 2 Run 2.1 (Homepage & Shared JS) #}
+{% extends "base.html" %}
+{% from "components/macros.html" import card %}
+
+{% block title %}Geospatial Data Catalog{% endblock %}
+
+{% block content %}
+<div class="page-header">
+    <h1>Geospatial Data Catalog</h1>
+    <p class="page-description">Browse, visualize, and download geospatial datasets.
+    Cloud-optimized raster tiles, multidimensional arrays, vector features, and STAC catalog search.</p>
+</div>
+
+<div class="card-grid">
+    <a href="/catalog" class="card-link">
+        {{ card("Catalog", subtitle="Browse Collections",
+                body="Explore STAC collections, vector datasets, and raster archives. Search by type, extent, or keyword.") }}
+    </a>
+
+    <a href="/reference" class="card-link">
+        {{ card("Reference", subtitle="API Documentation",
+                body="Interactive API explorer, endpoint reference, and integration guides.") }}
+    </a>
+
+    <a href="/system" class="card-link">
+        {{ card("System", subtitle="Health & Diagnostics",
+                body="Service status, dependency health, configuration, and hardware monitoring.") }}
+    </a>
+
+    {% if stac_api_enabled %}
+    <a href="/catalog/stac" class="card-link">
+        {{ card("STAC Search", subtitle="Spatiotemporal Search",
+                body="Search STAC items by collection, bounding box, datetime range, and properties.") }}
+    </a>
+    {% endif %}
+
+    {% if tipg_enabled %}
+    <a href="/catalog/vector" class="card-link">
+        {{ card("Vector Data", subtitle="OGC Features",
+                body="Query PostGIS collections via OGC Features API. View on map or download as GeoJSON.") }}
+    </a>
+    {% endif %}
+</div>
+{% endblock %}

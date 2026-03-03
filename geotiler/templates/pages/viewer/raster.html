@@ -1,0 +1,79 @@
+{# Raster Viewer - COG tile visualization with MapLibre #}
+{# Implements: Resolved Spec - Phase 4 Run 4.1 (Raster Viewer) #}
+{% extends "base.html" %}
+{% from "components/macros.html" import map_container, sidebar_panel, form_group, badge, loading_state %}
+
+{% block title %}Raster Viewer{% endblock %}
+{% block head %}
+<link href="https://unpkg.com/maplibre-gl@4/dist/maplibre-gl.css" rel="stylesheet">
+{% endblock %}
+
+{% block main_class %}{% endblock %}
+
+{% block content %}
+<div class="viewer-layout">
+    <!-- Sidebar -->
+    <div class="viewer-sidebar">
+        <h2>Raster Viewer</h2>
+
+        <!-- URL input -->
+        <div class="form-group">
+            <label class="form-label" for="cog-url">COG URL</label>
+            <input type="text" id="cog-url" class="form-input"
+                   placeholder="https://storage.blob.core.windows.net/container/file.tif">
+            <div class="form-hint">Paste a Cloud Optimized GeoTIFF URL</div>
+        </div>
+        <button class="btn btn-primary" onclick="loadRaster()">Load</button>
+
+        <!-- Info panel (populated after load) -->
+        <div id="raster-info" class="hidden" style="margin-top: var(--space-lg);">
+            <h3>Dataset Info</h3>
+            <div id="raster-metadata"></div>
+
+            <!-- Band selection -->
+            <div class="form-group">
+                <label class="form-label">Bands</label>
+                <div id="band-controls"></div>
+            </div>
+
+            <!-- Colormap selection -->
+            <div class="form-group">
+                <label class="form-label" for="colormap-select">Colormap</label>
+                <select id="colormap-select" class="form-select" onchange="updateTiles()">
+                    <option value="">Default</option>
+                    <option value="viridis">Viridis</option>
+                    <option value="plasma">Plasma</option>
+                    <option value="inferno">Inferno</option>
+                    <option value="magma">Magma</option>
+                    <option value="terrain">Terrain</option>
+                    <option value="rdylgn">Red-Yellow-Green</option>
+                </select>
+            </div>
+
+            <!-- Rescale -->
+            <div class="form-row">
+                <div class="form-group">
+                    <label class="form-label" for="rescale-min">Min</label>
+                    <input type="number" id="rescale-min" class="form-input" placeholder="Auto">
+                </div>
+                <div class="form-group">
+                    <label class="form-label" for="rescale-max">Max</label>
+                    <input type="number" id="rescale-max" class="form-input" placeholder="Auto">
+                </div>
+            </div>
+            <button class="btn btn-secondary btn-sm" onclick="updateTiles()">Apply</button>
+        </div>
+    </div>
+
+    <!-- Map -->
+    <div id="map" class="map-full"></div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script src="https://unpkg.com/maplibre-gl@4/dist/maplibre-gl.js"></script>
+<script src="{{ url_for('static', path='js/viewer-raster.js') }}?v={{ version }}"></script>
+<script>
+    document.addEventListener('DOMContentLoaded', () => initRasterViewer());
+</script>
+{% endblock %}

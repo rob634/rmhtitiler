@@ -1,0 +1,35 @@
+{# Vector Catalog - browse OGC Features collections #}
+{# Implements: Resolved Spec - Phase 3 Run 3.2 (Vector Catalog) #}
+{% extends "base.html" %}
+{% from "components/macros.html" import card, badge, empty_state, loading_state %}
+
+{% block title %}Vector Collections{% endblock %}
+
+{% block content %}
+<div class="page-header">
+    <h1>Vector Collections</h1>
+    <p class="page-description">Browse PostGIS collections via OGC Features API. Click a collection to view on the map.</p>
+</div>
+
+<input type="text" id="vector-search" class="form-input search-bar"
+       placeholder="Search vector collections...">
+
+<div id="vector-grid" class="card-grid">
+    {{ loading_state("Loading vector collections...") }}
+</div>
+
+<div id="vector-empty" class="hidden">
+    {{ empty_state("No vector collections available.") }}
+</div>
+
+<div style="margin-top: var(--space-lg);">
+    <a href="/catalog" class="btn btn-secondary">Back to Catalog</a>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script src="{{ url_for('static', path='js/catalog.js') }}?v={{ version }}"></script>
+<script>
+    document.addEventListener('DOMContentLoaded', () => loadVectorCatalog());
+</script>
+{% endblock %}

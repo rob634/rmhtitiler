@@ -1,0 +1,48 @@
+{# STAC Catalog - browse spatiotemporal asset collections #}
+{# Implements: Resolved Spec - Phase 3 Run 3.2 (STAC Catalog) #}
+{% extends "base.html" %}
+{% from "components/macros.html" import card, badge, empty_state, loading_state %}
+
+{% block title %}STAC Collections{% endblock %}
+
+{% block content %}
+<div class="page-header">
+    <h1>STAC Collections</h1>
+    <p class="page-description">Browse spatiotemporal asset catalogs. Click a collection to explore items on the map.</p>
+</div>
+
+<input type="text" id="stac-search" class="form-input search-bar"
+       placeholder="Search STAC collections...">
+
+<div id="stac-grid" class="card-grid">
+    {{ loading_state("Loading STAC collections...") }}
+</div>
+
+<div id="stac-empty" class="hidden">
+    {{ empty_state("No STAC collections available.") }}
+</div>
+
+<!-- Collection detail panel (shown when a collection is selected) -->
+<div id="collection-detail" class="hidden">
+    <div class="page-header">
+        <h2 id="detail-title"></h2>
+        <p id="detail-description"></p>
+    </div>
+    <div id="detail-metadata"></div>
+    <div class="btn-group">
+        <a id="detail-viewer-link" href="#" class="btn btn-primary">Open in Viewer</a>
+        <a id="detail-api-link" href="#" class="btn btn-secondary" target="_blank">View API JSON</a>
+    </div>
+</div>
+
+<div style="margin-top: var(--space-lg);">
+    <a href="/catalog" class="btn btn-secondary">Back to Catalog</a>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script src="{{ url_for('static', path='js/catalog.js') }}?v={{ version }}"></script>
+<script>
+    document.addEventListener('DOMContentLoaded', () => loadStacCatalog());
+</script>
+{% endblock %}

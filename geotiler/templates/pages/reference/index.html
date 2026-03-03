@@ -1,0 +1,42 @@
+{# Reference page - API documentation hub #}
+{# Implements: Resolved Spec - Phase 3 Run 3.3 (Reference) #}
+{% extends "base.html" %}
+{% from "components/macros.html" import card %}
+
+{% block title %}Reference{% endblock %}
+
+{% block content %}
+<div class="page-header">
+    <h1>API Reference</h1>
+    <p class="page-description">Documentation, API explorer, and integration guides.</p>
+</div>
+
+<div class="card-grid">
+    <a href="/docs" class="card-link">
+        {{ card("Swagger UI", subtitle="Interactive API Explorer",
+                body="Try API endpoints directly. Supports COG, XArray, STAC, Vector, and Search APIs.") }}
+    </a>
+
+    <a href="/guide/" class="card-link">
+        {{ card("User Guide", subtitle="Getting Started",
+                body="Tutorials for data scientists and web developers. Authentication, queries, and map integration.") }}
+    </a>
+
+    <a href="/health" class="card-link">
+        {{ card("Health API", subtitle="JSON Health Check",
+                body="Machine-readable health status for monitoring integration.") }}
+    </a>
+
+    <div class="card">
+        <h3>Endpoint Overview</h3>
+        <table>
+            <tr><td><code>GET /cog/*</code></td><td>Cloud Optimized GeoTIFF tiles</td></tr>
+            <tr><td><code>GET /xarray/*</code></td><td>Zarr / NetCDF tiles</td></tr>
+            <tr><td><code>GET /searches/*</code></td><td>pgSTAC mosaic searches</td></tr>
+            <tr><td><code>GET /stac/*</code></td><td>STAC catalog API</td></tr>
+            <tr><td><code>GET /vector/*</code></td><td>OGC Features + Vector Tiles</td></tr>
+            <tr><td><code>GET /h3/*</code></td><td>H3 Explorer</td></tr>
+        </table>
+    </div>
+</div>
+{% endblock %}
