@@ -1,23 +1,22 @@
 # Pipeline 4: SIEGE (Sequential Smoke Test)
 
-**Purpose**: Fast sequential verification that the live API's core workflows function correctly after deployment. No information asymmetry — this is a linear sweep for speed and simplicity.
+**Purpose**: Fast sequential verification that all tile services function correctly after deployment. Linear sweep for speed — no information asymmetry.
 
-**Best for**: Post-deployment smoke test, quick confidence check ("did that deploy break anything?").
+**Best for**: Post-deployment smoke test, quick confidence check ("did that deploy break anything?"). Validates COG, Zarr, Vector, and STAC services end-to-end in a single pass.
 
 ---
 
 ## Endpoint Access Rules
 
-Agents test through the **same API surface** that B2B consumers use (`/api/platform/*`). This ensures tests reflect real-world access patterns.
+Agents test through the **same API surface** that map application developers use. This ensures tests reflect real-world access patterns. No Setup tier — rmhtitiler is a stateless read-only tile server.
 
 | Tier | Endpoints | Who Uses | Purpose |
 |------|-----------|----------|---------|
-| **Action** | `/api/platform/*` | Cartographer (probes), Lancer | Submit, approve, reject, unpublish, query status, browse catalog. The B2B surface. |
-| **Verification** | `/api/dbadmin/*`, `/api/storage/*`, `/api/health` | Cartographer (health only), Auditor | Read-only state auditing. Confirm DB/STAC/blob state matches expectations. |
-| **Setup** | `/api/dbadmin/maintenance`, `/api/stac/nuke` | Sentinel (prerequisites only) | Schema rebuild and STAC nuke BEFORE agents run. Never during tests. |
+| **Consumer** | `/cog/*`, `/xarray/*`, `/vector/*`, `/stac/*` | Cartographer (probes), Lancer | Tile rendering, metadata queries, catalog browsing. The surface a map app developer hits. |
+| **Verification** | `/health`, `/livez`, `/readyz`, `/vector/diagnostics` | Cartographer (health only), Auditor | Health and metadata cross-checks. Read-only state verification. |
 | **Synthesis** | None (reads other agents' outputs) | Scribe | Produces final report from other agents' data. No HTTP calls. |
 
-**Hard rule**: Lancer MUST only use `/api/platform/*` endpoints. Auditor may use admin endpoints for deep verification. If a workflow needs an admin endpoint to function, flag it as a finding — a missing B2B capability.
+**Hard rule**: Lancer MUST only use consumer endpoints (`/cog/*`, `/xarray/*`, `/vector/*`, `/stac/*`). Auditor may use verification endpoints for cross-validation. If a workflow needs a verification endpoint to function, flag it as a finding.
 
 ---
 
@@ -25,10 +24,10 @@ Agents test through the **same API surface** that B2B consumers use (`/api/platf
 
 | Agent | Role | Runs As | Input |
 |-------|------|---------|-------|
-| Sentinel | Define campaign (test data, endpoints, bronze container) | Claude (no subagent) | V0.9_TEST.md, API docs |
+| Sentinel | Define campaign from config + health check | Claude (no subagent) | siege_config_titiler.json |
 | Cartographer | Probe every endpoint, map API surface | Task (sequential) | Campaign Brief |
-| Lancer | Execute canonical lifecycle sequences | Task (sequential) | Campaign Brief + test data |
-| Auditor | Query DB/STAC/status, compare actual vs expected | Task (sequential) | Lancer's State Checkpoint Map |
+| Lancer | Execute read chains per service family | Task (sequential) | Campaign Brief + test data |
+| Auditor | Cross-validate metadata consistency | Task (sequential) | Lancer's State Checkpoint Map |
 | Scribe | Synthesize all outputs into final report | Task (sequential) | All previous outputs |
 
 **Maximum parallel agents**: 0 (all sequential)
@@ -41,7 +40,8 @@ Agents test through the **same API surface** that B2B consumers use (`/api/platf
 Target: BASE_URL (Azure endpoint)
     |
     Sentinel (Claude — no subagent)
-        Reads V0.9_TEST.md, defines test data with sg- prefix
+        Reads siege_config_titiler.json
+        Verifies health endpoint reports all services healthy
         Outputs: Campaign Brief
     |
     Cartographer (Task)                          [sequential]
@@ -49,13 +49,12 @@ Target: BASE_URL (Azure endpoint)
         OUTPUT: Endpoint Map (URL → HTTP code → response schema → latency)
     |
     Lancer (Task)                                [sequential]
-        Executes canonical lifecycle sequences
+        Executes read chains per service family
         OUTPUT: Execution Log + State Checkpoint Map
     |
     Auditor (Task)                               [sequential]
-        Queries DB, STAC, status endpoints
-        Compares actual vs expected state
-        OUTPUT: Audit Report (matches, divergences, orphans)
+        Cross-validates metadata consistency
+        OUTPUT: Audit Report (matches, divergences)
     |
     Scribe (Task)                                [sequential]
         Synthesizes all outputs
@@ -66,36 +65,29 @@ Target: BASE_URL (Azure endpoint)
 
 ## Prerequisites
 
+Health check only. No rebuild, no nuke — rmhtitiler is a stateless read-only tile server.
+
 ```bash
-BASE_URL="https://rmhazuregeoapi-a3dma3ctfdgngwf6.eastus-01.azurewebsites.net"
+BASE_URL="https://rmhtitiler-ghcyd7g0bxdvc2hc.eastus-01.azurewebsites.net"
 
-# Schema rebuild (fresh slate)
-curl -X POST "${BASE_URL}/api/dbadmin/maintenance?action=rebuild&confirm=yes"
-
-# STAC nuke
-curl -X POST "${BASE_URL}/api/stac/nuke?confirm=yes&mode=all"
-
-# Health check
-curl -sf "${BASE_URL}/api/health"
+# Health check — verify all services are up
+curl -sf "${BASE_URL}/health"
 ```
 
 ---
 
 ## Campaign Config
 
-All pipelines share a config file: `docs/agent_review/siege_config.json`
+All SIEGE runs reference a standalone config file: `docs/agent_review/siege_config_titiler.json`
 
 The config contains:
-- **`valid_files`**: Files that MUST exist in bronze storage — used by Pathfinder/Blue/Lancer
-- **`invalid_files`**: Deliberately bad inputs — used by Saboteur/Red/Provocateur
-- **`approval_fixtures`**: Pre-built payloads for approve/reject testing
-- **`discovery`**: Endpoint templates for verifying files exist before testing
-- **`prerequisites`**: Setup commands (rebuild, nuke, health check)
+- **`target`**: BASE_URL and storage account
+- **`test_data`**: Known-good test URLs for each service family (COG, Zarr, Vector, STAC) with expected values
+- **`endpoint_access_rules`**: Consumer and verification endpoint definitions with method, path, and parameter templates
+- **`cartographer_probes`**: Structured probe definitions for each service family — method, path, params, expected HTTP status
+- **`namespaces`**: Prefix conventions (`sg-` for SIEGE, `adv-` for ADVOCATE)
 
-Sentinel MUST verify valid files exist before launching by calling the discovery endpoint:
-```bash
-curl "${BASE_URL}/api/storage/rmhazuregeobronze/blobs?zone=bronze&limit=50"
-```
+Sentinel MUST read this config before launching any agents. All test data URLs, collection IDs, and expected values come from this file.
 
 ---
 
@@ -103,18 +95,21 @@ curl "${BASE_URL}/api/storage/rmhazuregeobronze/blobs?zone=bronze&limit=50"
 
 Claude plays Sentinel directly. Sentinel's job:
 
-1. Read `siege_config.json` for test data and `V0.9_TEST.md` sections A–I for canonical test sequences.
-2. Verify valid files exist via discovery endpoint.
-3. Define test data using `sg-` prefix:
-   - Raster: `dataset_id=sg-raster-test`, `resource_id=dctest`, `file_name=dctest.tif`
-   - Vector: `dataset_id=sg-vector-test`, `resource_id=cutlines`, `file_name=cutlines.gpkg`
-3. Identify the bronze container name from environment context.
+1. Read `siege_config_titiler.json` for test data and endpoint definitions.
+2. Verify health endpoint returns all services healthy:
+   ```bash
+   curl -sf "${BASE_URL}/health" | jq
+   ```
+3. Define test data from config:
+   - COG: `url=/vsiaz/silver-cogs/sg-raster-test/dctest/1/dctest_cog_analysis.tif` (3-band uint8, DC area)
+   - Zarr: `url=abfs://silver-zarr/cmip6-tasmax-sample.zarr`, `variable=tasmax` (CMIP6, 12 time steps, Kelvin)
+   - Vector: `collection_id=geo.sg7_vector_test_cutlines_ord1` (MultiPolygon, 1401+ features)
+   - STAC: `collection_id=sg-raster-test-dctest`, `item_id=sg-raster-test-dctest-v1` (data + thumbnail assets)
 4. Output the Campaign Brief:
    - BASE_URL
-   - Test data table
-   - Bronze container
+   - Test data table (service, URL/ID, description, expected values)
    - Full endpoint list for Cartographer
-   - Lifecycle sequences for Lancer
+   - Read chain sequences for Lancer
 
 ---
 
@@ -124,32 +119,37 @@ Cartographer probes every known endpoint with a minimal request to verify livene
 
 ### Cartographer Probe Table
 
-**Platform API surface (B2B — primary focus)**:
+**Tile services (consumer surface)**:
 
 | Endpoint | Method | Probe | Expected |
 |----------|--------|-------|----------|
-| `/api/platform/health` | GET | No params | 200 |
-| `/api/platform/submit` | OPTIONS or GET | Check if live | 405 or method listing |
-| `/api/platform/status` | GET | No params, list mode | 200 |
-| `/api/platform/status/{random-uuid}` | GET | Random UUID | 404 or empty |
-| `/api/platform/approve` | OPTIONS or GET | Check if live | 405 or method listing |
-| `/api/platform/reject` | OPTIONS or GET | Check if live | 405 or method listing |
-| `/api/platform/unpublish` | OPTIONS or GET | Check if live | 405 or method listing |
-| `/api/platform/resubmit` | OPTIONS or GET | Check if live | 405 or method listing |
-| `/api/platform/validate` | OPTIONS or GET | Check if live | 405 or method listing |
-| `/api/platform/approvals` | GET | No params | 200 |
-| `/api/platform/catalog/lookup` | GET | Missing params | 400 or empty |
-| `/api/platform/failures` | GET | No params | 200 |
-| `/api/platform/lineage/{random-uuid}` | GET | Random UUID | 404 or empty |
-| `/api/platforms` | GET | No params | 200 |
+| `/cog/info` | GET | `?url={cog_url}` | 200 + bounds/dtype/bands |
+| `/cog/WebMercatorQuad/tilejson.json` | GET | `?url={cog_url}` | 200 + TileJSON |
+| `/cog/statistics` | GET | `?url={cog_url}` | 200 + band stats |
+| `/cog/bounds` | GET | `?url={cog_url}` | 200 + bounds |
+| `/cog/preview.png` | GET | `?url={cog_url}&max_size=256` | 200 + image |
+| `/xarray/variables` | GET | `?url={zarr_url}` | 200 + variable list |
+| `/xarray/info` | GET | `?url={zarr_url}&variable=tasmax` | 200 + bounds/dims |
+| `/xarray/WebMercatorQuad/tilejson.json` | GET | `?url={zarr_url}&variable=tasmax&bidx=1&rescale=250,320` | 200 + TileJSON |
+| `/xarray/bounds` | GET | `?url={zarr_url}&variable=tasmax` | 200 + bounds |
+| `/vector/collections` | GET | No params | 200 + collection list |
+| `/vector/collections/{id}` | GET | Known collection ID | 200 + metadata |
+| `/vector/collections/{id}/items` | GET | `?limit=1` | 200 + features |
+| `/vector/collections/{id}/tiles/WebMercatorQuad/tilejson.json` | GET | No extra params | 200 + TileJSON |
+| `/stac/collections` | GET | No params | 200 + collection list |
+| `/stac/collections/{id}` | GET | Known collection ID | 200 + extent |
+| `/stac/collections/{id}/items` | GET | `?limit=3` | 200 + items |
+| `/stac/search` | GET | `?limit=3` | 200 + items |
 
-**Verification endpoints (admin — health check only)**:
+**Verification endpoints**:
 
 | Endpoint | Method | Probe | Expected |
 |----------|--------|-------|----------|
-| `/api/health` | GET | No params | 200 |
-| `/api/dbadmin/stats` | GET | No params | 200 |
-| `/api/dbadmin/jobs` | GET | `?limit=1` | 200 |
+| `/health` | GET | No params | 200 + all services healthy |
+| `/livez` | GET | No params | 200 |
+| `/readyz` | GET | No params | 200 |
+
+**Total probes**: 20 (COG: 5, Xarray: 4, Vector: 4, STAC: 4, Health: 3)
 
 ### Cartographer Output Format
 
@@ -169,32 +169,51 @@ Cartographer probes every known endpoint with a minimal request to verify livene
 
 ## Step 3: Dispatch Lancer
 
-Lancer executes canonical lifecycle sequences and records state checkpoints.
+Lancer executes read chains per service family and records state checkpoints. Each sequence exercises a complete consumer workflow from metadata through tile rendering.
 
-### Lifecycle Sequences
+### Read Chain Sequences
 
-**Sequence 1: Raster Lifecycle**
-1. POST `/api/platform/submit` (raster) → capture request_id, job_id
-2. GET `/api/platform/status/{request_id}` (poll until completed) → capture release_id, asset_id
-3. POST `/api/platform/approve` (version_id="v1") → verify STAC materialized
-4. GET `/api/platform/catalog/item/{collection}/{item_id}` → verify exists
-5. **CHECKPOINT R1**: Record all IDs and expected DB/STAC state
+**Sequence 1: COG Read Chain**
 
-**Sequence 2: Vector Lifecycle**
-1. POST `/api/platform/submit` (vector) → capture IDs
-2. Poll until completed → capture release_id
-3. POST `/api/platform/approve` → verify OGC Features
-4. **CHECKPOINT V1**: Record all IDs
+1. `GET /cog/info?url={cog_url}` -- capture bounds, dtype, band count
+2. `GET /cog/WebMercatorQuad/tilejson.json?url={cog_url}` -- capture tile URL template, minzoom, maxzoom
+3. `GET /cog/tiles/WebMercatorQuad/{z}/{x}/{y}?url={cog_url}` -- verify 200 + `image/*` content-type
+4. `GET /cog/statistics?url={cog_url}` -- verify band stats
+5. **CHECKPOINT C1**: bounds from info match tilejson, tile renders, stats valid
 
-**Sequence 3: Multi-Version**
-1. POST `/api/platform/submit` (resubmit raster, same dataset_id) → capture v2 IDs
-2. Poll → verify ordinal=2
-3. POST `/api/platform/approve` (version_id="v2") → verify coexistence with v1
-4. **CHECKPOINT MV1**: Both v1 and v2 state
+**Sequence 2: Zarr Read Chain**
 
-**Sequence 4: Unpublish**
-1. POST `/api/platform/unpublish` (v2) → poll until complete
-2. **CHECKPOINT U1**: v2 removed, v1 preserved
+1. `GET /xarray/variables?url={zarr_url}` -- capture variable list
+2. `GET /xarray/info?url={zarr_url}&variable=tasmax` -- capture bounds, dims, time steps
+3. `GET /xarray/WebMercatorQuad/tilejson.json?url={zarr_url}&variable=tasmax&bidx=1&rescale=250,320` -- capture tile template
+4. `GET /xarray/tiles/WebMercatorQuad/0/0/0@1x.png?url={zarr_url}&variable=tasmax&bidx=1&colormap_name=viridis&rescale=250,320` -- verify tile renders
+5. **CHECKPOINT Z1**: variables match, bounds consistent, tile is valid image
+
+**Sequence 3: Vector Read Chain**
+
+1. `GET /vector/collections` -- capture collection list
+2. `GET /vector/collections/{id}` -- capture collection metadata
+3. `GET /vector/collections/{id}/items?limit=5` -- verify features returned
+4. `GET /vector/collections/{id}/tiles/WebMercatorQuad/tilejson.json` -- capture tile template
+5. `GET /vector/collections/{id}/tiles/WebMercatorQuad/{z}/{x}/{y}` -- verify MVT tile
+6. **CHECKPOINT V1**: features exist, tile renders, metadata consistent
+
+**Sequence 4: STAC Discovery Chain**
+
+1. `GET /stac/collections` -- capture collection list
+2. `GET /stac/collections/{id}` -- capture spatial/temporal extent
+3. `GET /stac/collections/{id}/items?limit=3` -- capture item IDs, asset URLs
+4. `GET /stac/search` with bbox from collection extent -- verify search returns items
+5. Extract COG URL from STAC asset -- feed into `/cog/info` -- verify service URL works
+6. **CHECKPOINT S1**: catalog navigable, items have working service URLs
+
+**Sequence 5: Cross-Service Consistency**
+
+1. Take COG URL from STAC item asset
+2. Get bounds from `/cog/info`
+3. Get bounds from `/stac/collections/{id}` extent
+4. Compare — should overlap
+5. **CHECKPOINT X1**: STAC spatial extent consistent with actual data bounds
 
 ### Lancer Checkpoint Format
 
@@ -202,17 +221,18 @@ Lancer executes canonical lifecycle sequences and records state checkpoints.
 ## Checkpoint {ID}: {description}
 AFTER: {step description}
 EXPECTED STATE:
-  Jobs:
-    - {job_id} → status={status}
-  Releases:
-    - {release_id} → approval_state={state}, version_ordinal={n}
-  STAC Items:
-    - {item_id} → {exists | not exists}
-  Captured IDs:
-    - request_id={value}
-    - job_id={value}
-    - release_id={value}
-    - asset_id={value}
+  Service: {cog|xarray|vector|stac}
+  Bounds: [{minx}, {miny}, {maxx}, {maxy}]
+  Tile rendered: {yes|no}
+  Content-Type: {value}
+  Response time: {ms}
+  Metadata consistent: {yes|no}
+  Captured values:
+    - bounds={value}
+    - tilejson_minzoom={value}
+    - tilejson_maxzoom={value}
+    - tile_content_type={value}
+    - tile_size_bytes={value}
 ```
 
 ### Lancer HTTP Log Format
@@ -220,9 +240,10 @@ EXPECTED STATE:
 ```
 ### Step {N}: {description}
 REQUEST: {method} {url}
-BODY: {json body if any}
 RESPONSE: HTTP {code}
-BODY: {response body, truncated to 500 chars}
+CONTENT-TYPE: {value}
+SIZE: {bytes}
+LATENCY: {ms}
 CAPTURED: {key}={value}
 EXPECTED: {what should happen}
 ACTUAL: {what did happen}
@@ -233,29 +254,19 @@ VERDICT: PASS | FAIL | UNEXPECTED
 
 ## Step 4: Dispatch Auditor
 
-Auditor receives Lancer's State Checkpoint Map and verifies actual system state.
+Auditor receives Lancer's State Checkpoint Map and cross-validates metadata consistency across services.
 
-### Audit Queries
+### Audit Checks
 
-For each checkpoint, prefer Platform API endpoints. Use admin endpoints only for deeper verification.
-
-**Primary checks (Platform API)**:
-
-| Check | Query | Compare Against |
-|-------|-------|-----------------|
-| Job/release state | `/api/platform/status/{request_id}` | Expected job_status, approval_state |
-| STAC item existence | `/api/platform/catalog/item/{collection}/{item_id}` | Expected 200 or 404 |
-| Dataset items | `/api/platform/catalog/dataset/{dataset_id}` | Expected item count |
-| Approval state | `/api/platform/approvals/status?stac_item_ids={ids}` | Expected approval records |
-| Recent failures | `/api/platform/failures` | No unexpected failures |
-
-**Deep verification (admin — verification only)**:
-
-| Check | Query | Compare Against |
-|-------|-------|-----------------|
-| Job detail | `/api/dbadmin/jobs/{job_id}` | Expected status, result_data |
-| Overall stats | `/api/dbadmin/stats` | No unexpected counts |
-| Orphaned tasks | `/api/dbadmin/diagnostics/all` | Clean diagnostics |
+| Check | Method | What to Compare |
+|-------|--------|-----------------|
+| Bounds consistency | `/info` vs `/tilejson.json` | bounds arrays should match |
+| Tile validity | Content-Type header | Must be `image/png`, `image/jpeg`, or `application/vnd.mapbox-vector-tile` |
+| Response time | Latency from Lancer log | Flag anything >5s |
+| STAC-to-Tile chain | Asset URL from STAC item fed to `/cog/info` | Must resolve, not 404 |
+| Variable consistency | `/xarray/variables` list vs `/xarray/info` | Listed variable must work in info |
+| Collection count | `/vector/collections` count | Must match `/health` reported count |
+| TileJSON schema | All tilejson responses | Same schema across COG/Xarray/Vector |
 
 ### Auditor Output Format
 
@@ -265,16 +276,16 @@ For each checkpoint, prefer Platform API endpoints. Use admin endpoints only for
 ### Checkpoint {ID}: {description}
 | Check | Expected | Actual | Verdict |
 |-------|----------|--------|---------|
-| Job {job_id} status | completed | {actual} | PASS/FAIL |
-| Release {release_id} state | approved | {actual} | PASS/FAIL |
-| STAC item {item_id} | exists | {actual} | PASS/FAIL |
+| COG bounds match | [-77.03, 38.91, -77.01, 38.93] | {actual} | PASS/FAIL |
+| Tile content-type | image/png | {actual} | PASS/FAIL |
+| TileJSON minzoom | 0 | {actual} | PASS/FAIL |
 
-### Orphaned Artifacts
-| Type | ID | Why Orphaned |
+### Cross-Service Divergences
+| Service A | Service B | Field | A Value | B Value | Severity |
 ...
 
-### Divergences
-| Checkpoint | Expected | Actual | Severity |
+### Response Time Flags
+| Endpoint | Latency | Threshold | Verdict |
 ...
 ```
 
@@ -291,27 +302,28 @@ Scribe receives all outputs and produces the final report.
 
 **Date**: {date}
 **Target**: {BASE_URL}
-**Version**: {deployed version from /api/health}
-**Pipeline**: SIEGE
+**Version**: {version from /health}
+**Pipeline**: SIEGE (Tile Server Smoke Test)
 
 ## Endpoint Health
 | Endpoint | Status | Latency |
 ...
 Assessment: {HEALTHY | DEGRADED | DOWN}
 
-## Workflow Results
-| Sequence | Steps | Pass | Fail | Unexpected |
-|----------|-------|------|------|------------|
-| Raster Lifecycle | {n} | {n} | {n} | {n} |
-| Vector Lifecycle | {n} | {n} | {n} | {n} |
-| Multi-Version | {n} | {n} | {n} | {n} |
-| Unpublish | {n} | {n} | {n} | {n} |
+## Service Results
+| Service | Steps | Pass | Fail | Unexpected |
+|---------|-------|------|------|------------|
+| COG Read Chain | {n} | {n} | {n} | {n} |
+| Zarr Read Chain | {n} | {n} | {n} | {n} |
+| Vector Read Chain | {n} | {n} | {n} | {n} |
+| STAC Discovery | {n} | {n} | {n} | {n} |
+| Cross-Service | {n} | {n} | {n} | {n} |
 
-## State Divergences
-{from Auditor — expected vs actual for each failing checkpoint}
+## Metadata Divergences
+{from Auditor — expected vs actual for each failing check}
 
 ## Findings
-| # | Severity | Category | Description | Reproduction |
+| # | Severity | Service | Description | Reproduction |
 ...
 
 ## Verdict
@@ -329,10 +341,10 @@ Log the run in `docs/agent_review/AGENT_RUNS.md`.
 
 | Agent | Gets | Doesn't Get |
 |-------|------|-------------|
-| Sentinel | V0.9_TEST.md, API docs | Nothing (defines everything) |
-| Cartographer | Campaign Brief, endpoint list | Test data, lifecycle sequences |
-| Lancer | Campaign Brief, test data, sequences | Cartographer's findings |
-| Auditor | Lancer's State Checkpoint Map, captured IDs | Lancer's raw HTTP responses |
+| Sentinel | siege_config_titiler.json | Nothing (defines everything) |
+| Cartographer | Campaign Brief, endpoint list | Test data, read chain sequences |
+| Lancer | Campaign Brief, test data URLs, sequences | Cartographer's findings |
+| Auditor | Lancer's Checkpoint Map, captured values | Lancer's raw HTTP responses |
 | Scribe | All outputs from all agents | Nothing hidden |
 
-**Note**: SIEGE has minimal information asymmetry by design. Its value is speed and completeness, not adversarial competition. For adversarial testing, use WARGAME or TOURNAMENT.
+**Note**: SIEGE has minimal information asymmetry by design. Its value is speed and completeness, not adversarial competition. For adversarial testing, use TOURNAMENT.
