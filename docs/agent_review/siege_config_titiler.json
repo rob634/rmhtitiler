@@ -1,0 +1,227 @@
+{
+  "target": {
+    "base_url": "https://rmhtitiler-ghcyd7g0bxdvc2hc.eastus-01.azurewebsites.net",
+    "storage_account": "rmhstorage123"
+  },
+  "test_data": {
+    "cog": {
+      "url": "/vsiaz/silver-cogs/sg-raster-test/dctest/1/dctest_cog_analysis.tif",
+      "bands": 3,
+      "dtype": "uint8",
+      "bounds": [-77.03, 38.91, -77.01, 38.93],
+      "description": "3-band uint8 Cloud Optimized GeoTIFF covering Washington DC area"
+    },
+    "zarr": {
+      "url": "abfs://silver-zarr/cmip6-tasmax-sample.zarr",
+      "variable": "tasmax",
+      "time_steps": 12,
+      "units": "Kelvin",
+      "bounds": [-181.25, -91.25, 178.75, 91.25],
+      "rescale": "250,320",
+      "colormap": "viridis",
+      "bidx": 1,
+      "description": "CMIP6 maximum daily temperature Zarr store with 12 monthly time steps in Kelvin"
+    },
+    "vector": {
+      "collection_id": "geo.sg7_vector_test_cutlines_ord1",
+      "geometry_type": "MultiPolygon",
+      "min_features": 1401,
+      "description": "MultiPolygon cutlines from satellite imagery mosaicking with 1401+ features"
+    },
+    "stac": {
+      "collection_id": "sg-raster-test-dctest",
+      "item_id": "sg-raster-test-dctest-v1",
+      "assets": ["data", "thumbnail"],
+      "description": "STAC collection for DC test raster with data and thumbnail assets"
+    }
+  },
+  "endpoint_access_rules": {
+    "_comment": "Stateless tile server — agents test through the same endpoints consumers use. No setup_only_endpoints needed.",
+    "consumer_endpoints": {
+      "_comment": "All tile-serving endpoints that agents exercise during SIEGE and ADVOCATE runs.",
+      "cog_info": "GET  /cog/info?url={url}",
+      "cog_bounds": "GET  /cog/bounds?url={url}",
+      "cog_statistics": "GET  /cog/statistics?url={url}",
+      "cog_tilejson": "GET  /cog/WebMercatorQuad/tilejson.json?url={url}",
+      "cog_preview": "GET  /cog/preview.png?url={url}&max_size=256",
+      "cog_tile": "GET  /cog/tiles/{z}/{x}/{y}?url={url}",
+      "xarray_variables": "GET  /xarray/variables?url={url}",
+      "xarray_info": "GET  /xarray/info?url={url}&variable={variable}",
+      "xarray_bounds": "GET  /xarray/bounds?url={url}&variable={variable}",
+      "xarray_tilejson": "GET  /xarray/WebMercatorQuad/tilejson.json?url={url}&variable={variable}&bidx={bidx}&rescale={rescale}",
+      "vector_collections": "GET  /vector/collections",
+      "vector_collection": "GET  /vector/collections/{collection_id}",
+      "vector_items": "GET  /vector/collections/{collection_id}/items",
+      "vector_tilejson": "GET  /vector/collections/{collection_id}/tiles/WebMercatorQuad/tilejson.json",
+      "vector_tile": "GET  /vector/collections/{collection_id}/tiles/WebMercatorQuad/{z}/{x}/{y}",
+      "stac_collections": "GET  /stac/collections",
+      "stac_collection": "GET  /stac/collections/{collection_id}",
+      "stac_items": "GET  /stac/collections/{collection_id}/items",
+      "stac_search": "GET  /stac/search"
+    },
+    "verification_endpoints": {
+      "_comment": "Read-only endpoints for auditing and state verification — never for test actions.",
+      "health": "GET  /health",
+      "livez": "GET  /livez",
+      "readyz": "GET  /readyz",
+      "vector_diagnostics": "GET  /vector/diagnostics"
+    }
+  },
+  "cartographer_probes": {
+    "_comment": "Smoke-test probe table. Each probe defines method, path, params, and expected HTTP status. Placeholders reference test_data keys.",
+    "cog": [
+      {
+        "id": "cog-info",
+        "method": "GET",
+        "path": "/cog/info",
+        "params": { "url": "{test_data.cog.url}" },
+        "expected_status": 200
+      },
+      {
+        "id": "cog-tilejson",
+        "method": "GET",
+        "path": "/cog/WebMercatorQuad/tilejson.json",
+        "params": { "url": "{test_data.cog.url}" },
+        "expected_status": 200
+      },
+      {
+        "id": "cog-statistics",
+        "method": "GET",
+        "path": "/cog/statistics",
+        "params": { "url": "{test_data.cog.url}" },
+        "expected_status": 200
+      },
+      {
+        "id": "cog-bounds",
+        "method": "GET",
+        "path": "/cog/bounds",
+        "params": { "url": "{test_data.cog.url}" },
+        "expected_status": 200
+      },
+      {
+        "id": "cog-preview",
+        "method": "GET",
+        "path": "/cog/preview.png",
+        "params": { "url": "{test_data.cog.url}", "max_size": "256" },
+        "expected_status": 200
+      }
+    ],
+    "xarray": [
+      {
+        "id": "xarray-variables",
+        "method": "GET",
+        "path": "/xarray/variables",
+        "params": { "url": "{test_data.zarr.url}" },
+        "expected_status": 200
+      },
+      {
+        "id": "xarray-info",
+        "method": "GET",
+        "path": "/xarray/info",
+        "params": { "url": "{test_data.zarr.url}", "variable": "tasmax" },
+        "expected_status": 200
+      },
+      {
+        "id": "xarray-tilejson",
+        "method": "GET",
+        "path": "/xarray/WebMercatorQuad/tilejson.json",
+        "params": { "url": "{test_data.zarr.url}", "variable": "tasmax", "bidx": "1", "rescale": "250,320" },
+        "expected_status": 200
+      },
+      {
+        "id": "xarray-bounds",
+        "method": "GET",
+        "path": "/xarray/bounds",
+        "params": { "url": "{test_data.zarr.url}", "variable": "tasmax" },
+        "expected_status": 200
+      }
+    ],
+    "vector": [
+      {
+        "id": "vector-collections",
+        "method": "GET",
+        "path": "/vector/collections",
+        "params": {},
+        "expected_status": 200
+      },
+      {
+        "id": "vector-collection",
+        "method": "GET",
+        "path": "/vector/collections/{test_data.vector.collection_id}",
+        "params": {},
+        "expected_status": 200
+      },
+      {
+        "id": "vector-items",
+        "method": "GET",
+        "path": "/vector/collections/{test_data.vector.collection_id}/items",
+        "params": { "limit": "1" },
+        "expected_status": 200
+      },
+      {
+        "id": "vector-tilejson",
+        "method": "GET",
+        "path": "/vector/collections/{test_data.vector.collection_id}/tiles/WebMercatorQuad/tilejson.json",
+        "params": {},
+        "expected_status": 200
+      }
+    ],
+    "stac": [
+      {
+        "id": "stac-collections",
+        "method": "GET",
+        "path": "/stac/collections",
+        "params": {},
+        "expected_status": 200
+      },
+      {
+        "id": "stac-collection",
+        "method": "GET",
+        "path": "/stac/collections/{test_data.stac.collection_id}",
+        "params": {},
+        "expected_status": 200
+      },
+      {
+        "id": "stac-items",
+        "method": "GET",
+        "path": "/stac/collections/{test_data.stac.collection_id}/items",
+        "params": { "limit": "3" },
+        "expected_status": 200
+      },
+      {
+        "id": "stac-search",
+        "method": "GET",
+        "path": "/stac/search",
+        "params": { "limit": "3" },
+        "expected_status": 200
+      }
+    ],
+    "health": [
+      {
+        "id": "health",
+        "method": "GET",
+        "path": "/health",
+        "params": {},
+        "expected_status": 200
+      },
+      {
+        "id": "livez",
+        "method": "GET",
+        "path": "/livez",
+        "params": {},
+        "expected_status": 200
+      },
+      {
+        "id": "readyz",
+        "method": "GET",
+        "path": "/readyz",
+        "params": {},
+        "expected_status": 200
+      }
+    ]
+  },
+  "namespaces": {
+    "siege": "sg-",
+    "advocate": "adv-"
+  }
+}
