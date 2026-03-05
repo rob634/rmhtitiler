@@ -147,41 +147,53 @@ function buildBandControls(info) {
         return;
     }
 
-    // Build band options
-    let options = '';
-    for (let i = 1; i <= Math.min(bandCount, 20); i++) {
-        options += '<option value="' + i + '">Band ' + i + '</option>';
+    // Build band options with descriptions when available
+    var bandOptions = [];
+    for (var i = 1; i <= Math.min(bandCount, 20); i++) {
+        var label = 'Band ' + i;
+        if (info.band_descriptions && info.band_descriptions[i - 1] && info.band_descriptions[i - 1][1]) {
+            label = i + ': ' + info.band_descriptions[i - 1][1];
+        } else if (info.band_metadata && info.band_metadata[i - 1]) {
+            var meta = info.band_metadata[i - 1];
+            var desc = (meta[1] && meta[1].DESCRIPTION) || (meta[1] && meta[1].description);
+            if (desc) label = i + ': ' + desc;
+        }
+        bandOptions.push({ value: i, label: label });
     }
 
-    // R/G/B selectors
-    const colors = [
-        { id: 'band-r', label: 'R', cls: 'red', defaultVal: 1 },
-        { id: 'band-g', label: 'G', cls: 'green', defaultVal: Math.min(2, bandCount) },
-        { id: 'band-b', label: 'B', cls: 'blue', defaultVal: Math.min(3, bandCount) },
+    // R/G/B selectors — G and B get a "None" option for single-band mode
+    var colors = [
+        { id: 'band-r', label: 'R', cls: 'red', defaultVal: 1, allowNone: false },
+        { id: 'band-g', label: 'G', cls: 'green', defaultVal: Math.min(2, bandCount), allowNone: true },
+        { id: 'band-b', label: 'B', cls: 'blue', defaultVal: Math.min(3, bandCount), allowNone: true },
     ];
 
-    let html = '';
-    colors.forEach(c => {
+    var html = '';
+    colors.forEach(function(c) {
         html += '<div class="band-selector-row" style="margin-bottom:var(--space-xs);">' +
             '<span class="band-label ' + c.cls + '">' + c.label + '</span>' +
-            '<select id="' + c.id + '" class="form-select" onchange="updateTiles()" style="padding:4px 8px;font-size:0.8rem;">' +
-            options.replace('value="' + c.defaultVal + '"', 'value="' + c.defaultVal + '" selected') +
-            '</select></div>';
+            '<select id="' + c.id + '" class="form-select" onchange="updateTiles()" style="padding:4px 8px;font-size:0.8rem;">';
+        if (c.allowNone) {
+            html += '<option value="">-- None --</option>';
+        }
+        bandOptions.forEach(function(opt) {
+            var selected = (opt.value === c.defaultVal) ? ' selected' : '';
+            html += '<option value="' + opt.value + '"' + selected + '>' + escapeHtml(opt.label) + '</option>';
+        });
+        html += '</select></div>';
     });
     container.innerHTML = html;
 
-    // Add presets if enough bands
+    // Presets
+    var presets = '<button class="preset-btn" onclick="setBandPreset(1,\'\',\'\')">Gray</button>';
     if (bandCount >= 3) {
-        let presets = '<button class="preset-btn" onclick="setBandPreset(1,1,1)">Band 1</button>' +
-            '<button class="preset-btn" onclick="setBandPreset(1,2,3)">RGB</button>';
-        if (bandCount >= 4) {
-            presets += '<button class="preset-btn" onclick="setBandPreset(4,3,2)">NIR</button>';
-        }
-        presetsContainer.innerHTML = presets;
-        presetsContainer.classList.remove('hidden');
-    } else {
-        presetsContainer.classList.add('hidden');
+        presets += '<button class="preset-btn" onclick="setBandPreset(1,2,3)">RGB</button>';
     }
+    if (bandCount >= 4) {
+        presets += '<button class="preset-btn" onclick="setBandPreset(4,3,2)">NIR</button>';
+    }
+    presetsContainer.innerHTML = presets;
+    presetsContainer.classList.remove('hidden');
 }
 
 /**
@@ -385,13 +397,16 @@ function buildTileUrl(url) {
         tileUrl += '&rescale=' + rescale;
     }
 
-    // Bands (R/G/B selectors or single band)
+    // Bands (R/G/B selectors — filter out empty "None" values)
     const bandR = document.getElementById('band-r');
     if (bandR) {
-        const r = bandR.value;
-        const g = document.getElementById('band-g').value;
-        const b = document.getElementById('band-b').value;
-        tileUrl += '&bidx=' + r + '&bidx=' + g + '&bidx=' + b;
+        var bands = [bandR.value,
+            document.getElementById('band-g').value,
+            document.getElementById('band-b').value
+        ].filter(function(b) { return b !== ''; });
+        bands.forEach(function(b) {
+            tileUrl += '&bidx=' + b;
+        });
     }
 
     return tileUrl;
