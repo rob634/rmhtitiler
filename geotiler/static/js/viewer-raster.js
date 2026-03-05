@@ -7,6 +7,9 @@
 let rasterMap = null;
 let currentCogUrl = null;
 let cogInfo = null;
+let currentStretch = 'auto';
+let pointQueryActive = false;
+let bandStats = null;
 
 const SOURCE_ID = 'raster-tiles';
 const LAYER_ID = 'raster-layer';
@@ -22,12 +25,20 @@ const LAYER_ID = 'raster-layer';
 function initRasterViewer() {
     rasterMap = new maplibregl.Map({
         container: 'map',
-        style: 'https://demotiles.maplibre.org/style.json',
+        style: 'https://tiles.openfreemap.org/styles/liberty',
         center: [0, 20],
         zoom: 2,
     });
 
     rasterMap.addControl(new maplibregl.NavigationControl(), 'top-right');
+    rasterMap.addControl(new maplibregl.ScaleControl(), 'bottom-right');
+
+    // Track map position for status overlay
+    rasterMap.on('moveend', updateMapStatus);
+    rasterMap.on('zoomend', updateMapStatus);
+
+    // Point query click handler
+    rasterMap.on('click', handleMapClick);
 
     // Auto-load from query parameter
     const urlParam = getQueryParam('url');
@@ -35,6 +46,14 @@ function initRasterViewer() {
         document.getElementById('cog-url').value = urlParam;
         rasterMap.on('load', () => loadRaster());
     }
+}
+
+function updateMapStatus() {
+    const center = rasterMap.getCenter();
+    const zoom = rasterMap.getZoom();
+    document.getElementById('map-zoom').textContent = 'Zoom: ' + zoom.toFixed(1);
+    document.getElementById('map-coords').textContent =
+        center.lat.toFixed(4) + ', ' + center.lng.toFixed(4);
 }
 
 
@@ -54,17 +73,25 @@ async function loadRaster() {
 
     currentCogUrl = url;
     setQueryParam('url', url);
+    showLoading(true);
 
     // Fetch COG info
     const result = await fetchJSON('/cog/info?url=' + encodeURIComponent(url));
     if (!result.ok) {
         showNotification(result.error || 'Failed to load COG info', 'error');
+        showLoading(false);
         return;
     }
 
     cogInfo = result.data;
     displayMetadata(cogInfo);
+    buildBandControls(cogInfo);
+
+    // Fetch statistics
+    await fetchStatistics(url);
+
     addTileLayer(url, cogInfo.bounds);
+    showLoading(false);
 
     showNotification('Raster loaded successfully', 'success');
 }
@@ -84,49 +111,200 @@ function displayMetadata(info) {
 
     const bounds = info.bounds || [];
     const boundsStr = bounds.length === 4
-        ? `${bounds[0].toFixed(4)}, ${bounds[1].toFixed(4)} to ${bounds[2].toFixed(4)}, ${bounds[3].toFixed(4)}`
+        ? bounds[0].toFixed(4) + ', ' + bounds[1].toFixed(4) + ' to ' + bounds[2].toFixed(4) + ', ' + bounds[3].toFixed(4)
         : 'Unknown';
 
     const bandCount = info.band_metadata ? info.band_metadata.length : (info.count || 'Unknown');
 
-    metadata.innerHTML = `
-        <table class="data-table">
-            <tr><td><strong>Bounds</strong></td><td>${escapeHtml(boundsStr)}</td></tr>
-            <tr><td><strong>Bands</strong></td><td>${escapeHtml(String(bandCount))}</td></tr>
-            <tr><td><strong>Data Type</strong></td><td>${escapeHtml(info.dtype || 'Unknown')}</td></tr>
-            <tr><td><strong>CRS</strong></td><td>${escapeHtml(info.crs || 'Unknown')}</td></tr>
-            ${info.width ? `<tr><td><strong>Size</strong></td><td>${info.width} x ${info.height}</td></tr>` : ''}
-        </table>
-    `;
-
-    // Build band controls
-    buildBandControls(info);
+    metadata.innerHTML =
+        '<div class="metadata-item"><div class="metadata-label">Bands</div><div class="metadata-value">' + escapeHtml(String(bandCount)) + '</div></div>' +
+        '<div class="metadata-item"><div class="metadata-label">Data Type</div><div class="metadata-value mono">' + escapeHtml(info.dtype || 'Unknown') + '</div></div>' +
+        (info.width ? '<div class="metadata-item"><div class="metadata-label">Width</div><div class="metadata-value">' + info.width + ' px</div></div>' : '') +
+        (info.height ? '<div class="metadata-item"><div class="metadata-label">Height</div><div class="metadata-value">' + info.height + ' px</div></div>' : '') +
+        '<div class="metadata-item"><div class="metadata-label">CRS</div><div class="metadata-value mono">' + escapeHtml(info.crs || 'Unknown') + '</div></div>' +
+        '<div class="metadata-item full-width"><div class="metadata-label">Bounds</div><div class="metadata-value mono">' + escapeHtml(boundsStr) + '</div></div>';
 
     panel.classList.remove('hidden');
 }
 
+
+// ============================================================================
+// Band Controls
+// ============================================================================
+
 /**
- * Build band selection checkboxes from COG info.
+ * Build band selection controls: R/G/B dropdowns for multi-band, single selector for single-band.
  * @param {object} info - COG info response
  */
 function buildBandControls(info) {
     const container = document.getElementById('band-controls');
+    const presetsContainer = document.getElementById('band-presets');
     const bandCount = info.band_metadata ? info.band_metadata.length : (info.count || 0);
 
     if (bandCount <= 1) {
-        container.innerHTML = '<span class="text-muted">Single band</span>';
+        container.innerHTML = '<span class="text-muted" style="font-size:0.8rem;">Single band dataset</span>';
+        presetsContainer.classList.add('hidden');
         return;
     }
 
-    let html = '';
-    for (let i = 1; i <= Math.min(bandCount, 10); i++) {
-        const checked = i <= 3 ? 'checked' : '';
-        html += `<label style="margin-right: var(--space-sm);">
-            <input type="checkbox" value="${i}" class="band-checkbox" ${checked}
-                   onchange="updateTiles()"> B${i}
-        </label>`;
+    // Build band options
+    let options = '';
+    for (let i = 1; i <= Math.min(bandCount, 20); i++) {
+        options += '<option value="' + i + '">Band ' + i + '</option>';
     }
+
+    // R/G/B selectors
+    const colors = [
+        { id: 'band-r', label: 'R', cls: 'red', defaultVal: 1 },
+        { id: 'band-g', label: 'G', cls: 'green', defaultVal: Math.min(2, bandCount) },
+        { id: 'band-b', label: 'B', cls: 'blue', defaultVal: Math.min(3, bandCount) },
+    ];
+
+    let html = '';
+    colors.forEach(c => {
+        html += '<div class="band-selector-row" style="margin-bottom:var(--space-xs);">' +
+            '<span class="band-label ' + c.cls + '">' + c.label + '</span>' +
+            '<select id="' + c.id + '" class="form-select" onchange="updateTiles()" style="padding:4px 8px;font-size:0.8rem;">' +
+            options.replace('value="' + c.defaultVal + '"', 'value="' + c.defaultVal + '" selected') +
+            '</select></div>';
+    });
     container.innerHTML = html;
+
+    // Add presets if enough bands
+    if (bandCount >= 3) {
+        let presets = '<button class="preset-btn" onclick="setBandPreset(1,1,1)">Band 1</button>' +
+            '<button class="preset-btn" onclick="setBandPreset(1,2,3)">RGB</button>';
+        if (bandCount >= 4) {
+            presets += '<button class="preset-btn" onclick="setBandPreset(4,3,2)">NIR</button>';
+        }
+        presetsContainer.innerHTML = presets;
+        presetsContainer.classList.remove('hidden');
+    } else {
+        presetsContainer.classList.add('hidden');
+    }
+}
+
+/**
+ * Set band preset by updating R/G/B selectors and reloading tiles.
+ */
+function setBandPreset(r, g, b) {
+    const rSel = document.getElementById('band-r');
+    const gSel = document.getElementById('band-g');
+    const bSel = document.getElementById('band-b');
+    if (rSel) rSel.value = r;
+    if (gSel) gSel.value = g;
+    if (bSel) bSel.value = b;
+    updateTiles();
+}
+
+
+// ============================================================================
+// Stretch Controls
+// ============================================================================
+
+/**
+ * Set stretch mode and update tiles.
+ * @param {string} mode - 'auto', 'p2-98', 'p5-95', 'minmax', 'custom'
+ */
+function setStretch(mode) {
+    currentStretch = mode;
+
+    // Update active button
+    document.querySelectorAll('.stretch-btn').forEach(btn => {
+        btn.classList.toggle('active', btn.dataset.stretch === mode);
+    });
+
+    // Show/hide custom inputs
+    const customDiv = document.getElementById('custom-rescale');
+    if (mode === 'custom') {
+        customDiv.classList.remove('hidden');
+    } else {
+        customDiv.classList.add('hidden');
+        updateTiles();
+    }
+}
+
+/**
+ * Get rescale values based on current stretch mode and statistics.
+ * @returns {string|null} Rescale string like "0,255" or null
+ */
+function getRescaleValues() {
+    if (currentStretch === 'custom') {
+        const min = document.getElementById('rescale-min').value;
+        const max = document.getElementById('rescale-max').value;
+        return (min && max) ? min + ',' + max : null;
+    }
+
+    if (!bandStats) return null;
+
+    // Use statistics for percentile stretches
+    const stats = bandStats;
+    if (currentStretch === 'minmax' && stats.min !== undefined) {
+        return stats.min + ',' + stats.max;
+    }
+    if (currentStretch === 'p2-98' && stats.percentile_2 !== undefined) {
+        return stats.percentile_2 + ',' + stats.percentile_98;
+    }
+    if (currentStretch === 'p5-95' && stats.percentile_5 !== undefined) {
+        return stats.percentile_5 + ',' + stats.percentile_95;
+    }
+
+    return null;
+}
+
+
+// ============================================================================
+// Statistics
+// ============================================================================
+
+/**
+ * Fetch band statistics for the dataset.
+ */
+async function fetchStatistics(url) {
+    const result = await fetchJSON('/cog/statistics?url=' + encodeURIComponent(url));
+    if (!result.ok || !result.data) {
+        bandStats = null;
+        return;
+    }
+
+    // Parse statistics - TiTiler returns stats keyed by band name
+    const data = result.data;
+    const firstKey = Object.keys(data)[0];
+    if (firstKey && data[firstKey]) {
+        bandStats = data[firstKey];
+        displayStatistics(data);
+    }
+}
+
+/**
+ * Render band statistics in the sidebar.
+ */
+function displayStatistics(data) {
+    const section = document.getElementById('stats-section');
+    const container = document.getElementById('band-stats');
+
+    const entries = Object.entries(data);
+    if (entries.length === 0) return;
+
+    let html = '';
+    entries.forEach(([bandName, stats]) => {
+        html += '<div style="margin-bottom:var(--space-sm);">' +
+            '<div style="font-size:0.7rem;font-weight:600;color:var(--color-navy);margin-bottom:2px;">' + escapeHtml(bandName) + '</div>' +
+            '<div class="stats-bands">' +
+            '<div class="stat-band"><span class="stat-key">min</span> <span class="stat-val">' + formatStatVal(stats.min) + '</span></div>' +
+            '<div class="stat-band"><span class="stat-key">max</span> <span class="stat-val">' + formatStatVal(stats.max) + '</span></div>' +
+            '<div class="stat-band"><span class="stat-key">mean</span> <span class="stat-val">' + formatStatVal(stats.mean) + '</span></div>' +
+            '<div class="stat-band"><span class="stat-key">std</span> <span class="stat-val">' + formatStatVal(stats.std) + '</span></div>' +
+            '</div></div>';
+    });
+
+    container.innerHTML = html;
+    section.style.display = '';
+}
+
+function formatStatVal(val) {
+    if (val === null || val === undefined) return '--';
+    return typeof val === 'number' ? val.toFixed(2) : String(val);
 }
 
 
@@ -164,6 +342,9 @@ function addTileLayer(url, bounds) {
             { padding: 50, maxZoom: 16 }
         );
     }
+
+    // Update layer info overlay
+    updateLayerInfo();
 }
 
 /**
@@ -193,17 +374,18 @@ function buildTileUrl(url) {
     }
 
     // Rescale
-    const min = document.getElementById('rescale-min').value;
-    const max = document.getElementById('rescale-max').value;
-    if (min && max) {
-        tileUrl += '&rescale=' + min + ',' + max;
+    const rescale = getRescaleValues();
+    if (rescale) {
+        tileUrl += '&rescale=' + rescale;
     }
 
-    // Bands
-    const bandCheckboxes = document.querySelectorAll('.band-checkbox:checked');
-    if (bandCheckboxes.length > 0) {
-        const bands = Array.from(bandCheckboxes).map(cb => cb.value);
-        tileUrl += '&bidx=' + bands.join(',');
+    // Bands (R/G/B selectors or single band)
+    const bandR = document.getElementById('band-r');
+    if (bandR) {
+        const r = bandR.value;
+        const g = document.getElementById('band-g').value;
+        const b = document.getElementById('band-b').value;
+        tileUrl += '&bidx=' + r + '&bidx=' + g + '&bidx=' + b;
     }
 
     return tileUrl;
@@ -215,4 +397,93 @@ function buildTileUrl(url) {
 function updateTiles() {
     if (!currentCogUrl) return;
     addTileLayer(currentCogUrl, cogInfo ? cogInfo.bounds : null);
+}
+
+/**
+ * Update the layer info overlay.
+ */
+function updateLayerInfo() {
+    const info = document.getElementById('layer-info');
+    const bandR = document.getElementById('band-r');
+
+    let bandsText = 'Single band';
+    if (bandR) {
+        bandsText = 'R:' + bandR.value + ' G:' + document.getElementById('band-g').value + ' B:' + document.getElementById('band-b').value;
+    }
+
+    document.getElementById('layer-name').textContent = currentCogUrl ? currentCogUrl.split('/').pop() : '';
+    document.getElementById('layer-bands').textContent = bandsText;
+    document.getElementById('layer-stretch').textContent = currentStretch;
+    info.classList.remove('hidden');
+}
+
+
+// ============================================================================
+// Point Query
+// ============================================================================
+
+/**
+ * Toggle point query mode on/off.
+ */
+function togglePointQuery() {
+    pointQueryActive = !pointQueryActive;
+    const btn = document.getElementById('btn-point-query');
+
+    if (pointQueryActive) {
+        btn.textContent = 'Disable Point Query';
+        btn.classList.remove('btn-secondary');
+        btn.classList.add('btn-primary');
+        rasterMap.getCanvas().style.cursor = 'crosshair';
+    } else {
+        btn.textContent = 'Enable Point Query';
+        btn.classList.remove('btn-primary');
+        btn.classList.add('btn-secondary');
+        rasterMap.getCanvas().style.cursor = '';
+        document.getElementById('point-result').classList.add('hidden');
+    }
+}
+
+/**
+ * Handle map click for point query.
+ */
+async function handleMapClick(e) {
+    if (!pointQueryActive || !currentCogUrl) return;
+
+    const lng = e.lngLat.lng;
+    const lat = e.lngLat.lat;
+
+    const resultDiv = document.getElementById('point-result');
+    resultDiv.innerHTML = '<div class="text-muted" style="font-size:0.8rem;">Querying...</div>';
+    resultDiv.classList.remove('hidden');
+
+    const result = await fetchJSON('/cog/point/' + lng + ',' + lat + '?url=' + encodeURIComponent(currentCogUrl));
+    if (!result.ok) {
+        resultDiv.innerHTML = '<div class="text-error" style="font-size:0.8rem;">No data at this location</div>';
+        return;
+    }
+
+    const values = result.data.values || [];
+    let html = '<div class="metadata-grid">' +
+        '<div class="metadata-item full-width"><div class="metadata-label">Location</div><div class="metadata-value mono">' +
+        lat.toFixed(6) + ', ' + lng.toFixed(6) + '</div></div>';
+    values.forEach((v, i) => {
+        html += '<div class="metadata-item"><div class="metadata-label">Band ' + (i + 1) + '</div><div class="metadata-value mono">' +
+            (v !== null ? (typeof v === 'number' ? v.toFixed(4) : v) : 'nodata') + '</div></div>';
+    });
+    html += '</div>';
+    resultDiv.innerHTML = html;
+}
+
+
+// ============================================================================
+// UI Helpers
+// ============================================================================
+
+function showLoading(show) {
+    const overlay = document.getElementById('map-loading');
+    if (show) {
+        overlay.classList.remove('hidden');
+    } else {
+        overlay.classList.add('hidden');
+    }
 }

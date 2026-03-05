@@ -17,6 +17,10 @@ azure-keyvault-secrets>=4.7.0
 
 # --- Xarray / Zarr --------------------------------------------------------
 # Multidimensional data support (Zarr, NetCDF)
+# NOTE: [minimal] DOES include zarr transitively via xarray. Do NOT add zarr
+# as a separate dependency — it is already installed. Pinned to 0.24.x to
+# match base image titiler-pgstac:1.9.0; upgrading to 0.25.x requires
+# migrating to titiler-pgstac 2.0.0.
 titiler.xarray[minimal]>=0.24.0,<0.25.0
 # Azure Data Lake filesystem for fsspec (Zarr access via abfs://)
 adlfs>=2024.4.1

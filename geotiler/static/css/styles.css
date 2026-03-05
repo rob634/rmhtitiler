@@ -1285,6 +1285,527 @@ tr:hover {
 .map-full {
     width: 100%;
     height: calc(100vh - 52px);
+    position: relative;
+}
+
+/* ==========================================================================
+   Viewer Sidebar Sections
+   ========================================================================== */
+.viewer-sidebar .sidebar-header {
+    padding: var(--space-md);
+    background: linear-gradient(135deg, var(--color-navy) 0%, #0a4a7a 100%);
+    color: white;
+    margin: calc(-1 * var(--space-lg));
+    margin-bottom: var(--space-md);
+    padding: var(--space-md) var(--space-lg);
+}
+
+.viewer-sidebar .sidebar-header h2 {
+    font-size: 1.1rem;
+    color: white;
+    margin: 0 0 2px 0;
+}
+
+.viewer-sidebar .sidebar-header .subtitle {
+    font-size: 0.75rem;
+    opacity: 0.8;
+    margin: 0;
+}
+
+.viewer-sidebar .sidebar-section {
+    border-bottom: 1px solid var(--color-gray-light);
+    margin: 0 calc(-1 * var(--space-lg));
+}
+
+.viewer-sidebar .section-title {
+    padding: var(--space-sm) var(--space-md);
+    background: var(--color-bg);
+    font-size: 0.7rem;
+    font-weight: 600;
+    color: var(--color-navy);
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    cursor: pointer;
+    user-select: none;
+}
+
+.viewer-sidebar .section-title:hover {
+    background: var(--color-gray-light);
+}
+
+.viewer-sidebar .section-content {
+    padding: var(--space-sm) var(--space-md);
+}
+
+/* ==========================================================================
+   Viewer Metadata Grid
+   ========================================================================== */
+.metadata-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: var(--space-sm);
+}
+
+.metadata-item {
+    padding: var(--space-sm);
+    background: var(--color-bg);
+    border-radius: var(--radius-sm);
+}
+
+.metadata-item.full-width {
+    grid-column: 1 / -1;
+}
+
+.metadata-label {
+    font-size: 0.65rem;
+    color: var(--color-gray);
+    text-transform: uppercase;
+    letter-spacing: 0.3px;
+    margin-bottom: 2px;
+}
+
+.metadata-value {
+    font-size: 0.85rem;
+    font-weight: 500;
+    color: var(--color-navy);
+    word-break: break-word;
+}
+
+.metadata-value.mono {
+    font-family: var(--font-mono);
+    font-size: 0.75rem;
+}
+
+/* ==========================================================================
+   Viewer Control Groups
+   ========================================================================== */
+.control-group {
+    margin-bottom: var(--space-md);
+}
+
+.control-group:last-child {
+    margin-bottom: 0;
+}
+
+.control-group > label {
+    display: block;
+    font-size: 0.7rem;
+    font-weight: 600;
+    color: var(--color-gray);
+    text-transform: uppercase;
+    letter-spacing: 0.3px;
+    margin-bottom: var(--space-xs);
+}
+
+/* ==========================================================================
+   Viewer Color Pickers (color + hex sync)
+   ========================================================================== */
+.color-row {
+    display: flex;
+    gap: var(--space-sm);
+    align-items: center;
+}
+
+.color-input {
+    width: 40px;
+    height: 32px;
+    border: 1px solid var(--color-gray-light);
+    border-radius: var(--radius-sm);
+    cursor: pointer;
+    padding: 2px;
+}
+
+.color-hex {
+    flex: 1;
+    padding: 6px 10px;
+    border: 1px solid var(--color-gray-light);
+    border-radius: var(--radius-sm);
+    font-family: var(--font-mono);
+    font-size: 0.8rem;
+}
+
+.color-hex:focus {
+    outline: none;
+    border-color: var(--color-primary);
+}
+
+/* ==========================================================================
+   Viewer Slider Controls
+   ========================================================================== */
+.slider-row {
+    display: flex;
+    align-items: center;
+    gap: var(--space-sm);
+}
+
+.slider-input {
+    flex: 1;
+    height: 6px;
+    -webkit-appearance: none;
+    background: var(--color-gray-light);
+    border-radius: 3px;
+    outline: none;
+}
+
+.slider-input::-webkit-slider-thumb {
+    -webkit-appearance: none;
+    width: 16px;
+    height: 16px;
+    border-radius: 50%;
+    background: var(--color-primary);
+    cursor: pointer;
+    border: 2px solid white;
+    box-shadow: 0 1px 3px rgba(0,0,0,0.2);
+}
+
+.slider-input::-moz-range-thumb {
+    width: 16px;
+    height: 16px;
+    border-radius: 50%;
+    background: var(--color-primary);
+    cursor: pointer;
+    border: 2px solid white;
+    box-shadow: 0 1px 3px rgba(0,0,0,0.2);
+}
+
+.slider-value {
+    font-size: 0.75rem;
+    font-family: var(--font-mono);
+    color: var(--color-navy);
+    min-width: 28px;
+    text-align: right;
+}
+
+/* ==========================================================================
+   Viewer Map Overlays
+   ========================================================================== */
+.map-overlay {
+    position: absolute;
+    background: white;
+    padding: var(--space-sm) var(--space-md);
+    border-radius: var(--radius-sm);
+    box-shadow: 0 2px 8px rgba(0,0,0,0.15);
+    font-size: 0.8rem;
+    z-index: 10;
+    pointer-events: none;
+}
+
+.map-status {
+    bottom: 10px;
+    left: 10px;
+    display: flex;
+    gap: var(--space-md);
+    color: var(--color-gray);
+}
+
+.map-loading {
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: var(--space-md) var(--space-lg);
+    background: rgba(255,255,255,0.95);
+    pointer-events: auto;
+}
+
+.map-layer-info {
+    top: 10px;
+    left: 10px;
+}
+
+.map-layer-info .layer-name {
+    font-weight: 600;
+    color: var(--color-navy);
+    margin-bottom: 2px;
+}
+
+.map-layer-info .layer-details {
+    display: flex;
+    gap: var(--space-sm);
+    font-size: 0.7rem;
+    color: var(--color-gray);
+}
+
+/* ==========================================================================
+   Viewer Feature Properties Panel
+   ========================================================================== */
+.feature-properties-list {
+    max-height: 200px;
+    overflow-y: auto;
+}
+
+.property-item {
+    display: flex;
+    justify-content: space-between;
+    padding: 5px 0;
+    border-bottom: 1px solid var(--color-gray-light);
+    font-size: 0.8rem;
+}
+
+.property-item:last-child {
+    border-bottom: none;
+}
+
+.property-key {
+    color: var(--color-gray);
+    font-weight: 500;
+    max-width: 40%;
+    word-break: break-word;
+}
+
+.property-value {
+    color: var(--color-navy);
+    text-align: right;
+    max-width: 55%;
+    word-break: break-word;
+    font-family: var(--font-mono);
+    font-size: 0.75rem;
+}
+
+/* ==========================================================================
+   Viewer Attribute Schema
+   ========================================================================== */
+.attribute-list {
+    max-height: 150px;
+    overflow-y: auto;
+}
+
+.attribute-item {
+    display: flex;
+    align-items: center;
+    gap: var(--space-sm);
+    padding: 4px 0;
+    border-bottom: 1px solid var(--color-gray-light);
+    font-size: 0.8rem;
+}
+
+.attribute-item:last-child {
+    border-bottom: none;
+}
+
+.attribute-name {
+    font-weight: 500;
+    color: var(--color-navy);
+    font-family: var(--font-mono);
+    font-size: 0.75rem;
+}
+
+.attribute-type {
+    font-size: 0.6rem;
+    color: white;
+    padding: 1px 6px;
+    border-radius: 3px;
+    background: var(--color-gray);
+}
+
+.attribute-type.number { background: var(--color-success); }
+.attribute-type.string { background: var(--color-warning); }
+.attribute-type.boolean { background: var(--color-primary); }
+
+/* ==========================================================================
+   Viewer API Links
+   ========================================================================== */
+.api-links {
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--space-sm);
+}
+
+.api-link {
+    padding: 3px 10px;
+    background: var(--color-bg);
+    border: 1px solid var(--color-gray-light);
+    border-radius: var(--radius-sm);
+    font-size: 0.7rem;
+    color: var(--color-primary);
+    text-decoration: none;
+    transition: all 0.2s;
+}
+
+.api-link:hover {
+    background: var(--color-primary);
+    color: white;
+    border-color: var(--color-primary);
+    text-decoration: none;
+}
+
+/* ==========================================================================
+   Viewer Layer Mode Toggle
+   ========================================================================== */
+.layer-mode-toggle {
+    display: flex;
+    gap: var(--space-sm);
+}
+
+.mode-btn {
+    flex: 1;
+    padding: var(--space-sm);
+    border: 1px solid var(--color-gray-light);
+    border-radius: var(--radius-md);
+    background: white;
+    cursor: pointer;
+    text-align: center;
+    font-size: 0.8rem;
+    font-weight: 500;
+    transition: all 0.2s;
+}
+
+.mode-btn:hover {
+    border-color: var(--color-primary);
+}
+
+.mode-btn.active {
+    background: var(--color-primary);
+    border-color: var(--color-primary);
+    color: white;
+}
+
+.mode-btn .mode-hint {
+    display: block;
+    font-size: 0.65rem;
+    opacity: 0.7;
+    margin-top: 2px;
+    font-weight: 400;
+}
+
+/* ==========================================================================
+   Viewer Stretch Buttons
+   ========================================================================== */
+.stretch-group {
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--space-xs);
+}
+
+.stretch-btn {
+    padding: 4px 10px;
+    border: 1px solid var(--color-gray-light);
+    border-radius: 12px;
+    background: white;
+    cursor: pointer;
+    font-size: 0.7rem;
+    font-weight: 500;
+    transition: all 0.2s;
+}
+
+.stretch-btn:hover {
+    border-color: var(--color-primary);
+}
+
+.stretch-btn.active {
+    background: var(--color-primary);
+    border-color: var(--color-primary);
+    color: white;
+}
+
+/* ==========================================================================
+   Viewer Band Controls (R/G/B dropdowns)
+   ========================================================================== */
+.band-selector-row {
+    display: flex;
+    gap: var(--space-sm);
+    align-items: center;
+}
+
+.band-selector-row .band-label {
+    font-size: 0.7rem;
+    font-weight: 700;
+    width: 14px;
+    text-align: center;
+}
+
+.band-selector-row .band-label.red { color: #dc2626; }
+.band-selector-row .band-label.green { color: #16a34a; }
+.band-selector-row .band-label.blue { color: #2563eb; }
+
+.band-selector-row select {
+    flex: 1;
+    padding: 4px 8px;
+    border: 1px solid var(--color-gray-light);
+    border-radius: var(--radius-sm);
+    font-size: 0.8rem;
+}
+
+.band-presets {
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--space-xs);
+    margin-top: var(--space-sm);
+}
+
+.preset-btn {
+    padding: 3px 8px;
+    border: 1px solid var(--color-gray-light);
+    border-radius: var(--radius-sm);
+    background: white;
+    cursor: pointer;
+    font-size: 0.65rem;
+    transition: all 0.2s;
+}
+
+.preset-btn:hover {
+    border-color: var(--color-primary);
+    background: #f0f7ff;
+}
+
+/* ==========================================================================
+   Viewer Stats Row
+   ========================================================================== */
+.stats-bands {
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--space-sm);
+}
+
+.stat-band {
+    font-size: 0.75rem;
+    font-family: var(--font-mono);
+}
+
+.stat-band .stat-key {
+    color: var(--color-gray);
+    font-size: 0.65rem;
+    text-transform: uppercase;
+}
+
+.stat-band .stat-val {
+    color: var(--color-navy);
+    font-weight: 500;
+}
+
+/* ==========================================================================
+   Viewer Scrollbar Styling
+   ========================================================================== */
+.viewer-sidebar::-webkit-scrollbar,
+.feature-properties-list::-webkit-scrollbar,
+.attribute-list::-webkit-scrollbar {
+    width: 6px;
+}
+
+.viewer-sidebar::-webkit-scrollbar-track,
+.feature-properties-list::-webkit-scrollbar-track,
+.attribute-list::-webkit-scrollbar-track {
+    background: var(--color-gray-light);
+    border-radius: 3px;
+}
+
+.viewer-sidebar::-webkit-scrollbar-thumb,
+.feature-properties-list::-webkit-scrollbar-thumb,
+.attribute-list::-webkit-scrollbar-thumb {
+    background: var(--color-gray);
+    border-radius: 3px;
+}
+
+/* MapLibre Popup Overrides */
+.maplibregl-popup-content {
+    padding: 12px 16px;
+    border-radius: var(--radius-md);
+    box-shadow: 0 4px 12px rgba(0,0,0,0.15);
 }
 
 /* ==========================================================================

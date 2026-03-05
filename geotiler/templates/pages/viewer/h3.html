@@ -1,7 +1,5 @@
 {# H3 Explorer - hexagonal choropleth viewer with deck.gl #}
-{# Implements: Resolved Spec - Phase 4 Run 4.3 (H3 Viewer) #}
 {% extends "base.html" %}
-{% from "components/macros.html" import sidebar_panel, form_group, badge, loading_state %}
 
 {% block title %}H3 Explorer{% endblock %}
 {% block head %}
@@ -13,66 +11,84 @@
 {% block content %}
 <div class="viewer-layout">
     <div class="viewer-sidebar">
-        <h2>H3 Crop & Drought Explorer</h2>
-        <p class="text-muted">Hexagonal grid at H3 resolution 5.</p>
-
-        <!-- Crop selector -->
-        <div class="form-group">
-            <label class="form-label" for="crop-select">Crop</label>
-            <select id="crop-select" class="form-select" onchange="queryH3()">
-                <option value="wheat">Wheat</option>
-                <option value="rice">Rice</option>
-                <option value="maize">Maize</option>
-                <option value="soybean">Soybean</option>
-                <option value="barley">Barley</option>
-                <option value="sorghum">Sorghum</option>
-                <option value="millet">Millet</option>
-            </select>
+        <div class="sidebar-header">
+            <h2>H3 Explorer</h2>
+            <p class="subtitle">Crop &amp; Drought at H3 resolution 5</p>
         </div>
 
-        <!-- Technology selector -->
-        <div class="form-group">
-            <label class="form-label" for="tech-select">Technology</label>
-            <select id="tech-select" class="form-select" onchange="queryH3()">
-                <option value="irrigated">Irrigated</option>
-                <option value="rainfed">Rainfed</option>
-            </select>
+        <!-- Query Parameters -->
+        <div class="sidebar-section">
+            <div class="section-title">Query Parameters</div>
+            <div class="section-content">
+                <div class="control-group">
+                    <label>Crop</label>
+                    <select id="crop-select" class="form-select" onchange="queryH3()">
+                        <option value="wheat">Wheat</option>
+                        <option value="rice">Rice</option>
+                        <option value="maize">Maize</option>
+                        <option value="soybean">Soybean</option>
+                        <option value="barley">Barley</option>
+                        <option value="sorghum">Sorghum</option>
+                        <option value="millet">Millet</option>
+                    </select>
+                </div>
+                <div class="control-group">
+                    <label>Technology</label>
+                    <select id="tech-select" class="form-select" onchange="queryH3()">
+                        <option value="irrigated">Irrigated</option>
+                        <option value="rainfed">Rainfed</option>
+                    </select>
+                </div>
+                <div class="control-group">
+                    <label>Drought Scenario</label>
+                    <select id="scenario-select" class="form-select" onchange="queryH3()">
+                        <option value="baseline">Baseline</option>
+                        <option value="drought_mild">Mild Drought</option>
+                        <option value="drought_severe">Severe Drought</option>
+                        <option value="drought_extreme">Extreme Drought</option>
+                    </select>
+                </div>
+            </div>
         </div>
 
-        <!-- Scenario selector -->
-        <div class="form-group">
-            <label class="form-label" for="scenario-select">Drought Scenario</label>
-            <select id="scenario-select" class="form-select" onchange="queryH3()">
-                <option value="baseline">Baseline</option>
-                <option value="drought_mild">Mild Drought</option>
-                <option value="drought_severe">Severe Drought</option>
-                <option value="drought_extreme">Extreme Drought</option>
-            </select>
+        <!-- Color Palette -->
+        <div class="sidebar-section">
+            <div class="section-title">Color Palette</div>
+            <div class="section-content">
+                <select id="palette-select" class="form-select" onchange="updatePalette()">
+                    <option value="emergency_red">Emergency Red</option>
+                    <option value="viridis">Viridis</option>
+                    <option value="plasma">Plasma</option>
+                    <option value="ylgnbu">Yellow-Green-Blue</option>
+                    <option value="rdylgn">Red-Yellow-Green</option>
+                    <option value="spectral">Spectral</option>
+                    <option value="hot">Hot</option>
+                </select>
+                <div id="h3-legend" style="margin-top:var(--space-sm);"></div>
+            </div>
         </div>
 
-        <!-- Color palette -->
-        <div class="form-group">
-            <label class="form-label" for="palette-select">Color Palette</label>
-            <select id="palette-select" class="form-select" onchange="updatePalette()">
-                <option value="emergency_red">Emergency Red</option>
-                <option value="viridis">Viridis</option>
-                <option value="plasma">Plasma</option>
-                <option value="ylgnbu">Yellow-Green-Blue</option>
-                <option value="rdylgn">Red-Yellow-Green</option>
-                <option value="spectral">Spectral</option>
-                <option value="hot">Hot</option>
-            </select>
-        </div>
-
-        <!-- Stats panel -->
-        <div id="h3-stats" class="hidden" style="margin-top: var(--space-lg);">
-            <h3>Query Results</h3>
-            <div id="h3-count" class="text-muted"></div>
-            <div id="h3-legend"></div>
+        <!-- Query Results -->
+        <div id="h3-stats" class="hidden">
+            <div class="sidebar-section">
+                <div class="section-title">Query Results</div>
+                <div class="section-content">
+                    <div id="h3-result-meta" class="metadata-grid"></div>
+                </div>
+            </div>
         </div>
     </div>
 
-    <div id="map" class="map-full"></div>
+    <div id="map" class="map-full">
+        <div class="map-overlay map-status" id="map-status">
+            <span id="map-zoom">Zoom: 2.0</span>
+            <span id="map-coords">0.0000, 20.0000</span>
+        </div>
+        <div class="map-overlay map-loading hidden" id="map-loading">
+            <div class="spinner"></div>
+            <span>Querying H3 data...</span>
+        </div>
+    </div>
 </div>
 {% endblock %}
 

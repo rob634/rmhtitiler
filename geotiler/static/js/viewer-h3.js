@@ -2,7 +2,7 @@
  * H3 Hexagonal Viewer JavaScript for geotiler.
  *
  * Depends on: MapLibre GL JS 4.x, deck.gl 9.x, h3-js 4.x,
- *             common.js (fetchJSON, showNotification)
+ *             common.js (fetchJSON, showNotification, escapeHtml)
  */
 
 let h3Map = null;
@@ -52,17 +52,22 @@ const PALETTES = {
 // ============================================================================
 
 /**
- * Initialize the H3 viewer with dark basemap and deck.gl overlay.
+ * Initialize the H3 viewer with basemap and deck.gl overlay.
  */
 function initH3Viewer() {
     h3Map = new maplibregl.Map({
         container: 'map',
-        style: 'https://basemaps.cartocdn.com/gl/dark-matter-gl-style/style.json',
+        style: 'https://tiles.openfreemap.org/styles/liberty',
         center: [0, 20],
         zoom: 2,
     });
 
     h3Map.addControl(new maplibregl.NavigationControl(), 'top-right');
+    h3Map.addControl(new maplibregl.ScaleControl(), 'bottom-right');
+
+    // Track map position
+    h3Map.on('moveend', updateMapStatus);
+    h3Map.on('zoomend', updateMapStatus);
 
     // Initialize deck.gl overlay
     deckOverlay = new deck.MapboxOverlay({ layers: [] });
@@ -70,6 +75,14 @@ function initH3Viewer() {
 
     // Auto-query on load
     h3Map.on('load', () => queryH3());
+}
+
+function updateMapStatus() {
+    const center = h3Map.getCenter();
+    const zoom = h3Map.getZoom();
+    document.getElementById('map-zoom').textContent = 'Zoom: ' + zoom.toFixed(1);
+    document.getElementById('map-coords').textContent =
+        center.lat.toFixed(4) + ', ' + center.lng.toFixed(4);
 }
 
 
@@ -85,11 +98,15 @@ async function queryH3() {
     const tech = document.getElementById('tech-select').value;
     const scenario = document.getElementById('scenario-select').value;
 
+    showLoading(true);
+
     const url = '/h3/query?crop=' + encodeURIComponent(crop)
         + '&tech=' + encodeURIComponent(tech)
         + '&scenario=' + encodeURIComponent(scenario);
 
     const result = await fetchJSON(url);
+    showLoading(false);
+
     if (!result.ok) {
         showNotification(result.error || 'H3 query failed', 'error');
         return;
@@ -102,17 +119,30 @@ async function queryH3() {
 
     // Update stats
     const statsPanel = document.getElementById('h3-stats');
-    document.getElementById('h3-count').textContent =
-        data.length + ' hexagons | ' + (result.data.query_ms || 0).toFixed(0) + 'ms';
-    statsPanel.classList.remove('hidden');
+    const metaGrid = document.getElementById('h3-result-meta');
+    const queryMs = (result.data.query_ms || 0).toFixed(0);
 
-    // Render legend
     if (data.length > 0) {
-        const values = data.map(d => d.value);
-        const min = Math.min(...values);
-        const max = Math.max(...values);
+        const values = data.map(function(d) { return d.value; });
+        const min = Math.min.apply(null, values);
+        const max = Math.max.apply(null, values);
+        const mean = values.reduce(function(a, b) { return a + b; }, 0) / values.length;
+
+        metaGrid.innerHTML =
+            '<div class="metadata-item"><div class="metadata-label">Hexagons</div><div class="metadata-value">' + data.length.toLocaleString() + '</div></div>' +
+            '<div class="metadata-item"><div class="metadata-label">Query</div><div class="metadata-value">' + queryMs + ' ms</div></div>' +
+            '<div class="metadata-item"><div class="metadata-label">Min</div><div class="metadata-value mono">' + min.toFixed(2) + '</div></div>' +
+            '<div class="metadata-item"><div class="metadata-label">Max</div><div class="metadata-value mono">' + max.toFixed(2) + '</div></div>' +
+            '<div class="metadata-item"><div class="metadata-label">Mean</div><div class="metadata-value mono">' + mean.toFixed(2) + '</div></div>' +
+            '<div class="metadata-item"><div class="metadata-label">Query</div><div class="metadata-value mono">' + crop + ' / ' + tech + '</div></div>';
+
         renderLegend(currentPalette, min, max);
+    } else {
+        metaGrid.innerHTML =
+            '<div class="metadata-item full-width"><div class="metadata-label">Result</div><div class="metadata-value">No data</div></div>' +
+            '<div class="metadata-item"><div class="metadata-label">Query</div><div class="metadata-value">' + queryMs + ' ms</div></div>';
     }
+    statsPanel.classList.remove('hidden');
 }
 
 
@@ -130,27 +160,27 @@ function renderHexagons(data) {
         return;
     }
 
-    const values = data.map(d => d.value);
-    const min = Math.min(...values);
-    const max = Math.max(...values);
+    const values = data.map(function(d) { return d.value; });
+    const min = Math.min.apply(null, values);
+    const max = Math.max.apply(null, values);
     const palette = PALETTES[currentPalette] || PALETTES.emergency_red;
 
     const layer = new deck.H3HexagonLayer({
         id: 'h3-layer',
         data: data,
-        getHexagon: d => d.h3_index,
-        getFillColor: d => interpolateColor(palette, d.value, min, max),
+        getHexagon: function(d) { return d.h3_index; },
+        getFillColor: function(d) { return interpolateColor(palette, d.value, min, max); },
         extruded: false,
         pickable: true,
         opacity: 0.8,
-        onHover: info => {
+        onHover: function(info) {
             if (info.object) {
                 h3Map.getCanvas().style.cursor = 'pointer';
             } else {
                 h3Map.getCanvas().style.cursor = '';
             }
         },
-        onClick: info => {
+        onClick: function(info) {
             if (info.object) {
                 showNotification(
                     'H3: ' + info.object.h3_index + ' | Value: ' + info.object.value.toFixed(2),
@@ -177,7 +207,7 @@ function renderHexagons(data) {
  * @returns {Array} [R, G, B, A]
  */
 function interpolateColor(palette, value, min, max) {
-    if (max === min) return [...palette[0], 200];
+    if (max === min) return [palette[0][0], palette[0][1], palette[0][2], 200];
 
     const t = Math.max(0, Math.min(1, (value - min) / (max - min)));
     const idx = t * (palette.length - 1);
@@ -206,8 +236,8 @@ function updatePalette() {
     if (currentH3Data.length > 0) {
         renderHexagons(currentH3Data);
 
-        const values = currentH3Data.map(d => d.value);
-        renderLegend(currentPalette, Math.min(...values), Math.max(...values));
+        const values = currentH3Data.map(function(d) { return d.value; });
+        renderLegend(currentPalette, Math.min.apply(null, values), Math.max.apply(null, values));
     }
 }
 
@@ -227,18 +257,29 @@ function renderLegend(paletteName, min, max) {
     const palette = PALETTES[paletteName] || PALETTES.emergency_red;
 
     // Build CSS gradient
-    const stops = palette.map((c, i) => {
+    const stops = palette.map(function(c, i) {
         const pct = (i / (palette.length - 1) * 100).toFixed(0);
-        return `rgb(${c[0]},${c[1]},${c[2]}) ${pct}%`;
+        return 'rgb(' + c[0] + ',' + c[1] + ',' + c[2] + ') ' + pct + '%';
     }).join(', ');
 
-    container.innerHTML = `
-        <div style="margin-top: var(--space-sm);">
-            <div style="height: 16px; border-radius: 4px; background: linear-gradient(to right, ${stops});"></div>
-            <div style="display: flex; justify-content: space-between; font-size: var(--font-sm); color: var(--color-text-muted); margin-top: 2px;">
-                <span>${min.toFixed(1)}</span>
-                <span>${max.toFixed(1)}</span>
-            </div>
-        </div>
-    `;
+    container.innerHTML =
+        '<div style="height:16px;border-radius:4px;background:linear-gradient(to right, ' + stops + ');"></div>' +
+        '<div style="display:flex;justify-content:space-between;font-size:0.7rem;color:var(--color-gray);margin-top:2px;">' +
+        '<span>' + min.toFixed(1) + '</span>' +
+        '<span>' + max.toFixed(1) + '</span>' +
+        '</div>';
+}
+
+
+// ============================================================================
+// UI Helpers
+// ============================================================================
+
+function showLoading(show) {
+    var overlay = document.getElementById('map-loading');
+    if (show) {
+        overlay.classList.remove('hidden');
+    } else {
+        overlay.classList.add('hidden');
+    }
 }

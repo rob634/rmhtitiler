@@ -1,7 +1,5 @@
 {# Zarr Viewer - NetCDF/Zarr multidimensional data with MapLibre #}
-{# Implements: Resolved Spec - Phase 4 Run 4.1 (Zarr Viewer) #}
 {% extends "base.html" %}
-{% from "components/macros.html" import map_container, sidebar_panel, form_group, badge, loading_state %}
 
 {% block title %}Zarr Viewer{% endblock %}
 {% block head %}
@@ -14,67 +12,128 @@
 <div class="viewer-layout">
     <!-- Sidebar -->
     <div class="viewer-sidebar">
-        <h2>Zarr / NetCDF Viewer</h2>
+        <div class="sidebar-header">
+            <h2>Zarr / NetCDF Viewer</h2>
+            <p class="subtitle">Multidimensional Arrays</p>
+        </div>
 
         <!-- URL input -->
-        <div class="form-group">
-            <label class="form-label" for="zarr-url">Dataset URL</label>
-            <input type="text" id="zarr-url" class="form-input"
-                   placeholder="https://storage.blob.core.windows.net/container/dataset.zarr">
-            <div class="form-hint">Paste a Zarr or NetCDF URL</div>
+        <div class="sidebar-section">
+            <div class="section-title">Data Source</div>
+            <div class="section-content">
+                <div class="form-group">
+                    <label class="form-label" for="zarr-url">Dataset URL</label>
+                    <input type="text" id="zarr-url" class="form-input"
+                           placeholder="https://storage.blob.core.windows.net/container/dataset.zarr">
+                    <div class="form-hint">Paste a Zarr or NetCDF URL</div>
+                </div>
+                <button class="btn btn-primary btn-sm" onclick="loadZarr()" style="width:100%;">Load Dataset</button>
+            </div>
         </div>
-        <button class="btn btn-primary" onclick="loadZarr()">Load</button>
 
         <!-- Info panel (populated after load) -->
-        <div id="zarr-info" class="hidden" style="margin-top: var(--space-lg);">
-            <h3>Dataset Info</h3>
-            <div id="zarr-metadata"></div>
+        <div id="zarr-info" class="hidden">
+            <!-- Metadata -->
+            <div class="sidebar-section">
+                <div class="section-title">Dataset Info</div>
+                <div class="section-content">
+                    <div id="zarr-metadata" class="metadata-grid"></div>
+                </div>
+            </div>
 
             <!-- Variable selector -->
-            <div class="form-group">
-                <label class="form-label" for="variable-select">Variable</label>
-                <select id="variable-select" class="form-select" onchange="updateZarrTiles()">
-                </select>
+            <div class="sidebar-section">
+                <div class="section-title">Variable</div>
+                <div class="section-content">
+                    <select id="variable-select" class="form-select" onchange="updateZarrTiles()">
+                    </select>
+                </div>
             </div>
 
             <!-- Time step selector (shown if temporal dimension exists) -->
-            <div id="time-controls" class="form-group hidden">
-                <label class="form-label" for="time-select">Time Step</label>
-                <select id="time-select" class="form-select" onchange="updateZarrTiles()">
-                </select>
+            <div class="sidebar-section hidden" id="time-controls">
+                <div class="section-title">Time Step</div>
+                <div class="section-content">
+                    <select id="time-select" class="form-select" onchange="updateZarrTiles()">
+                    </select>
+                </div>
             </div>
 
             <!-- Colormap selection -->
-            <div class="form-group">
-                <label class="form-label" for="zarr-colormap">Colormap</label>
-                <select id="zarr-colormap" class="form-select" onchange="updateZarrTiles()">
-                    <option value="">Default</option>
-                    <option value="viridis">Viridis</option>
-                    <option value="plasma">Plasma</option>
-                    <option value="inferno">Inferno</option>
-                    <option value="magma">Magma</option>
-                    <option value="terrain">Terrain</option>
-                    <option value="rdylgn">Red-Yellow-Green</option>
-                </select>
+            <div class="sidebar-section">
+                <div class="section-title">Colormap</div>
+                <div class="section-content">
+                    <select id="zarr-colormap" class="form-select" onchange="updateZarrTiles()">
+                        <option value="">Default</option>
+                        <optgroup label="Sequential">
+                            <option value="viridis" selected>Viridis</option>
+                            <option value="plasma">Plasma</option>
+                            <option value="inferno">Inferno</option>
+                            <option value="magma">Magma</option>
+                            <option value="cividis">Cividis</option>
+                        </optgroup>
+                        <optgroup label="Elevation">
+                            <option value="terrain">Terrain</option>
+                            <option value="gist_earth">Earth</option>
+                            <option value="dem">DEM</option>
+                        </optgroup>
+                        <optgroup label="Temperature">
+                            <option value="coolwarm">Cool-Warm</option>
+                            <option value="RdBu_r">Red-Blue</option>
+                            <option value="seismic">Seismic</option>
+                            <option value="hot">Hot</option>
+                        </optgroup>
+                        <optgroup label="Vegetation">
+                            <option value="rdylgn">Red-Yellow-Green</option>
+                            <option value="Greens">Greens</option>
+                            <option value="YlGn">Yellow-Green</option>
+                        </optgroup>
+                        <optgroup label="Water">
+                            <option value="Blues">Blues</option>
+                            <option value="YlGnBu">Yellow-Green-Blue</option>
+                            <option value="ocean">Ocean</option>
+                        </optgroup>
+                    </select>
+                </div>
             </div>
 
             <!-- Rescale -->
-            <div class="form-row">
-                <div class="form-group">
-                    <label class="form-label" for="zarr-min">Min</label>
-                    <input type="number" id="zarr-min" class="form-input" placeholder="Auto">
-                </div>
-                <div class="form-group">
-                    <label class="form-label" for="zarr-max">Max</label>
-                    <input type="number" id="zarr-max" class="form-input" placeholder="Auto">
+            <div class="sidebar-section">
+                <div class="section-title">Rescale</div>
+                <div class="section-content">
+                    <div class="form-row">
+                        <div class="form-group">
+                            <label class="form-label" for="zarr-min">Min</label>
+                            <input type="number" id="zarr-min" class="form-input" placeholder="Auto">
+                        </div>
+                        <div class="form-group">
+                            <label class="form-label" for="zarr-max">Max</label>
+                            <input type="number" id="zarr-max" class="form-input" placeholder="Auto">
+                        </div>
+                    </div>
+                    <button class="btn btn-secondary btn-sm" onclick="updateZarrTiles()" style="width:100%;">Apply</button>
                 </div>
             </div>
-            <button class="btn btn-secondary btn-sm" onclick="updateZarrTiles()">Apply</button>
         </div>
     </div>
 
     <!-- Map -->
-    <div id="map" class="map-full"></div>
+    <div id="map" class="map-full">
+        <div class="map-overlay map-status" id="map-status">
+            <span id="map-zoom">Zoom: 2.0</span>
+            <span id="map-coords">0.0000, 20.0000</span>
+        </div>
+        <div class="map-overlay map-loading hidden" id="map-loading">
+            <div class="spinner"></div>
+            <span>Loading tiles...</span>
+        </div>
+        <div class="map-overlay map-layer-info hidden" id="layer-info">
+            <div class="layer-name" id="layer-name"></div>
+            <div class="layer-details">
+                <span id="layer-variable"></span>
+            </div>
+        </div>
+    </div>
 </div>
 {% endblock %}
 

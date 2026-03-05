@@ -1,7 +1,5 @@
 {# Vector Viewer - OGC Features visualization with MapLibre #}
-{# Implements: Resolved Spec - Phase 4 Run 4.2 (Vector Viewer) #}
 {% extends "base.html" %}
-{% from "components/macros.html" import map_container, sidebar_panel, form_group, badge, loading_state, empty_state, data_table %}
 
 {% block title %}Vector Viewer{% endblock %}
 {% block head %}
@@ -13,50 +11,152 @@
 {% block content %}
 <div class="viewer-layout">
     <div class="viewer-sidebar">
-        <h2>Vector Viewer</h2>
+        <div class="sidebar-header">
+            <h2>Vector Viewer</h2>
+            <p class="subtitle">OGC Features &amp; Vector Tiles</p>
+        </div>
 
         <!-- Collection selector -->
-        <div class="form-group">
-            <label class="form-label" for="collection-select">Collection</label>
-            <select id="collection-select" class="form-select" onchange="loadCollection(this.value)">
-                <option value="">Select a collection...</option>
-            </select>
+        <div class="sidebar-section">
+            <div class="section-title">Collection</div>
+            <div class="section-content">
+                <select id="collection-select" class="form-select" onchange="loadCollection(this.value)">
+                    <option value="">Select a collection...</option>
+                </select>
+            </div>
         </div>
 
         <!-- Collection info (populated after selection) -->
         <div id="collection-info" class="hidden">
-            <h3 id="collection-title"></h3>
-            <p id="collection-description" class="text-muted"></p>
-
-            <!-- Feature count -->
-            <div id="feature-count" class="text-muted"></div>
-
-            <!-- Feature properties table (first feature) -->
-            <div id="feature-properties"></div>
-        </div>
-
-        <!-- Render mode toggle -->
-        <div class="form-group" style="margin-top: var(--space-lg);">
-            <label class="form-label">Render Mode</label>
-            <div class="btn-group">
-                <button class="btn btn-primary btn-sm" id="mode-mvt" onclick="setRenderMode('mvt')">Vector Tiles (MVT)</button>
-                <button class="btn btn-secondary btn-sm" id="mode-geojson" onclick="setRenderMode('geojson')">GeoJSON</button>
+            <!-- Metadata -->
+            <div class="sidebar-section">
+                <div class="section-title">Metadata <span id="feature-count" style="font-weight:400;text-transform:none;letter-spacing:0;"></span></div>
+                <div class="section-content">
+                    <div id="metadata-grid" class="metadata-grid"></div>
+                </div>
             </div>
-            <div class="form-hint">MVT is faster for large datasets. GeoJSON enables feature popups.</div>
-        </div>
 
-        <!-- Style controls -->
-        <div class="form-group">
-            <label class="form-label" for="fill-color">Fill Color</label>
-            <input type="color" id="fill-color" value="#0071BC" onchange="updateStyle()">
-        </div>
-        <div class="form-group">
-            <label class="form-label" for="fill-opacity">Opacity</label>
-            <input type="range" id="fill-opacity" min="0" max="1" step="0.1" value="0.5" onchange="updateStyle()">
+            <!-- Layer Mode -->
+            <div class="sidebar-section">
+                <div class="section-title">Layer Mode</div>
+                <div class="section-content">
+                    <div class="layer-mode-toggle">
+                        <button class="mode-btn active" data-mode="mvt" onclick="setRenderMode('mvt')">
+                            MVT
+                            <span class="mode-hint">Fast, all features</span>
+                        </button>
+                        <button class="mode-btn" data-mode="geojson" onclick="setRenderMode('geojson')">
+                            GeoJSON
+                            <span class="mode-hint">Popups, limited</span>
+                        </button>
+                    </div>
+                    <div id="geojson-options" class="hidden" style="margin-top:var(--space-sm);">
+                        <div class="control-group">
+                            <label>Feature Limit</label>
+                            <select id="geojson-limit" class="form-select" onchange="reloadIfGeoJson()" style="font-size:0.8rem;">
+                                <option value="100">100</option>
+                                <option value="500">500</option>
+                                <option value="1000" selected>1,000</option>
+                                <option value="5000">5,000</option>
+                            </select>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Styling -->
+            <div class="sidebar-section">
+                <div class="section-title">Styling</div>
+                <div class="section-content">
+                    <div class="control-group">
+                        <label>Fill Color</label>
+                        <div class="color-row">
+                            <input type="color" id="fill-color" class="color-input" value="#0071BC" onchange="syncHex('fill'); applyStyle();">
+                            <input type="text" id="fill-color-hex" class="color-hex" value="#0071BC" onchange="syncColor('fill');">
+                        </div>
+                    </div>
+                    <div class="control-group">
+                        <label>Fill Opacity</label>
+                        <div class="slider-row">
+                            <input type="range" id="fill-opacity" class="slider-input" min="0" max="1" step="0.05" value="0.5" oninput="updateSliderDisplay('fill-opacity'); applyStyle();">
+                            <span class="slider-value" id="fill-opacity-value">0.5</span>
+                        </div>
+                    </div>
+                    <div class="control-group">
+                        <label>Stroke Color</label>
+                        <div class="color-row">
+                            <input type="color" id="stroke-color" class="color-input" value="#053657" onchange="syncHex('stroke'); applyStyle();">
+                            <input type="text" id="stroke-color-hex" class="color-hex" value="#053657" onchange="syncColor('stroke');">
+                        </div>
+                    </div>
+                    <div class="control-group">
+                        <label>Stroke Width</label>
+                        <div class="slider-row">
+                            <input type="range" id="stroke-width" class="slider-input" min="0.5" max="5" step="0.5" value="1.5" oninput="updateSliderDisplay('stroke-width'); applyStyle();">
+                            <span class="slider-value" id="stroke-width-value">1.5</span>
+                        </div>
+                    </div>
+                    <div class="control-group">
+                        <label>Point Radius</label>
+                        <div class="slider-row">
+                            <input type="range" id="point-radius" class="slider-input" min="2" max="15" step="1" value="5" oninput="updateSliderDisplay('point-radius'); applyStyle();">
+                            <span class="slider-value" id="point-radius-value">5</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Feature Properties (click-populated) -->
+            <div class="sidebar-section">
+                <div class="section-title">Feature Properties</div>
+                <div class="section-content">
+                    <div id="feature-properties" class="feature-properties-list">
+                        <div style="font-size:0.8rem;color:var(--color-gray);font-style:italic;text-align:center;padding:var(--space-md);">Click a feature on the map</div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Attribute Schema -->
+            <div class="sidebar-section">
+                <div class="section-title" onclick="toggleSection('schema-content')">Attributes <span style="float:right;font-size:0.6rem;">&#9660;</span></div>
+                <div class="section-content hidden" id="schema-content">
+                    <div id="attribute-list" class="attribute-list">
+                        <div style="font-size:0.8rem;color:var(--color-gray);font-style:italic;">Loading...</div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- API Links -->
+            <div class="sidebar-section">
+                <div class="section-title">API Links</div>
+                <div class="section-content">
+                    <div class="api-links">
+                        <a href="#" id="link-tilejson" class="api-link" target="_blank">TileJSON</a>
+                        <a href="#" id="link-collection" class="api-link" target="_blank">Collection</a>
+                        <a href="#" id="link-items" class="api-link" target="_blank">Items</a>
+                    </div>
+                </div>
+            </div>
         </div>
     </div>
 
-    <div id="map" class="map-full"></div>
+    <div id="map" class="map-full">
+        <div class="map-overlay map-status" id="map-status">
+            <span id="map-zoom">Zoom: 2.0</span>
+            <span id="map-coords">0.0000, 20.0000</span>
+        </div>
+        <div class="map-overlay map-loading hidden" id="map-loading">
+            <div class="spinner"></div>
+            <span>Loading data...</span>
+        </div>
+        <div class="map-overlay map-layer-info hidden" id="layer-info">
+            <div class="layer-name" id="layer-name"></div>
+            <div class="layer-details">
+                <span id="layer-mode-display"></span>
+                <span id="visible-features"></span>
+            </div>
+        </div>
+    </div>
 </div>
 {% endblock %}
 

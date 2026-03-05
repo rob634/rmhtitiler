@@ -88,6 +88,25 @@ All pipeline executions for this application in chronological order.
 
 ---
 
+## Run 5: Tile Server Smoke Test (SIEGE)
+
+| Field | Value |
+|-------|-------|
+| **Date** | 04 MAR 2026 |
+| **Pipeline** | SIEGE (Sequential Smoke Test) |
+| **Scope** | Full tile server surface — COG, Xarray/Zarr, Vector/TiPG, STAC, cross-service |
+| **Agents** | Sentinel → Cartographer → Lancer → Auditor → Scribe |
+| **Target** | v0.9.2.0 at `rmhtitiler-ghcyd7g0bxdvc2hc.eastus-01.azurewebsites.net` |
+| **Status** | **PASS** |
+| **Probes** | 20/20 endpoints returned HTTP 200 |
+| **Read Chains** | 22/22 steps passed across 5 sequences |
+| **Checkpoints** | C1 (COG), Z1 (Zarr), V1 (Vector), S1 (STAC), X1 (Cross-Service) — all PASS |
+| **Findings** | 0 functional issues. 2 INFO-level observations (health collection count display, COG statistics latency) |
+| **Key Result** | All 4 service families operational. Tiles render in PNG (raster/Zarr) and MVT (vector). STAC→COG asset chain resolves with exact bounds match. Metadata consistent across services. |
+| **Output** | `docs/agent_review/agent_docs/SIEGE_RUN_1.md` |
+
+---
+
 ## Cumulative Token Usage
 
 | Pipeline | Runs | Total Tokens |

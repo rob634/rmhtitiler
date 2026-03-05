@@ -26,15 +26,20 @@ const VECTOR_POINT_LAYER = 'vector-point';
 async function initVectorViewer(tipgEnabled) {
     vectorMap = new maplibregl.Map({
         container: 'map',
-        style: 'https://demotiles.maplibre.org/style.json',
+        style: 'https://tiles.openfreemap.org/styles/liberty',
         center: [0, 20],
         zoom: 2,
     });
 
     vectorMap.addControl(new maplibregl.NavigationControl(), 'top-right');
+    vectorMap.addControl(new maplibregl.ScaleControl(), 'bottom-right');
 
     // Create popup instance for feature info
     popup = new maplibregl.Popup({ closeButton: true, closeOnClick: false });
+
+    // Track map position
+    vectorMap.on('moveend', updateMapStatus);
+    vectorMap.on('zoomend', updateMapStatus);
 
     if (!tipgEnabled) {
         showNotification('Vector data (TiPG) is not enabled on this server', 'warning');
@@ -65,6 +70,14 @@ async function initVectorViewer(tipgEnabled) {
     }
 }
 
+function updateMapStatus() {
+    const center = vectorMap.getCenter();
+    const zoom = vectorMap.getZoom();
+    document.getElementById('map-zoom').textContent = 'Zoom: ' + zoom.toFixed(1);
+    document.getElementById('map-coords').textContent =
+        center.lat.toFixed(4) + ', ' + center.lng.toFixed(4);
+}
+
 
 // ============================================================================
 // Load Collection
@@ -79,34 +92,23 @@ async function loadCollection(collectionId) {
 
     currentCollectionId = collectionId;
     setQueryParam('collection', collectionId);
+    showLoading(true);
 
     // Show collection info
     const infoPanel = document.getElementById('collection-info');
-    document.getElementById('collection-title').textContent = collectionId;
-    document.getElementById('collection-description').textContent = '';
-    document.getElementById('feature-count').textContent = 'Loading...';
-    document.getElementById('feature-properties').innerHTML = '';
     infoPanel.classList.remove('hidden');
 
-    // Fetch a sample of features for metadata
-    const result = await fetchJSON('/vector/collections/' + encodeURIComponent(collectionId) + '/items?limit=1');
-    if (result.ok && result.data) {
-        const features = result.data.features || [];
-        const matched = result.data.numberMatched || result.data.numberReturned || features.length;
-        document.getElementById('feature-count').textContent = matched + ' features';
+    // Fetch collection metadata
+    await loadCollectionMetadata(collectionId);
 
-        // Show properties of first feature
-        if (features.length > 0 && features[0].properties) {
-            const props = features[0].properties;
-            const propEntries = Object.entries(props).slice(0, 8);
-            let html = '<table class="data-table"><thead><tr><th>Property</th><th>Value</th></tr></thead><tbody>';
-            propEntries.forEach(([key, value]) => {
-                html += `<tr><td>${escapeHtml(key)}</td><td>${escapeHtml(String(value))}</td></tr>`;
-            });
-            html += '</tbody></table>';
-            document.getElementById('feature-properties').innerHTML = html;
-        }
-    }
+    // Set API links
+    const prefix = '/vector/collections/' + encodeURIComponent(collectionId);
+    document.getElementById('link-tilejson').href = prefix + '/tiles/WebMercatorQuad/tilejson.json';
+    document.getElementById('link-collection').href = prefix;
+    document.getElementById('link-items').href = prefix + '/items?limit=10';
+
+    // Load schema
+    loadSchema(collectionId);
 
     // Add layer based on current render mode
     if (currentRenderMode === 'mvt') {
@@ -114,6 +116,82 @@ async function loadCollection(collectionId) {
     } else {
         addGeoJsonLayer(collectionId);
     }
+
+    showLoading(false);
+}
+
+/**
+ * Load collection metadata and render in sidebar.
+ */
+async function loadCollectionMetadata(collectionId) {
+    const metadataGrid = document.getElementById('metadata-grid');
+    const featureCountEl = document.getElementById('feature-count');
+
+    const result = await fetchJSON('/vector/collections/' + encodeURIComponent(collectionId) + '/items?limit=1');
+    if (result.ok && result.data) {
+        const features = result.data.features || [];
+        const matched = result.data.numberMatched || result.data.numberReturned || features.length;
+        featureCountEl.textContent = '(' + matched + ' features)';
+
+        // Build metadata grid
+        const extent = result.data.bbox;
+        metadataGrid.innerHTML =
+            '<div class="metadata-item"><div class="metadata-label">Features</div><div class="metadata-value">' + matched + '</div></div>' +
+            '<div class="metadata-item"><div class="metadata-label">Format</div><div class="metadata-value mono">OGC</div></div>' +
+            (extent ? '<div class="metadata-item full-width"><div class="metadata-label">Extent</div><div class="metadata-value mono">' +
+                extent.map(function(v) { return v.toFixed(4); }).join(', ') + '</div></div>' : '');
+    } else {
+        featureCountEl.textContent = '';
+        metadataGrid.innerHTML = '<div style="font-size:0.8rem;color:var(--color-gray);">Error loading metadata</div>';
+    }
+}
+
+
+// ============================================================================
+// Schema / Attributes
+// ============================================================================
+
+/**
+ * Load attribute schema from a sample feature.
+ */
+async function loadSchema(collectionId) {
+    const container = document.getElementById('attribute-list');
+
+    const result = await fetchJSON('/vector/collections/' + encodeURIComponent(collectionId) + '/items?limit=1');
+    if (!result.ok || !result.data || !result.data.features || result.data.features.length === 0) {
+        container.innerHTML = '<div style="font-size:0.8rem;color:var(--color-gray);font-style:italic;">No features to analyze</div>';
+        return;
+    }
+
+    const properties = result.data.features[0].properties || {};
+    const entries = Object.entries(properties);
+
+    if (entries.length === 0) {
+        container.innerHTML = '<div style="font-size:0.8rem;color:var(--color-gray);font-style:italic;">No attributes found</div>';
+        return;
+    }
+
+    container.innerHTML = entries.map(function(entry) {
+        var key = entry[0], value = entry[1];
+        var type = getAttributeType(value);
+        return '<div class="attribute-item">' +
+            '<span class="attribute-name">' + escapeHtml(key) + '</span>' +
+            '<span class="attribute-type ' + type + '">' + type + '</span>' +
+            '</div>';
+    }).join('');
+}
+
+function getAttributeType(value) {
+    if (value === null || value === undefined) return 'null';
+    if (typeof value === 'number') return 'number';
+    if (typeof value === 'boolean') return 'boolean';
+    if (typeof value === 'string') return 'string';
+    if (Array.isArray(value)) return 'array';
+    return 'object';
+}
+
+function toggleSection(id) {
+    document.getElementById(id).classList.toggle('hidden');
 }
 
 
@@ -135,8 +213,11 @@ function addMvtLayer(collectionId) {
         tiles: [tileUrl],
     });
 
-    const color = document.getElementById('fill-color').value;
-    const opacity = parseFloat(document.getElementById('fill-opacity').value);
+    const fillColor = document.getElementById('fill-color').value;
+    const fillOpacity = parseFloat(document.getElementById('fill-opacity').value);
+    const strokeColor = document.getElementById('stroke-color').value;
+    const strokeWidth = parseFloat(document.getElementById('stroke-width').value);
+    const pointRadius = parseFloat(document.getElementById('point-radius').value);
 
     // Add fill layer (for polygons)
     vectorMap.addLayer({
@@ -145,8 +226,8 @@ function addMvtLayer(collectionId) {
         source: VECTOR_SOURCE_ID,
         'source-layer': 'default',
         paint: {
-            'fill-color': color,
-            'fill-opacity': opacity,
+            'fill-color': fillColor,
+            'fill-opacity': fillOpacity,
         },
         filter: ['==', '$type', 'Polygon'],
     });
@@ -158,8 +239,8 @@ function addMvtLayer(collectionId) {
         source: VECTOR_SOURCE_ID,
         'source-layer': 'default',
         paint: {
-            'line-color': color,
-            'line-width': 2,
+            'line-color': strokeColor,
+            'line-width': strokeWidth,
         },
     });
 
@@ -170,13 +251,18 @@ function addMvtLayer(collectionId) {
         source: VECTOR_SOURCE_ID,
         'source-layer': 'default',
         paint: {
-            'circle-color': color,
-            'circle-radius': 5,
-            'circle-opacity': opacity,
+            'circle-color': fillColor,
+            'circle-radius': pointRadius,
+            'circle-stroke-color': strokeColor,
+            'circle-stroke-width': strokeWidth,
         },
         filter: ['==', '$type', 'Point'],
     });
 
+    // Click handlers for feature inspection
+    setupClickHandlers();
+
+    updateLayerInfo('MVT', 'All');
     showNotification('MVT layer loaded for ' + collectionId, 'success');
 }
 
@@ -192,7 +278,8 @@ function addMvtLayer(collectionId) {
 async function addGeoJsonLayer(collectionId) {
     removeVectorLayer();
 
-    const result = await fetchJSON('/vector/collections/' + encodeURIComponent(collectionId) + '/items?limit=1000');
+    const limit = document.getElementById('geojson-limit').value;
+    const result = await fetchJSON('/vector/collections/' + encodeURIComponent(collectionId) + '/items?limit=' + limit);
     if (!result.ok) {
         showNotification(result.error || 'Failed to load features', 'error');
         return;
@@ -205,8 +292,11 @@ async function addGeoJsonLayer(collectionId) {
         data: geojson,
     });
 
-    const color = document.getElementById('fill-color').value;
-    const opacity = parseFloat(document.getElementById('fill-opacity').value);
+    const fillColor = document.getElementById('fill-color').value;
+    const fillOpacity = parseFloat(document.getElementById('fill-opacity').value);
+    const strokeColor = document.getElementById('stroke-color').value;
+    const strokeWidth = parseFloat(document.getElementById('stroke-width').value);
+    const pointRadius = parseFloat(document.getElementById('point-radius').value);
 
     // Add fill layer
     vectorMap.addLayer({
@@ -214,8 +304,8 @@ async function addGeoJsonLayer(collectionId) {
         type: 'fill',
         source: VECTOR_SOURCE_ID,
         paint: {
-            'fill-color': color,
-            'fill-opacity': opacity,
+            'fill-color': fillColor,
+            'fill-opacity': fillOpacity,
         },
         filter: ['==', '$type', 'Polygon'],
     });
@@ -226,8 +316,8 @@ async function addGeoJsonLayer(collectionId) {
         type: 'line',
         source: VECTOR_SOURCE_ID,
         paint: {
-            'line-color': color,
-            'line-width': 2,
+            'line-color': strokeColor,
+            'line-width': strokeWidth,
         },
     });
 
@@ -237,9 +327,10 @@ async function addGeoJsonLayer(collectionId) {
         type: 'circle',
         source: VECTOR_SOURCE_ID,
         paint: {
-            'circle-color': color,
-            'circle-radius': 5,
-            'circle-opacity': opacity,
+            'circle-color': fillColor,
+            'circle-radius': pointRadius,
+            'circle-stroke-color': strokeColor,
+            'circle-stroke-width': strokeWidth,
         },
         filter: ['==', '$type', 'Point'],
     });
@@ -247,7 +338,7 @@ async function addGeoJsonLayer(collectionId) {
     // Fit bounds to data
     if (geojson.features && geojson.features.length > 0) {
         const bounds = new maplibregl.LngLatBounds();
-        geojson.features.forEach(f => {
+        geojson.features.forEach(function(f) {
             if (f.geometry && f.geometry.coordinates) {
                 addCoordsToBounds(bounds, f.geometry.coordinates);
             }
@@ -257,10 +348,12 @@ async function addGeoJsonLayer(collectionId) {
         }
     }
 
-    // Setup click popups
-    setupPopups();
+    // Setup click handlers
+    setupClickHandlers();
 
-    showNotification('GeoJSON loaded: ' + (geojson.features || []).length + ' features', 'success');
+    const featureCount = (geojson.features || []).length;
+    updateLayerInfo('GeoJSON', featureCount.toLocaleString());
+    showNotification('GeoJSON loaded: ' + featureCount + ' features', 'success');
 }
 
 
@@ -272,7 +365,7 @@ async function addGeoJsonLayer(collectionId) {
  * Remove all vector layers and source.
  */
 function removeVectorLayer() {
-    [VECTOR_FILL_LAYER, VECTOR_LINE_LAYER, VECTOR_POINT_LAYER].forEach(id => {
+    [VECTOR_FILL_LAYER, VECTOR_LINE_LAYER, VECTOR_POINT_LAYER].forEach(function(id) {
         if (vectorMap.getLayer(id)) vectorMap.removeLayer(id);
     });
     if (vectorMap.getSource(VECTOR_SOURCE_ID)) {
@@ -289,8 +382,17 @@ function setRenderMode(mode) {
     currentRenderMode = mode;
 
     // Update button styling
-    document.getElementById('mode-mvt').className = 'btn btn-sm ' + (mode === 'mvt' ? 'btn-primary' : 'btn-secondary');
-    document.getElementById('mode-geojson').className = 'btn btn-sm ' + (mode === 'geojson' ? 'btn-primary' : 'btn-secondary');
+    document.querySelectorAll('.mode-btn').forEach(function(btn) {
+        btn.classList.toggle('active', btn.dataset.mode === mode);
+    });
+
+    // Show/hide GeoJSON options
+    var geojsonOpts = document.getElementById('geojson-options');
+    if (mode === 'geojson') {
+        geojsonOpts.classList.remove('hidden');
+    } else {
+        geojsonOpts.classList.add('hidden');
+    }
 
     // Reload current collection if one is selected
     if (currentCollectionId) {
@@ -299,57 +401,169 @@ function setRenderMode(mode) {
 }
 
 /**
- * Update layer style (color and opacity) from controls.
+ * Reload if currently in GeoJSON mode (for limit changes).
  */
-function updateStyle() {
-    const color = document.getElementById('fill-color').value;
-    const opacity = parseFloat(document.getElementById('fill-opacity').value);
-
-    if (vectorMap.getLayer(VECTOR_FILL_LAYER)) {
-        vectorMap.setPaintProperty(VECTOR_FILL_LAYER, 'fill-color', color);
-        vectorMap.setPaintProperty(VECTOR_FILL_LAYER, 'fill-opacity', opacity);
-    }
-    if (vectorMap.getLayer(VECTOR_LINE_LAYER)) {
-        vectorMap.setPaintProperty(VECTOR_LINE_LAYER, 'line-color', color);
-    }
-    if (vectorMap.getLayer(VECTOR_POINT_LAYER)) {
-        vectorMap.setPaintProperty(VECTOR_POINT_LAYER, 'circle-color', color);
-        vectorMap.setPaintProperty(VECTOR_POINT_LAYER, 'circle-opacity', opacity);
+function reloadIfGeoJson() {
+    if (currentRenderMode === 'geojson' && currentCollectionId) {
+        addGeoJsonLayer(currentCollectionId);
     }
 }
 
 
 // ============================================================================
-// Popups (GeoJSON mode only)
+// Styling
 // ============================================================================
 
 /**
- * Setup click handlers for feature property popups.
+ * Sync color picker → hex input.
  */
-function setupPopups() {
-    [VECTOR_FILL_LAYER, VECTOR_LINE_LAYER, VECTOR_POINT_LAYER].forEach(layerId => {
-        vectorMap.on('click', layerId, (e) => {
+function syncHex(type) {
+    var colorInput = document.getElementById(type + '-color');
+    document.getElementById(type + '-color-hex').value = colorInput.value;
+}
+
+/**
+ * Sync hex input → color picker and apply style.
+ */
+function syncColor(type) {
+    var hexInput = document.getElementById(type + '-color-hex');
+    var colorInput = document.getElementById(type + '-color');
+    var hex = hexInput.value;
+    if (!hex.startsWith('#')) hex = '#' + hex;
+    if (/^#[0-9A-Fa-f]{6}$/.test(hex)) {
+        colorInput.value = hex;
+        hexInput.value = hex;
+        applyStyle();
+    }
+}
+
+/**
+ * Update slider display value.
+ */
+function updateSliderDisplay(id) {
+    var slider = document.getElementById(id);
+    document.getElementById(id + '-value').textContent = slider.value;
+}
+
+/**
+ * Apply current style settings to all layers.
+ */
+function applyStyle() {
+    var fillColor = document.getElementById('fill-color').value;
+    var fillOpacity = parseFloat(document.getElementById('fill-opacity').value);
+    var strokeColor = document.getElementById('stroke-color').value;
+    var strokeWidth = parseFloat(document.getElementById('stroke-width').value);
+    var pointRadius = parseFloat(document.getElementById('point-radius').value);
+
+    if (vectorMap.getLayer(VECTOR_FILL_LAYER)) {
+        vectorMap.setPaintProperty(VECTOR_FILL_LAYER, 'fill-color', fillColor);
+        vectorMap.setPaintProperty(VECTOR_FILL_LAYER, 'fill-opacity', fillOpacity);
+    }
+    if (vectorMap.getLayer(VECTOR_LINE_LAYER)) {
+        vectorMap.setPaintProperty(VECTOR_LINE_LAYER, 'line-color', strokeColor);
+        vectorMap.setPaintProperty(VECTOR_LINE_LAYER, 'line-width', strokeWidth);
+    }
+    if (vectorMap.getLayer(VECTOR_POINT_LAYER)) {
+        vectorMap.setPaintProperty(VECTOR_POINT_LAYER, 'circle-color', fillColor);
+        vectorMap.setPaintProperty(VECTOR_POINT_LAYER, 'circle-radius', pointRadius);
+        vectorMap.setPaintProperty(VECTOR_POINT_LAYER, 'circle-stroke-color', strokeColor);
+        vectorMap.setPaintProperty(VECTOR_POINT_LAYER, 'circle-stroke-width', strokeWidth);
+    }
+}
+
+
+// ============================================================================
+// Feature Inspection
+// ============================================================================
+
+/**
+ * Setup click handlers for feature property popups and sidebar display.
+ */
+function setupClickHandlers() {
+    [VECTOR_FILL_LAYER, VECTOR_LINE_LAYER, VECTOR_POINT_LAYER].forEach(function(layerId) {
+        vectorMap.on('click', layerId, function(e) {
             if (!e.features || e.features.length === 0) return;
 
-            const feature = e.features[0];
-            const props = feature.properties || {};
-            let html = '<div style="max-height: 200px; overflow-y: auto;">';
-            html += '<table style="font-size: 12px;">';
-            Object.entries(props).slice(0, 10).forEach(([key, value]) => {
-                html += `<tr><td><strong>${escapeHtml(key)}</strong></td><td>${escapeHtml(String(value))}</td></tr>`;
+            var feature = e.features[0];
+            var props = feature.properties || {};
+
+            // Update sidebar properties panel
+            displayFeatureProperties(props);
+
+            // Show popup
+            var entries = Object.entries(props).slice(0, 8);
+            var html = '<div style="max-height:200px;overflow-y:auto;">' +
+                '<table style="font-size:12px;">';
+            entries.forEach(function(entry) {
+                html += '<tr><td><strong>' + escapeHtml(entry[0]) + '</strong></td><td>' + escapeHtml(formatPropertyValue(entry[1])) + '</td></tr>';
             });
+            if (Object.keys(props).length > 8) {
+                html += '<tr><td colspan="2" style="color:var(--color-gray);font-style:italic;">+' + (Object.keys(props).length - 8) + ' more</td></tr>';
+            }
             html += '</table></div>';
 
             popup.setLngLat(e.lngLat).setHTML(html).addTo(vectorMap);
         });
 
-        vectorMap.on('mouseenter', layerId, () => {
+        vectorMap.on('mouseenter', layerId, function() {
             vectorMap.getCanvas().style.cursor = 'pointer';
         });
-        vectorMap.on('mouseleave', layerId, () => {
+        vectorMap.on('mouseleave', layerId, function() {
             vectorMap.getCanvas().style.cursor = '';
         });
     });
+}
+
+/**
+ * Display feature properties in the sidebar panel.
+ */
+function displayFeatureProperties(properties) {
+    var container = document.getElementById('feature-properties');
+    var entries = Object.entries(properties);
+
+    if (entries.length === 0) {
+        container.innerHTML = '<div style="font-size:0.8rem;color:var(--color-gray);font-style:italic;text-align:center;padding:var(--space-md);">No properties</div>';
+        return;
+    }
+
+    container.innerHTML = entries.map(function(entry) {
+        return '<div class="property-item">' +
+            '<span class="property-key">' + escapeHtml(entry[0]) + '</span>' +
+            '<span class="property-value">' + escapeHtml(formatPropertyValue(entry[1])) + '</span>' +
+            '</div>';
+    }).join('');
+}
+
+function formatPropertyValue(value) {
+    if (value === null || value === undefined) return 'null';
+    if (typeof value === 'object') return JSON.stringify(value);
+    if (typeof value === 'number') {
+        if (Number.isInteger(value)) return value.toLocaleString();
+        return value.toFixed(4);
+    }
+    return String(value);
+}
+
+
+// ============================================================================
+// UI Helpers
+// ============================================================================
+
+function updateLayerInfo(mode, featureCount) {
+    var info = document.getElementById('layer-info');
+    document.getElementById('layer-name').textContent = currentCollectionId || '';
+    document.getElementById('layer-mode-display').textContent = mode;
+    document.getElementById('visible-features').textContent = featureCount + ' features';
+    info.classList.remove('hidden');
+}
+
+function showLoading(show) {
+    var overlay = document.getElementById('map-loading');
+    if (show) {
+        overlay.classList.remove('hidden');
+    } else {
+        overlay.classList.add('hidden');
+    }
 }
 
 
@@ -366,6 +580,6 @@ function addCoordsToBounds(bounds, coords) {
     if (typeof coords[0] === 'number') {
         bounds.extend(coords);
     } else {
-        coords.forEach(c => addCoordsToBounds(bounds, c));
+        coords.forEach(function(c) { addCoordsToBounds(bounds, c); });
     }
 }

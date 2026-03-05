@@ -1,7 +1,5 @@
 {# Raster Viewer - COG tile visualization with MapLibre #}
-{# Implements: Resolved Spec - Phase 4 Run 4.1 (Raster Viewer) #}
 {% extends "base.html" %}
-{% from "components/macros.html" import map_container, sidebar_panel, form_group, badge, loading_state %}
 
 {% block title %}Raster Viewer{% endblock %}
 {% block head %}
@@ -14,59 +12,153 @@
 <div class="viewer-layout">
     <!-- Sidebar -->
     <div class="viewer-sidebar">
-        <h2>Raster Viewer</h2>
+        <div class="sidebar-header">
+            <h2>Raster Viewer</h2>
+            <p class="subtitle">Cloud Optimized GeoTIFF</p>
+        </div>
 
         <!-- URL input -->
-        <div class="form-group">
-            <label class="form-label" for="cog-url">COG URL</label>
-            <input type="text" id="cog-url" class="form-input"
-                   placeholder="https://storage.blob.core.windows.net/container/file.tif">
-            <div class="form-hint">Paste a Cloud Optimized GeoTIFF URL</div>
+        <div class="sidebar-section">
+            <div class="section-title">Data Source</div>
+            <div class="section-content">
+                <div class="form-group">
+                    <label class="form-label" for="cog-url">COG URL</label>
+                    <input type="text" id="cog-url" class="form-input"
+                           placeholder="https://storage.blob.core.windows.net/container/file.tif">
+                    <div class="form-hint">Paste a Cloud Optimized GeoTIFF URL</div>
+                </div>
+                <button class="btn btn-primary btn-sm" onclick="loadRaster()" style="width:100%;">Load Dataset</button>
+            </div>
         </div>
-        <button class="btn btn-primary" onclick="loadRaster()">Load</button>
 
-        <!-- Info panel (populated after load) -->
-        <div id="raster-info" class="hidden" style="margin-top: var(--space-lg);">
-            <h3>Dataset Info</h3>
-            <div id="raster-metadata"></div>
-
-            <!-- Band selection -->
-            <div class="form-group">
-                <label class="form-label">Bands</label>
-                <div id="band-controls"></div>
-            </div>
-
-            <!-- Colormap selection -->
-            <div class="form-group">
-                <label class="form-label" for="colormap-select">Colormap</label>
-                <select id="colormap-select" class="form-select" onchange="updateTiles()">
-                    <option value="">Default</option>
-                    <option value="viridis">Viridis</option>
-                    <option value="plasma">Plasma</option>
-                    <option value="inferno">Inferno</option>
-                    <option value="magma">Magma</option>
-                    <option value="terrain">Terrain</option>
-                    <option value="rdylgn">Red-Yellow-Green</option>
-                </select>
-            </div>
-
-            <!-- Rescale -->
-            <div class="form-row">
-                <div class="form-group">
-                    <label class="form-label" for="rescale-min">Min</label>
-                    <input type="number" id="rescale-min" class="form-input" placeholder="Auto">
-                </div>
-                <div class="form-group">
-                    <label class="form-label" for="rescale-max">Max</label>
-                    <input type="number" id="rescale-max" class="form-input" placeholder="Auto">
+        <!-- Metadata (populated after load) -->
+        <div id="raster-info" class="hidden">
+            <div class="sidebar-section">
+                <div class="section-title">Dataset Info</div>
+                <div class="section-content">
+                    <div id="raster-metadata" class="metadata-grid"></div>
                 </div>
             </div>
-            <button class="btn btn-secondary btn-sm" onclick="updateTiles()">Apply</button>
+
+            <!-- Band Selection -->
+            <div class="sidebar-section">
+                <div class="section-title">Bands</div>
+                <div class="section-content">
+                    <div id="band-controls"></div>
+                    <div id="band-presets" class="band-presets hidden"></div>
+                </div>
+            </div>
+
+            <!-- Stretch -->
+            <div class="sidebar-section">
+                <div class="section-title">Stretch</div>
+                <div class="section-content">
+                    <div class="stretch-group" id="stretch-controls">
+                        <button class="stretch-btn active" data-stretch="auto" onclick="setStretch('auto')">Auto</button>
+                        <button class="stretch-btn" data-stretch="p2-98" onclick="setStretch('p2-98')">P2-98</button>
+                        <button class="stretch-btn" data-stretch="p5-95" onclick="setStretch('p5-95')">P5-95</button>
+                        <button class="stretch-btn" data-stretch="minmax" onclick="setStretch('minmax')">Min-Max</button>
+                        <button class="stretch-btn" data-stretch="custom" onclick="setStretch('custom')">Custom</button>
+                    </div>
+                    <div id="custom-rescale" class="hidden" style="margin-top: var(--space-sm);">
+                        <div class="form-row">
+                            <div class="form-group">
+                                <label class="form-label" for="rescale-min">Min</label>
+                                <input type="number" id="rescale-min" class="form-input" placeholder="0">
+                            </div>
+                            <div class="form-group">
+                                <label class="form-label" for="rescale-max">Max</label>
+                                <input type="number" id="rescale-max" class="form-input" placeholder="255">
+                            </div>
+                        </div>
+                        <button class="btn btn-secondary btn-sm" onclick="updateTiles()" style="width:100%;">Apply</button>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Colormap -->
+            <div class="sidebar-section">
+                <div class="section-title">Colormap</div>
+                <div class="section-content">
+                    <select id="colormap-select" class="form-select" onchange="updateTiles()">
+                        <option value="">None (RGB)</option>
+                        <optgroup label="Sequential">
+                            <option value="viridis">Viridis</option>
+                            <option value="plasma">Plasma</option>
+                            <option value="inferno">Inferno</option>
+                            <option value="magma">Magma</option>
+                            <option value="cividis">Cividis</option>
+                        </optgroup>
+                        <optgroup label="Elevation">
+                            <option value="terrain">Terrain</option>
+                            <option value="gist_earth">Earth</option>
+                            <option value="dem">DEM</option>
+                        </optgroup>
+                        <optgroup label="Temperature">
+                            <option value="coolwarm">Cool-Warm</option>
+                            <option value="RdBu_r">Red-Blue</option>
+                            <option value="seismic">Seismic</option>
+                            <option value="hot">Hot</option>
+                        </optgroup>
+                        <optgroup label="Vegetation">
+                            <option value="rdylgn">Red-Yellow-Green</option>
+                            <option value="RdYlBu">Red-Yellow-Blue</option>
+                            <option value="Greens">Greens</option>
+                            <option value="YlGn">Yellow-Green</option>
+                        </optgroup>
+                        <optgroup label="Water">
+                            <option value="Blues">Blues</option>
+                            <option value="YlGnBu">Yellow-Green-Blue</option>
+                            <option value="ocean">Ocean</option>
+                        </optgroup>
+                        <optgroup label="Categorical">
+                            <option value="Set1">Set1</option>
+                            <option value="tab10">Tab10</option>
+                            <option value="Paired">Paired</option>
+                        </optgroup>
+                    </select>
+                </div>
+            </div>
+
+            <!-- Band Statistics -->
+            <div class="sidebar-section" id="stats-section" style="display:none;">
+                <div class="section-title">Statistics</div>
+                <div class="section-content">
+                    <div id="band-stats" class="stats-bands"></div>
+                </div>
+            </div>
+
+            <!-- Point Query -->
+            <div class="sidebar-section">
+                <div class="section-title">Point Query</div>
+                <div class="section-content">
+                    <div class="form-hint" style="margin-bottom:var(--space-sm);">Click the map to query pixel values</div>
+                    <button class="btn btn-secondary btn-sm" id="btn-point-query" onclick="togglePointQuery()" style="width:100%;">Enable Point Query</button>
+                    <div id="point-result" class="hidden" style="margin-top:var(--space-sm);"></div>
+                </div>
+            </div>
         </div>
     </div>
 
     <!-- Map -->
-    <div id="map" class="map-full"></div>
+    <div id="map" class="map-full">
+        <!-- Map overlays -->
+        <div class="map-overlay map-status" id="map-status">
+            <span id="map-zoom">Zoom: 2.0</span>
+            <span id="map-coords">0.0000, 20.0000</span>
+        </div>
+        <div class="map-overlay map-loading hidden" id="map-loading">
+            <div class="spinner"></div>
+            <span>Loading tiles...</span>
+        </div>
+        <div class="map-overlay map-layer-info hidden" id="layer-info">
+            <div class="layer-name" id="layer-name"></div>
+            <div class="layer-details">
+                <span id="layer-bands"></span>
+                <span id="layer-stretch"></span>
+            </div>
+        </div>
+    </div>
 </div>
 {% endblock %}
 
