@@ -149,12 +149,11 @@ curl -X POST http://localhost:8000/admin/refresh-collections | jq
 | Document | Purpose |
 |----------|---------|
 | `docs/WIKI.md` | Complete API wiki and reference |
-| `docs/QA_DEPLOYMENT.md` | QA/Production deployment guide |
-| `docs/README-LOCAL.md` | Local development setup |
+| `docs/DEPLOYMENT.md` | Local dev, Azure setup, env vars, build/deploy, troubleshooting |
 | `docs/xarray.md` | Zarr/NetCDF implementation guide |
-| `docs/NEW_TENANT_DEPLOYMENT.md` | Multi-tenant deployment |
-| `docs/VERSIONED_ASSETS_IMPLEMENTATION.md` | `?version=latest` routing (planned, not yet implemented) |
 | `docs/TIPG_CATALOG_ARCHITECTURE.md` | **IMPORTANT** - TiPG catalog, multi-instance behavior, refresh limitations |
+| `docs/ROUTING_DESIGN.md` | Versioned asset routing design (planned, not yet implemented) |
+| `DUCKDB.md` | H3 Explorer server-side DuckDB architecture |
 
 ---
 
