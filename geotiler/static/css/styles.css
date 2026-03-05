@@ -1919,6 +1919,7 @@ tr:hover {
 .toast-success { border-left-color: var(--color-success); }
 .toast-error { border-left-color: var(--color-error); }
 .toast-info { border-left-color: var(--color-cyan); }
+.toast-warning { border-left-color: var(--color-warning); }
 
 /* ==========================================================================
    Status Indicator

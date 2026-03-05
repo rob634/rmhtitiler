@@ -134,7 +134,7 @@ async function queryH3() {
             '<div class="metadata-item"><div class="metadata-label">Min</div><div class="metadata-value mono">' + min.toFixed(2) + '</div></div>' +
             '<div class="metadata-item"><div class="metadata-label">Max</div><div class="metadata-value mono">' + max.toFixed(2) + '</div></div>' +
             '<div class="metadata-item"><div class="metadata-label">Mean</div><div class="metadata-value mono">' + mean.toFixed(2) + '</div></div>' +
-            '<div class="metadata-item"><div class="metadata-label">Query</div><div class="metadata-value mono">' + crop + ' / ' + tech + '</div></div>';
+            '<div class="metadata-item"><div class="metadata-label">Selection</div><div class="metadata-value mono">' + crop + ' / ' + tech + '</div></div>';
 
         renderLegend(currentPalette, min, max);
     } else {
