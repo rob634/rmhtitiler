@@ -73,15 +73,17 @@ uvicorn geotiler.main:app --reload --port 8000
 
 ### Build & Deploy
 
+Always build in ACR — no local Docker builds.
+
 ```bash
-# Build in Azure Container Registry (no local Docker needed)
-az acr build --registry <acr> --resource-group <rg> \
-  --image titiler-pgstac:v<version> .
+# Build in Azure Container Registry
+az acr build --registry rmhazureacr --resource-group rmhazure_rg \
+  --image rmhtitiler:v<version> .
 
 # Deploy to App Service
-az webapp config container set --name <app> --resource-group <rg> \
-  --container-image-name <acr>.azurecr.io/titiler-pgstac:v<version>
-az webapp restart --name <app> --resource-group <rg>
+az webapp config container set --name rmhtitiler --resource-group rmhazure_rg \
+  --container-image-name rmhazureacr.azurecr.io/rmhtitiler:v<version>
+az webapp restart --name rmhtitiler --resource-group rmhazure_rg
 ```
 
 ### Version Management
