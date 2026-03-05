@@ -99,17 +99,17 @@ async function loadCollection(collectionId) {
     const infoPanel = document.getElementById('collection-info');
     infoPanel.classList.remove('hidden');
 
-    // Fetch collection metadata
-    await loadCollectionMetadata(collectionId);
+    // Fetch items once, share between metadata and schema
+    const prefix = '/vector/collections/' + encodeURIComponent(collectionId);
+    const itemsResult = await fetchJSON(prefix + '/items?limit=1');
+
+    displayCollectionMetadata(itemsResult);
+    displaySchema(itemsResult);
 
     // Set API links
-    const prefix = '/vector/collections/' + encodeURIComponent(collectionId);
     document.getElementById('link-tilejson').href = prefix + '/tiles/WebMercatorQuad/tilejson.json';
     document.getElementById('link-collection').href = prefix;
     document.getElementById('link-items').href = prefix + '/items?limit=10';
-
-    // Load schema
-    loadSchema(collectionId);
 
     // Add layer based on current render mode
     if (currentRenderMode === 'mvt') {
@@ -122,20 +122,18 @@ async function loadCollection(collectionId) {
 }
 
 /**
- * Load collection metadata and render in sidebar.
+ * Display collection metadata from a pre-fetched items result.
  */
-async function loadCollectionMetadata(collectionId) {
-    const metadataGrid = document.getElementById('metadata-grid');
-    const featureCountEl = document.getElementById('feature-count');
+function displayCollectionMetadata(result) {
+    var metadataGrid = document.getElementById('metadata-grid');
+    var featureCountEl = document.getElementById('feature-count');
 
-    const result = await fetchJSON('/vector/collections/' + encodeURIComponent(collectionId) + '/items?limit=1');
     if (result.ok && result.data) {
-        const features = result.data.features || [];
-        const matched = result.data.numberMatched || result.data.numberReturned || features.length;
+        var features = result.data.features || [];
+        var matched = result.data.numberMatched || result.data.numberReturned || features.length;
         featureCountEl.textContent = '(' + matched + ' features)';
 
-        // Build metadata grid
-        const extent = result.data.bbox;
+        var extent = result.data.bbox;
         metadataGrid.innerHTML =
             '<div class="metadata-item"><div class="metadata-label">Features</div><div class="metadata-value">' + matched + '</div></div>' +
             '<div class="metadata-item"><div class="metadata-label">Format</div><div class="metadata-value mono">OGC</div></div>' +
@@ -153,19 +151,18 @@ async function loadCollectionMetadata(collectionId) {
 // ============================================================================
 
 /**
- * Load attribute schema from a sample feature.
+ * Display attribute schema from a pre-fetched items result.
  */
-async function loadSchema(collectionId) {
-    const container = document.getElementById('attribute-list');
+function displaySchema(result) {
+    var container = document.getElementById('attribute-list');
 
-    const result = await fetchJSON('/vector/collections/' + encodeURIComponent(collectionId) + '/items?limit=1');
     if (!result.ok || !result.data || !result.data.features || result.data.features.length === 0) {
         container.innerHTML = '<div style="font-size:0.8rem;color:var(--color-gray);font-style:italic;">No features to analyze</div>';
         return;
     }
 
-    const properties = result.data.features[0].properties || {};
-    const entries = Object.entries(properties);
+    var properties = result.data.features[0].properties || {};
+    var entries = Object.entries(properties);
 
     if (entries.length === 0) {
         container.innerHTML = '<div style="font-size:0.8rem;color:var(--color-gray);font-style:italic;">No attributes found</div>';
