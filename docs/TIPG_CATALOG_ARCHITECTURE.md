@@ -184,8 +184,8 @@ Enable automatic periodic catalog refresh on all instances.
 
 **Configuration:**
 ```bash
-TIPG_CATALOG_TTL_ENABLED=true
-TIPG_CATALOG_TTL=60  # seconds
+GEOTILER_ENABLE_TIPG_CATALOG_TTL=true
+GEOTILER_TIPG_CATALOG_TTL_SEC=60  # seconds
 ```
 
 **Pros:**
@@ -294,8 +294,8 @@ Enable TTL-based refresh with a reasonable interval:
 
 ```bash
 # Azure App Service Configuration
-TIPG_CATALOG_TTL_ENABLED=true
-TIPG_CATALOG_TTL=60
+GEOTILER_ENABLE_TIPG_CATALOG_TTL=true
+GEOTILER_TIPG_CATALOG_TTL_SEC=60
 ```
 
 This ensures all instances refresh their catalogs within 60 seconds, providing eventual consistency.
