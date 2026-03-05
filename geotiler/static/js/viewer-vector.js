@@ -8,6 +8,7 @@ let vectorMap = null;
 let currentCollectionId = null;
 let currentRenderMode = 'mvt';
 let popup = null;
+let activeClickHandlers = [];
 
 const VECTOR_SOURCE_ID = 'vector-data';
 const VECTOR_FILL_LAYER = 'vector-fill';
@@ -365,6 +366,12 @@ async function addGeoJsonLayer(collectionId) {
  * Remove all vector layers and source.
  */
 function removeVectorLayer() {
+    // Remove stacked event handlers first
+    activeClickHandlers.forEach(function(h) {
+        vectorMap.off(h.event, h.layer, h.fn);
+    });
+    activeClickHandlers = [];
+
     [VECTOR_FILL_LAYER, VECTOR_LINE_LAYER, VECTOR_POINT_LAYER].forEach(function(id) {
         if (vectorMap.getLayer(id)) vectorMap.removeLayer(id);
     });
@@ -481,16 +488,14 @@ function applyStyle() {
  */
 function setupClickHandlers() {
     [VECTOR_FILL_LAYER, VECTOR_LINE_LAYER, VECTOR_POINT_LAYER].forEach(function(layerId) {
-        vectorMap.on('click', layerId, function(e) {
+        var clickFn = function(e) {
             if (!e.features || e.features.length === 0) return;
 
             var feature = e.features[0];
             var props = feature.properties || {};
 
-            // Update sidebar properties panel
             displayFeatureProperties(props);
 
-            // Show popup
             var entries = Object.entries(props).slice(0, 8);
             var html = '<div style="max-height:200px;overflow-y:auto;">' +
                 '<table style="font-size:12px;">';
@@ -503,14 +508,24 @@ function setupClickHandlers() {
             html += '</table></div>';
 
             popup.setLngLat(e.lngLat).setHTML(html).addTo(vectorMap);
-        });
+        };
 
-        vectorMap.on('mouseenter', layerId, function() {
+        var enterFn = function() {
             vectorMap.getCanvas().style.cursor = 'pointer';
-        });
-        vectorMap.on('mouseleave', layerId, function() {
+        };
+        var leaveFn = function() {
             vectorMap.getCanvas().style.cursor = '';
-        });
+        };
+
+        vectorMap.on('click', layerId, clickFn);
+        vectorMap.on('mouseenter', layerId, enterFn);
+        vectorMap.on('mouseleave', layerId, leaveFn);
+
+        activeClickHandlers.push(
+            { event: 'click', layer: layerId, fn: clickFn },
+            { event: 'mouseenter', layer: layerId, fn: enterFn },
+            { event: 'mouseleave', layer: layerId, fn: leaveFn }
+        );
     });
 }
 
