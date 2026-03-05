@@ -32,5 +32,6 @@ async def vector_viewer(request: Request):
 
 @router.get("/h3", include_in_schema=False)
 async def h3_viewer(request: Request):
-    """Render the H3 hexagonal choropleth viewer."""
-    return render_template(request, "pages/viewer/h3.html", nav_active="/catalog")
+    """Redirect to the canonical H3 explorer at /h3."""
+    from fastapi.responses import RedirectResponse
+    return RedirectResponse(url="/h3", status_code=302)
