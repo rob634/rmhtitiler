@@ -31,13 +31,13 @@ DuckDB (in-process, :memory: database)
 Local parquet file (downloaded from Azure Blob on startup)
 ```
 
-DuckDB runs alongside TiTiler, TiPG, and STAC API in the same FastAPI process. It is feature-flagged via `ENABLE_H3_DUCKDB` — when disabled, the app starts normally without any DuckDB overhead.
+DuckDB runs alongside TiTiler, TiPG, and STAC API in the same FastAPI process. It is feature-flagged via `GEOTILER_ENABLE_H3_DUCKDB` — when disabled, the app starts normally without any DuckDB overhead.
 
 ## Data Flow
 
 ### Startup
 
-1. App checks `ENABLE_H3_DUCKDB=true` and `H3_PARQUET_URL` is set
+1. App checks `GEOTILER_ENABLE_H3_DUCKDB=true` and `GEOTILER_H3_PARQUET_URL` is set
 2. Downloads parquet from Azure Blob Storage to local cache (`/app/data/h3_data.parquet`)
    - Uses the server's existing storage OAuth token (same token GDAL uses for COG tiles)
    - Skips download if file already exists locally (fast restarts)
@@ -60,10 +60,10 @@ DuckDB runs alongside TiTiler, TiPG, and STAC API in the same FastAPI process. I
 
 | Environment Variable | Default | Description |
 |---------------------|---------|-------------|
-| `ENABLE_H3_DUCKDB` | `false` | Enable server-side DuckDB query engine |
-| `H3_PARQUET_URL` | (empty) | Azure Blob URL to the H3 GeoParquet file |
-| `H3_DATA_DIR` | `/app/data` | Local directory for cached parquet file |
-| `H3_PARQUET_FILENAME` | `h3_data.parquet` | Filename for the local cache |
+| `GEOTILER_ENABLE_H3_DUCKDB` | `false` | Enable server-side DuckDB query engine |
+| `GEOTILER_H3_PARQUET_URL` | (empty) | Azure Blob URL to the H3 GeoParquet file |
+| `GEOTILER_H3_DATA_DIR` | `/app/data` | Local directory for cached parquet file |
+| `GEOTILER_H3_PARQUET_FILENAME` | `h3_data.parquet` | Filename for the local cache |
 
 ## Query API
 
@@ -162,7 +162,7 @@ DuckDB follows the same patterns as TiPG and STAC API:
 | App state | `app.state.pool` | `app.state.duckdb_conn` |
 | Init function | `initialize_tipg(app)` | `initialize_duckdb(app)` |
 | Cleanup | `close_tipg(app)` | `close_duckdb(app)` |
-| Feature flag | `ENABLE_TIPG` | `ENABLE_H3_DUCKDB` |
+| Feature flag | `GEOTILER_ENABLE_TIPG` | `GEOTILER_ENABLE_H3_DUCKDB` |
 | Non-fatal init | Yes | Yes |
 | Health reporting | In `/health` services | In `/health` services |
 
