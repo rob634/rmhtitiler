@@ -23,14 +23,18 @@ docker-compose up --build
 curl http://localhost:8000/health
 ```
 
-## 📖 Features
+## Features
 
-- ✅ **Azure Managed Identity OAuth** - No secrets in code, RBAC-based access
-- ✅ **Multi-Container Support** - Single OAuth token for ALL containers
-- ✅ **Multiple Access Patterns** - Direct COG, pgSTAC Search, OGC Features + Vector Tiles
-- ✅ **Production Ready** - 4 Uvicorn workers, GDAL optimizations
-- ✅ **PostgreSQL pgSTAC** - Full STAC catalog integration
-- ✅ **Interactive Viewers** - Built-in map viewers for all endpoints
+- **COG Tiles** - Cloud Optimized GeoTIFFs via GDAL with Azure Blob Storage OAuth
+- **Zarr/NetCDF** - Multidimensional array tiles via titiler.xarray (ERA5, CMIP6, etc.)
+- **STAC Catalog** - Collection browsing, item search, and asset navigation via stac-fastapi-pgstac
+- **OGC Features + Vector Tiles** - PostGIS tables exposed as GeoJSON and MVT via TiPG
+- **H3 Explorer** - Interactive hexagonal grid visualization with server-side DuckDB queries
+- **Interactive Viewers** - Built-in map viewers for raster, vector, Zarr, and H3 data
+- **Health Monitoring** - `/health`, `/livez`, `/readyz` with database ping and hardware metrics
+- **Azure Managed Identity OAuth** - No secrets in code, RBAC-based access
+- **Multi-Container Support** - Single OAuth token for ALL containers
+- **Production Ready** - 4 Uvicorn workers, GDAL optimizations
 
 ## 🎯 Usage Examples
 
@@ -83,7 +87,31 @@ curl "https://<your-app-url>/searches/<search-hash-id>/tiles/WebMercatorQuad/14/
 https://<your-app-url>/searches/{search_id}/WebMercatorQuad/map.html?assets=data
 ```
 
-### 3. OGC Features + Vector Tiles (TiPG)
+### 3. Zarr/NetCDF Array Tiles
+
+**Get tile from a Zarr dataset:**
+```bash
+curl "https://<your-app-url>/xarray/WebMercatorQuad/8/0/0.png?url=abfs://<container>/<path>.zarr&variable=<var>&bidx=1&rescale=0,100&colormap_name=viridis"
+```
+
+**Interactive Viewer:**
+```
+https://<your-app-url>/xarray/WebMercatorQuad/map.html?url=abfs://<container>/<path>.zarr&variable=<var>&bidx=1&rescale=0,100&colormap_name=viridis
+```
+
+### 4. H3 Explorer
+
+**Interactive map viewer:**
+```
+https://<your-app-url>/h3
+```
+
+**Server-side DuckDB query:**
+```bash
+curl "https://<your-app-url>/h3/query?crop=wheat&scenario=ssp245&variable=yield"
+```
+
+### 5. OGC Features + Vector Tiles (TiPG)
 
 **List Collections:**
 ```bash
@@ -135,7 +163,7 @@ Azure Blob Storage (RBAC: Storage Blob Data Reader)
 ```
 geotiler/
 ├── geotiler/                 # Main application package
-│   ├── __init__.py             # Version (0.7.8.x)
+│   ├── __init__.py             # Version (0.9.2.2)
 │   ├── app.py                  # FastAPI factory with lifespan
 │   ├── config.py               # Pydantic Settings
 │   ├── auth/                   # TokenCache, storage, postgres auth
@@ -204,19 +232,20 @@ command: ["uvicorn", "geotiler.app:app", "--host", "0.0.0.0", "--port", "8000", 
 ```bash
 # Set variables (replace with your values)
 ACR_NAME="<your-acr-name>"
-IMAGE_NAME="titiler-pgstac"
+IMAGE_NAME="<your-image-name>"
+VERSION="0.9.2.2"
 APP_NAME="<your-app-name>"
 RESOURCE_GROUP="<your-resource-group>"
 
-# Build and push
-docker build --platform linux/amd64 -t $ACR_NAME.azurecr.io/$IMAGE_NAME:latest -f Dockerfile .
-docker push $ACR_NAME.azurecr.io/$IMAGE_NAME:latest
+# Build in Azure Container Registry (no local Docker required)
+az acr build --registry $ACR_NAME --resource-group $RESOURCE_GROUP \
+  --image $IMAGE_NAME:v$VERSION .
 
 # Update App Service
-az webapp config appsettings set \
+az webapp config container set \
   --name $APP_NAME \
   --resource-group $RESOURCE_GROUP \
-  --settings DOCKER_CUSTOM_IMAGE_NAME="$ACR_NAME.azurecr.io/$IMAGE_NAME:latest"
+  --container-image-name $ACR_NAME.azurecr.io/$IMAGE_NAME:v$VERSION
 
 az webapp restart --name $APP_NAME --resource-group $RESOURCE_GROUP
 ```
@@ -235,7 +264,7 @@ curl https://<your-app-url>/health
 ```json
 {
   "status": "healthy",
-  "version": "0.7.8.1",
+  "version": "0.9.2.2",
   "checks": {
     "storage": {"status": "ok", "account": "<storage-account>"},
     "database": {"status": "ok", "connected": true},
@@ -245,9 +274,9 @@ curl https://<your-app-url>/health
     "cog_tiles": true,
     "xarray": true,
     "pgstac_searches": true,
-    "planetary_computer": true,
     "ogc_features": true,
-    "vector_tiles": true
+    "vector_tiles": true,
+    "h3_explorer": true
   }
 }
 ```
@@ -256,7 +285,7 @@ curl https://<your-app-url>/health
 ```json
 {
   "status": "degraded",
-  "version": "0.7.8.1",
+  "version": "0.9.2.2",
   "checks": {
     "database": {"status": "error", "error": "connection failed"}
   }
@@ -285,13 +314,16 @@ az webapp log download --name <your-app-name> --resource-group <your-resource-gr
 
 | Variable | Description | Local | Production |
 |----------|-------------|-------|------------|
-| `LOCAL_MODE` | Use Azure CLI credentials | `true` | `false` |
-| `USE_AZURE_AUTH` | Enable OAuth authentication | `true` | `true` |
-| `AZURE_STORAGE_ACCOUNT` | Storage account name | `<your-storage-account>` | `<your-storage-account>` |
-| `DATABASE_URL` | PostgreSQL connection string | Set in docker-compose.yml | Set in App Service |
-| `ENABLE_PLANETARY_COMPUTER` | Enable PC credential provider | `true` | `true` |
-| `ENABLE_TIPG` | Enable OGC Features + Vector Tiles | `true` | `true` |
-| `TIPG_SCHEMAS` | PostGIS schemas to expose | `geo` | `geo` |
+| `GEOTILER_AUTH_USE_CLI` | Use Azure CLI credentials instead of Managed Identity | `true` | `false` |
+| `GEOTILER_ENABLE_STORAGE_AUTH` | Enable OAuth for blob storage | `true` | `true` |
+| `GEOTILER_PG_HOST` | PostgreSQL server hostname | Set in docker-compose.yml | Set in App Service |
+| `GEOTILER_PG_DB` | PostgreSQL database name | Set in docker-compose.yml | Set in App Service |
+| `GEOTILER_PG_USER` | PostgreSQL username | Set in docker-compose.yml | Set in App Service |
+| `GEOTILER_PG_AUTH_MODE` | Auth mode: `password`, `key_vault`, or `managed_identity` | `password` | `managed_identity` |
+| `GEOTILER_ENABLE_TIPG` | Enable OGC Features + Vector Tiles | `true` | `true` |
+| `GEOTILER_TIPG_SCHEMAS` | PostGIS schemas to expose | `geo` | `geo` |
+| `GEOTILER_H3_PARQUET_URL` | Parquet file URL for H3 Explorer | Set as needed | Set as needed |
+| `GEOTILER_ENABLE_H3_DUCKDB` | Enable server-side DuckDB queries for H3 | `true` | `true` |
 | `GDAL_*` | GDAL optimizations | Auto | Auto |
 
 ### GDAL Optimizations
