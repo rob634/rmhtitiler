@@ -25,7 +25,7 @@ const LAYER_ID = 'raster-layer';
 function initRasterViewer() {
     rasterMap = new maplibregl.Map({
         container: 'map',
-        style: 'https://tiles.openfreemap.org/styles/liberty',
+        style: { version: 8, sources: { osm: { type: 'raster', tiles: ['https://tile.openstreetmap.org/{z}/{x}/{y}.png'], tileSize: 256, attribution: '&copy; OpenStreetMap contributors' } }, layers: [{ id: 'osm', type: 'raster', source: 'osm' }] },
         center: [0, 20],
         zoom: 2,
     });
