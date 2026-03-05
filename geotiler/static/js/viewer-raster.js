@@ -9,7 +9,7 @@ let currentCogUrl = null;
 let cogInfo = null;
 let currentStretch = 'auto';
 let pointQueryActive = false;
-let bandStats = null;
+let allBandStats = null;
 
 const SOURCE_ID = 'raster-tiles';
 const LAYER_ID = 'raster-layer';
@@ -235,10 +235,21 @@ function getRescaleValues() {
         return (min && max) ? min + ',' + max : null;
     }
 
-    if (!bandStats) return null;
+    if (!allBandStats) return null;
 
-    // Use statistics for percentile stretches
-    const stats = bandStats;
+    // Use the first selected band's statistics (R band, or band-r selector)
+    var bandR = document.getElementById('band-r');
+    var bandIdx = bandR ? bandR.value : '1';
+    var bandKey = 'b' + bandIdx;
+    var stats = allBandStats[bandKey];
+
+    // Fallback: try first available key if bandKey not found
+    if (!stats) {
+        var firstKey = Object.keys(allBandStats)[0];
+        stats = firstKey ? allBandStats[firstKey] : null;
+    }
+    if (!stats) return null;
+
     if (currentStretch === 'minmax' && stats.min !== undefined) {
         return stats.min + ',' + stats.max;
     }
@@ -263,17 +274,12 @@ function getRescaleValues() {
 async function fetchStatistics(url) {
     const result = await fetchJSON('/cog/statistics?url=' + encodeURIComponent(url));
     if (!result.ok || !result.data) {
-        bandStats = null;
+        allBandStats = null;
         return;
     }
 
-    // Parse statistics - TiTiler returns stats keyed by band name
-    const data = result.data;
-    const firstKey = Object.keys(data)[0];
-    if (firstKey && data[firstKey]) {
-        bandStats = data[firstKey];
-        displayStatistics(data);
-    }
+    allBandStats = result.data;
+    displayStatistics(result.data);
 }
 
 /**
