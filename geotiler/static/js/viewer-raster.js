@@ -14,6 +14,15 @@ let allBandStats = null;
 const SOURCE_ID = 'raster-tiles';
 const LAYER_ID = 'raster-layer';
 
+/**
+ * Convert https://{account}.blob.core.windows.net/{container}/{path}
+ * to /vsiaz/{container}/{path} for GDAL managed identity auth.
+ */
+function toVsiaz(url) {
+    var m = url.match(/^https?:\/\/[^/]+\.blob\.core\.windows\.net\/(.+)$/);
+    return m ? '/vsiaz/' + m[1] : url;
+}
+
 
 // ============================================================================
 // Initialization
@@ -65,11 +74,15 @@ function updateMapStatus() {
  * Load a COG URL: fetch info, display metadata, add tile layer.
  */
 async function loadRaster() {
-    const url = document.getElementById('cog-url').value.trim();
+    var url = document.getElementById('cog-url').value.trim();
     if (!url) {
         showNotification('Please enter a COG URL', 'warning');
         return;
     }
+
+    // Auto-convert https blob URLs to /vsiaz/ for managed identity auth
+    url = toVsiaz(url);
+    document.getElementById('cog-url').value = url;
 
     currentCogUrl = url;
     setQueryParam('url', url);
@@ -385,7 +398,7 @@ function removeTileLayer() {
  * @returns {string} Full tile URL template
  */
 function buildTileUrl(url) {
-    let tileUrl = '/cog/tiles/{z}/{x}/{y}?url=' + encodeURIComponent(url);
+    let tileUrl = '/cog/tiles/WebMercatorQuad/{z}/{x}/{y}?url=' + encodeURIComponent(url);
 
     // Colormap
     const colormap = document.getElementById('colormap-select').value;

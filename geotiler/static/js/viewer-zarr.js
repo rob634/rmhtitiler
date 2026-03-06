@@ -193,7 +193,7 @@ function updateZarrTiles() {
 
     setQueryParam('variable', variable);
 
-    let tileUrl = '/xarray/tiles/{z}/{x}/{y}?url=' + encodeURIComponent(currentZarrUrl)
+    let tileUrl = '/xarray/tiles/WebMercatorQuad/{z}/{x}/{y}?url=' + encodeURIComponent(currentZarrUrl)
         + '&variable=' + encodeURIComponent(variable);
 
     // Colormap
