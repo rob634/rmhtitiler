@@ -18,6 +18,7 @@
    - [pgSTAC Search Endpoints](#pgstac-search-endpoints)
    - [STAC API Endpoints](#stac-api-endpoints)
    - [OGC Vector Endpoints](#ogc-vector-endpoints-tipg)
+   - [Download Endpoints](#download-endpoints)
    - [Data Extraction Endpoints](#data-extraction-endpoints)
 6. [URL Formats](#url-formats)
 7. [Query Parameters](#query-parameters)
@@ -526,6 +527,56 @@ curl "https://{titiler-service-url}/vector/collections/my_table/tiles/WebMercato
 # Run diagnostics
 curl https://{titiler-service-url}/vector/diagnostics | jq
 ```
+
+---
+
+### Download Endpoints
+
+**Prefix:** `/api/download`
+
+Streaming download endpoints for raster crops, vector subsets, and full asset proxy. Subject to concurrency limits.
+
+| Endpoint | Method | Description |
+|----------|--------|-------------|
+| `/api/download/raster/crop` | GET | Download a bounding-box crop of a COG as GeoTIFF or PNG |
+| `/api/download/vector/subset` | GET | Download a spatial subset of a PostGIS collection as GeoJSON or CSV |
+| `/api/download/asset/full` | GET | Stream a full blob asset through the server (no SAS tokens exposed) |
+
+**Availability:** Only when `GEOTILER_ENABLE_DOWNLOADS=true`.
+
+#### Example URLs
+
+```bash
+# Raster crop (GeoTIFF)
+/api/download/raster/crop?asset_href=/vsiaz/silver-cogs/dem.tif&bbox=-80,35,-75,40&format=tif
+
+# Vector subset (GeoJSON)
+/api/download/vector/subset?collection_id=geo.my_table&bbox=-80,35,-75,40&format=geojson&limit=1000
+
+# Full asset download
+/api/download/asset/full?asset_href=/vsiaz/silver-cogs/dem.tif
+```
+
+#### Parameters
+
+| Parameter | Endpoint | Description |
+|-----------|----------|-------------|
+| `asset_href` | raster/crop, asset/full | Full URL or `/vsiaz/` path to the asset |
+| `bbox` | raster/crop, vector/subset | `minx,miny,maxx,maxy` (WGS84 degrees) |
+| `format` | raster/crop | `tif` (default) or `png` |
+| `format` | vector/subset | `geojson` (default) or `csv` |
+| `collection_id` | vector/subset | TiPG collection ID (PostGIS table name) |
+| `limit` | vector/subset | Maximum features to return |
+| `filename` | all | Custom filename for Content-Disposition header |
+
+#### Environment Variables
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `GEOTILER_ENABLE_DOWNLOADS` | `false` | Enable download endpoints |
+| `GEOTILER_DOWNLOAD_MAX_CONCURRENT` | `4` | Max concurrent downloads per replica |
+| `GEOTILER_DOWNLOAD_RASTER_MAX_BBOX_AREA_DEG` | `100` | Max bbox area in square degrees |
+| `GEOTILER_DOWNLOAD_PROXY_MAX_SIZE_MB` | `500` | Max asset proxy size in MB |
 
 ---
 
