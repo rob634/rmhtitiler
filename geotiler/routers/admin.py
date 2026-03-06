@@ -12,10 +12,11 @@ import logging
 from datetime import datetime, timezone
 
 from fastapi import APIRouter, Request, Response, Depends
-from fastapi.responses import HTMLResponse, JSONResponse
+from fastapi.responses import HTMLResponse
 
 from geotiler import __version__
 from geotiler.config import settings
+from geotiler.errors import error_response, TIPG_DISABLED, UPSTREAM_ERROR
 from geotiler.routers.health import health as get_health_data
 from geotiler.templates_utils import templates, get_template_context
 from geotiler.auth.admin_auth import require_admin_auth
@@ -62,40 +63,32 @@ async def health_fragment(request: Request):
 
 
 @router.get("/api")
-async def api_info():
+async def api_info(request: Request):
     """
     JSON API information endpoint.
 
-    Returns API metadata and available endpoints.
+    Returns API metadata and available endpoints derived from the OpenAPI schema.
     """
+    schema = request.app.openapi()
+
+    # Build endpoints dict: tag -> list of paths
+    tag_paths: dict[str, list[str]] = {}
+    for path, path_item in schema.get("paths", {}).items():
+        for method, operation in path_item.items():
+            if method not in ("get", "post", "put", "patch", "delete"):
+                continue
+            for tag in operation.get("tags", ["Other"]):
+                tag_paths.setdefault(tag, []).append(f"{path} ({method.upper()})" if method != "get" else path)
+
+    # Deduplicate within each tag
+    endpoints = {tag: sorted(set(paths)) for tag, paths in tag_paths.items()}
+
     return {
-        "title": "geotiler - TiTiler with Azure OAuth",
-        "description": "Geospatial tile server with Azure Managed Identity authentication",
-        "version": __version__,
+        "title": schema.get("info", {}).get("title", "geotiler"),
+        "description": schema.get("info", {}).get("description", ""),
+        "version": schema.get("info", {}).get("version", __version__),
         "auth_type": "OAuth Bearer Token (Managed Identity)",
-        "endpoints": {
-            "admin": "/",
-            "liveness": "/livez",
-            "readiness": "/readyz",
-            "health": "/health",
-            "docs": "/docs",
-            "redoc": "/redoc",
-            "cog_info": "/cog/info",
-            "cog_tiles": "/cog/tiles/{tileMatrixSetId}/{z}/{x}/{y}",
-            "xarray_info": "/xarray/info",
-            "xarray_tiles": "/xarray/tiles/{tileMatrixSetId}/{z}/{x}/{y}",
-            "search_list": "/searches",
-            "search_register": "/searches/register",
-            "search_tiles": "/searches/{search_id}/tiles/{tileMatrixSetId}/{z}/{x}/{y}",
-            "search_info": "/searches/{search_id}/info",
-            "vector_collections": "/vector/collections",
-            "vector_items": "/vector/collections/{collection_id}/items",
-            "vector_tiles": "/vector/collections/{collection_id}/tiles/{tileMatrixSetId}/{z}/{x}/{y}",
-            "vector_refresh": "/admin/refresh-collections (POST)",
-            "stac_root": "/stac",
-            "stac_collections": "/stac/collections",
-            "stac_search": "/stac/search",
-        },
+        "endpoints": endpoints,
         "config": {
             "auth_use_cli": settings.auth_use_cli,
             "enable_storage_auth": settings.enable_storage_auth,
@@ -103,6 +96,7 @@ async def api_info():
             "enable_tipg_catalog_ttl": settings.enable_tipg_catalog_ttl,
             "tipg_catalog_ttl_sec": settings.tipg_catalog_ttl_sec if settings.enable_tipg_catalog_ttl else None,
             "enable_stac_api": settings.enable_stac_api,
+            "enable_downloads": settings.enable_downloads,
         },
     }
 
@@ -129,11 +123,12 @@ async def refresh_collections(request: Request):
         - refresh_time: ISO timestamp of refresh
     """
     if not settings.enable_tipg:
-        return {
-            "status": "error",
-            "error": "TiPG is not enabled",
-            "hint": "Set GEOTILER_ENABLE_TIPG=true to enable vector tile support",
-        }
+        return error_response(
+            "TiPG is not enabled",
+            422,
+            TIPG_DISABLED,
+            hint="Set GEOTILER_ENABLE_TIPG=true to enable vector tile support",
+        )
 
     # Import here to avoid circular imports
     from geotiler.routers.vector import (
@@ -181,11 +176,9 @@ async def refresh_collections(request: Request):
 
     except Exception as e:
         logger.error(f"Catalog refresh failed: {e}")
-        return JSONResponse(
-            {
-                "status": "error",
-                "error": str(e),
-                "refresh_time": datetime.now(timezone.utc).isoformat(),
-            },
-            status_code=500,
+        return error_response(
+            str(e),
+            500,
+            UPSTREAM_ERROR,
+            refresh_time=datetime.now(timezone.utc).isoformat(),
         )
