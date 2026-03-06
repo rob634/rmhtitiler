@@ -18,7 +18,6 @@
    - [pgSTAC Search Endpoints](#pgstac-search-endpoints)
    - [STAC API Endpoints](#stac-api-endpoints)
    - [OGC Vector Endpoints](#ogc-vector-endpoints-tipg)
-   - [H3 Explorer Endpoints](#h3-explorer-endpoints)
    - [Data Extraction Endpoints](#data-extraction-endpoints)
 6. [URL Formats](#url-formats)
 7. [Query Parameters](#query-parameters)
@@ -39,7 +38,6 @@
 | **STAC Search** | Query-based mosaics via pgSTAC |
 | **STAC Catalog** | Browsing and search via stac-fastapi-pgstac |
 | **OGC Vector** | OGC Features API + Vector Tiles via TiPG |
-| **H3 Explorer** | Crop Production & Drought Risk via DuckDB + Parquet |
 | **Azure Authentication** | OAuth via Managed Identity (no secrets) |
 
 ### Key Capabilities
@@ -90,34 +88,34 @@ This document uses **logical names** instead of Azure resource names. See [WIKI_
 ## Architecture
 
 ```
-┌──────────────────────────────────────────────────────────────────────────────────────┐
-│                              geotiler Tile Service                                    │
-├──────────────────────────────────────────────────────────────────────────────────────┤
-│                                                                                      │
-│  ┌──────────┐  ┌──────────┐  ┌──────────┐  ┌──────────┐  ┌──────────┐  ┌──────────┐ │
-│  │ /cog/*   │  │/xarray/* │  │/searches/│  │ /stac/*  │  │/vector/* │  │  /h3/*   │ │
-│  │ (COGs)   │  │ (Zarr)   │  │ (pgSTAC) │  │ (STAC)   │  │ (TiPG)   │  │(DuckDB)  │ │
-│  └────┬─────┘  └────┬─────┘  └────┬─────┘  └────┬─────┘  └────┬─────┘  └────┬─────┘ │
-│       │              │             │             │             │             │        │
-│       ▼              ▼             ▼             ▼             ▼             ▼        │
-│  ┌──────────────────────────────────────────────────────────────────────────────────┐ │
-│  │                         Azure Auth Middleware                                    │ │
-│  │            OAuth Token Acquisition + Environment Configuration                   │ │
-│  └──────────────────────────────────────────────────────────────────────────────────┘ │
-│       │              │             │             │             │             │        │
-│       ▼              ▼             ▼             ▼             ▼             ▼        │
-│  ┌──────────┐  ┌──────────┐  ┌─────────────────────────┐  ┌──────────┐  ┌──────────┐│
-│  │  GDAL    │  │ fsspec/  │  │       asyncpg           │  │  TiPG    │  │ DuckDB   ││
-│  │ /vsiaz/  │  │  adlfs   │  │  pgSTAC + stac-fastapi  │  │          │  │          ││
-│  └────┬─────┘  └────┬─────┘  └────────────┬────────────┘  └────┬─────┘  └────┬─────┘│
-│       │              │                     │                    │             │       │
-└───────┼──────────────┼─────────────────────┼────────────────────┼─────────────┼───────┘
-        │              │                     │                    │             │
-        ▼              ▼                     ▼                    ▼             ▼
-┌────────────────┐ ┌────────────────┐ ┌────────────────┐ ┌────────────────┐ ┌──────────┐
-│ Silver Storage │ │ Silver Storage │ │ Business       │ │ Business       │ │ Parquet  │
-│ Account (COGs) │ │ Account (Zarr) │ │ Database       │ │ Database       │ │ (Blob)   │
-└────────────────┘ └────────────────┘ │ (pgSTAC)       │ │ (PostGIS)      │ └──────────┘
+┌─────────────────────────────────────────────────────────────────────────┐
+│                         geotiler Tile Service                           │
+├─────────────────────────────────────────────────────────────────────────┤
+│                                                                         │
+│  ┌──────────┐  ┌──────────┐  ┌──────────┐  ┌──────────┐  ┌──────────┐ │
+│  │ /cog/*   │  │/xarray/* │  │/searches/│  │ /stac/*  │  │/vector/* │ │
+│  │ (COGs)   │  │ (Zarr)   │  │ (pgSTAC) │  │ (STAC)   │  │ (TiPG)   │ │
+│  └────┬─────┘  └────┬─────┘  └────┬─────┘  └────┬─────┘  └────┬─────┘ │
+│       │              │             │             │             │        │
+│       ▼              ▼             ▼             ▼             ▼        │
+│  ┌─────────────────────────────────────────────────────────────────────┐│
+│  │                      Azure Auth Middleware                          ││
+│  │         OAuth Token Acquisition + Environment Configuration        ││
+│  └─────────────────────────────────────────────────────────────────────┘│
+│       │              │             │             │             │        │
+│       ▼              ▼             ▼             ▼             ▼        │
+│  ┌──────────┐  ┌──────────┐  ┌─────────────────────────┐  ┌──────────┐│
+│  │  GDAL    │  │ fsspec/  │  │       asyncpg           │  │  TiPG    ││
+│  │ /vsiaz/  │  │  adlfs   │  │  pgSTAC + stac-fastapi  │  │          ││
+│  └────┬─────┘  └────┬─────┘  └────────────┬────────────┘  └────┬─────┘│
+│       │              │                     │                    │       │
+└───────┼──────────────┼─────────────────────┼────────────────────┼───────┘
+        │              │                     │                    │
+        ▼              ▼                     ▼                    ▼
+┌────────────────┐ ┌────────────────┐ ┌────────────────┐ ┌────────────────┐
+│ Silver Storage │ │ Silver Storage │ │ Business       │ │ Business       │
+│ Account (COGs) │ │ Account (Zarr) │ │ Database       │ │ Database       │
+└────────────────┘ └────────────────┘ │ (pgSTAC)       │ │ (PostGIS)      │
                                       └────────────────┘ └────────────────┘
 ```
 
@@ -130,7 +128,6 @@ This document uses **logical names** instead of Azure resource names. See [WIKI_
 | **MosaicTilerFactory** | pgSTAC search-based mosaics | `titiler.pgstac` |
 | **StacApi** | STAC catalog browsing and search | `stac-fastapi-pgstac` |
 | **TiPG Endpoints** | OGC Features API + Vector Tiles | `tipg` |
-| **DuckDB Service** | H3 server-side parquet queries | `duckdb` |
 | **AzureAuthMiddleware** | OAuth token injection | Custom |
 
 ### Storage Account Compatibility
@@ -196,8 +193,6 @@ All app variables use the `GEOTILER_COMPONENT_SETTING` naming convention.
 | `GEOTILER_TIPG_PREFIX` | URL prefix for TiPG routes | `/vector` |
 | `GEOTILER_ENABLE_STAC_API` | Enable STAC API (requires TiPG) | `true` |
 | `GEOTILER_STAC_PREFIX` | URL prefix for STAC routes | `/stac` |
-| `GEOTILER_ENABLE_H3_DUCKDB` | Enable H3 server-side DuckDB queries | `false` |
-| `GEOTILER_H3_PARQUET_URL` | Parquet file URL for H3 DuckDB | *(required if DuckDB enabled)* |
 | `AZURE_TENANT_ID` | Azure AD tenant ID (third-party, not prefixed) | `{tenant-guid}` |
 
 #### Observability Settings
@@ -531,19 +526,6 @@ curl "https://{titiler-service-url}/vector/collections/my_table/tiles/WebMercato
 # Run diagnostics
 curl https://{titiler-service-url}/vector/diagnostics | jq
 ```
-
----
-
-### H3 Explorer Endpoints
-
-**Prefix:** `/h3`
-
-H3 Crop Production & Drought Risk Explorer with optional server-side DuckDB queries.
-
-| Endpoint | Method | Description |
-|----------|--------|-------------|
-| `/h3` | GET | Interactive H3 Explorer map (HTML) |
-| `/h3/query` | GET | Server-side DuckDB query (when `GEOTILER_ENABLE_H3_DUCKDB=true`) |
 
 ---
 
