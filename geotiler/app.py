@@ -274,7 +274,6 @@ def create_app() -> FastAPI:
             "| `/searches/*` | pgSTAC dynamic mosaic searches |\n"
             "| `/stac/*` | STAC catalog browsing and search |\n"
             "| `/vector/*` | OGC Features API + Vector Tiles (TiPG) |\n"
-            "| `/h3/*` | H3 Crop Production & Drought Risk Explorer |\n"
             "| `/api/download/*` | Raster crop, vector subset, asset proxy downloads |\n"
         ),
         version=__version__,
@@ -290,7 +289,6 @@ def create_app() -> FastAPI:
             {"name": "OGC Vector -- Tiles", "description": "OGC Vector Tiles endpoints (TiPG)."},
             {"name": "OGC Vector -- Common", "description": "OGC API common endpoints (TiPG)."},
             {"name": "Diagnostics", "description": "Database and TiPG table-discovery diagnostics."},
-            {"name": "H3 Explorer", "description": "H3 Crop Production & Drought Risk Explorer."},
             {"name": "API Info", "description": "API metadata and endpoint listing."},
             {"name": "Download", "description": "Raster crop, vector subset, and asset proxy downloads."},
             {"name": "Admin", "description": "Admin dashboard and operational webhooks."},
