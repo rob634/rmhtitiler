@@ -1,7 +1,7 @@
 # TiTiler-pgSTAC Application Wiki
 
 **Status:** Production-Ready
-**Last Updated:** February 2026
+**Last Updated:** March 2026
 
 ---
 
@@ -226,13 +226,14 @@ https://{titiler-service-url}
 | `/readyz` | GET | Readiness probe with DB connectivity |
 | `/health` | GET | Detailed health with version, hardware, dependencies |
 | `/docs` | GET | Interactive OpenAPI documentation (Swagger UI) |
+| `/redoc` | GET | API documentation (ReDoc UI) |
 | `/openapi.json` | GET | OpenAPI specification |
 
 **Health Response Example:**
 ```json
 {
   "status": "healthy",
-  "version": "0.8.18.0",
+  "version": "0.9.x",
   "database": { "status": "connected", "latency_ms": 12 },
   "storage_auth": { "enabled": true, "token_expires_in_sec": 3245 },
   "tipg": { "status": "ok", "collections": 7 },
