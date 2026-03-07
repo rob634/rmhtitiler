@@ -13,11 +13,10 @@ With Azure authentication:
 - Managed Identity for Azure PostgreSQL
 - Key Vault integration for secrets
 
-Dependency Versions (as of v0.8.19)
------------------------------------
-This package installs titiler.xarray>=0.24.0,<0.25.0 which is pinned
-to match the base image (titiler-pgstac:1.9.0, built against titiler-core 0.24.x).
-Upgrading to titiler.xarray 1.x requires migrating to titiler-pgstac 2.0.0.
+Dependency Versions (as of v0.10.0)
+------------------------------------
+Base image: titiler-pgstac:2.1.0 (titiler-core 1.2.x, rio-tiler 8.x).
+titiler.xarray pinned to >=1.2.0,<2.0 to match.
 
 Supported Endpoints:
 - /cog/* - COG tiles (works with rio-tiler 8.x)
