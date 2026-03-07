@@ -1,19 +1,16 @@
 # Local development Dockerfile for TiTiler-pgSTAC
 # Uses Azure CLI credentials instead of Managed Identity
-FROM ghcr.io/stac-utils/titiler-pgstac:1.9.0
-
-# Install dependencies
-RUN pip install --no-cache-dir \
-    azure-identity>=1.15.0 \
-    azure-keyvault-secrets>=4.7.0 \
-    "titiler.xarray>=0.18.0" \
-    adlfs>=2024.4.1 \
-    psutil>=5.9.0 \
-    pydantic-settings>=2.0.0 \
-    azure-monitor-opentelemetry>=1.6.0
+FROM ghcr.io/stac-utils/titiler-pgstac:2.1.0
 
 # Set working directory
 WORKDIR /app
+
+# Install dependencies (requirements.txt is the single source of truth)
+COPY requirements.txt .
+RUN pip install --no-cache-dir -r requirements.txt
+
+# Create data directory for DuckDB parquet cache
+RUN mkdir -p /app/data
 
 # Copy application package
 COPY geotiler /app/geotiler

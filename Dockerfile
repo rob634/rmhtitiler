@@ -1,8 +1,8 @@
 # Production Dockerfile for TiTiler-pgSTAC with Azure OAuth authentication
 # and Xarray/Zarr support
-FROM ghcr.io/stac-utils/titiler-pgstac:1.9.0
+FROM ghcr.io/stac-utils/titiler-pgstac:2.1.0
 #Use the JFROG Artifactory image for production deployments
-#FROM artifactory.worldbank.org/itsdt-docker-virtual/titiler-pgstac:1.9.0
+#FROM artifactory.worldbank.org/itsdt-docker-virtual/titiler-pgstac:2.1.0
 
 # Set working directory
 WORKDIR /app
