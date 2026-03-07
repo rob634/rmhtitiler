@@ -107,6 +107,26 @@ All pipeline executions for this application in chronological order.
 
 ---
 
+## Run 6: Base Image Upgrade Smoke Test (SIEGE)
+
+| Field | Value |
+|-------|-------|
+| **Date** | 07 MAR 2026 |
+| **Pipeline** | SIEGE (Sequential Smoke Test) |
+| **Scope** | Full tile server surface — COG, Xarray/Zarr, Vector/TiPG, STAC, cross-service |
+| **Agents** | Sentinel → Cartographer → Lancer → Auditor → Scribe |
+| **Target** | v0.9.2.6 on `rmhtitiler:pgstac2-test` (titiler-pgstac:2.1.0) |
+| **Purpose** | Post-upgrade verification — titiler-pgstac 1.9.0 → 2.1.0 |
+| **Status** | **PASS** |
+| **Probes** | 18/18 active endpoints returned HTTP 200. 2 probes hit removed routes (/cog/bounds, /xarray/bounds — expected titiler-core 1.2.0 change) |
+| **Read Chains** | 22/22 steps passed across 5 sequences |
+| **Checkpoints** | C1 (COG), Z1 (Zarr), V1 (Vector), S1 (STAC), X1 (Cross-Service) — all PASS |
+| **Findings** | 0 functional issues. 2 expected API changes (band name "b" prefix, removed /bounds routes). 2 INFO observations (health collection count, Zarr bounds overshoot). 1 resolved (rio-tiler conflict gone). |
+| **Key Result** | All 6 services operational on new base image. Tiles render correctly. STAC→COG chain resolves. Metadata consistent. rio-tiler version conflict resolved. |
+| **Output** | `docs/agent_review/agent_docs/SIEGE_RUN_2.md` |
+
+---
+
 ## Cumulative Token Usage
 
 | Pipeline | Runs | Total Tokens |

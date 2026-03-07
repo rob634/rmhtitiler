@@ -96,7 +96,8 @@
         "method": "GET",
         "path": "/cog/bounds",
         "params": { "url": "{test_data.cog.url}" },
-        "expected_status": 200
+        "expected_status": 200,
+        "_retired": "Route removed in titiler-core 1.2.0. Bounds now in /cog/info response. Skip this probe."
       },
       {
         "id": "cog-preview",
@@ -133,7 +134,8 @@
         "method": "GET",
         "path": "/xarray/bounds",
         "params": { "url": "{test_data.zarr.url}", "variable": "tasmax" },
-        "expected_status": 200
+        "expected_status": 200,
+        "_retired": "Route removed in titiler-core 1.2.0. Bounds now in /xarray/info response. Skip this probe."
       }
     ],
     "vector": [
