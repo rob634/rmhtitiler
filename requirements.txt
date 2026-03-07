@@ -1,7 +1,7 @@
 # =============================================================================
 # geotiler — Production Dependencies
 # =============================================================================
-# Installed ON TOP of the base image (ghcr.io/stac-utils/titiler-pgstac:1.9.0)
+# Installed ON TOP of the base image (ghcr.io/stac-utils/titiler-pgstac:2.1.0)
 # which already provides: titiler-pgstac, titiler-core, rio-tiler, rasterio,
 # fastapi, starlette, uvicorn, psycopg, pydantic, asyncpg, etc.
 #
@@ -18,10 +18,9 @@ azure-keyvault-secrets>=4.8.0
 # --- Xarray / Zarr --------------------------------------------------------
 # Multidimensional data support (Zarr, NetCDF)
 # NOTE: [minimal] DOES include zarr transitively via xarray. Do NOT add zarr
-# as a separate dependency — it is already installed. Pinned to 0.24.x to
-# match base image titiler-pgstac:1.9.0; upgrading to 0.25.x requires
-# migrating to titiler-pgstac 2.0.0.
-titiler.xarray[minimal]>=0.24.0,<0.25.0
+# as a separate dependency — it is already installed. Pinned to 1.2.x to
+# match base image titiler-pgstac:2.1.0 (titiler-core 1.2.x).
+titiler.xarray[minimal]>=1.2.0,<2.0
 # Azure Data Lake filesystem for fsspec (Zarr access via abfs://)
 adlfs>=2024.4.1
 
