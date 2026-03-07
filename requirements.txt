@@ -13,7 +13,7 @@
 # OAuth tokens via Managed Identity for storage and PostgreSQL
 azure-identity>=1.16.1
 # Key Vault access for password retrieval (key_vault auth mode)
-azure-keyvault-secrets>=4.7.0
+azure-keyvault-secrets>=4.8.0
 
 # --- Xarray / Zarr --------------------------------------------------------
 # Multidimensional data support (Zarr, NetCDF)

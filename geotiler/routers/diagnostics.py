@@ -18,10 +18,11 @@ import logging
 import re
 from typing import Any, Optional
 
-from fastapi import APIRouter, Depends, HTTPException, Request, Query
+from fastapi import APIRouter, Depends, Request, Query
 
 from geotiler.auth.admin_auth import require_admin_auth
 from geotiler.config import settings
+from geotiler.errors import error_response, BAD_REQUEST, POOL_NOT_INITIALIZED
 from geotiler.services.database import get_app_state_from_request
 from geotiler.routers.vector import get_tipg_startup_state_from_app
 
@@ -30,13 +31,18 @@ logger = logging.getLogger(__name__)
 _IDENTIFIER_RE = re.compile(r'^[a-zA-Z_][a-zA-Z0-9_]*$')
 
 
-def _validate_sql_identifier(value: str, name: str) -> None:
-    """Validate a SQL identifier (schema/table name) against injection."""
+def _validate_sql_identifier(value: str, name: str):
+    """Validate a SQL identifier (schema/table name) against injection.
+
+    Returns None if valid, or an error_response if invalid.
+    """
     if not _IDENTIFIER_RE.match(value):
-        raise HTTPException(
-            status_code=400,
-            detail=f"Invalid {name}: must contain only letters, digits, and underscores"
+        return error_response(
+            f"Invalid {name}: must contain only letters, digits, and underscores",
+            400,
+            BAD_REQUEST,
         )
+    return None
 
 
 router = APIRouter(prefix="/vector")
@@ -99,11 +105,12 @@ async def tipg_diagnostics(request: Request):
     pool = getattr(app_state, "pool", None) if app_state else None
 
     if not pool:
-        return {
-            "status": "error",
-            "error": "TiPG pool not initialized",
-            "hint": "Check application logs for TiPG initialization errors",
-        }
+        return error_response(
+            "TiPG pool not initialized",
+            503,
+            POOL_NOT_INITIALIZED,
+            hint="Check application logs for TiPG initialization errors",
+        )
 
     # Get startup state
     startup_state = get_tipg_startup_state_from_app(request.app)
@@ -520,7 +527,9 @@ async def verbose_diagnostics(
     Returns:
         Comprehensive database state for comparison with rmhgeoapi.
     """
-    _validate_sql_identifier(schema, "schema")
+    err = _validate_sql_identifier(schema, "schema")
+    if err:
+        return err
 
     app_state = get_app_state_from_request(request)
     pool = getattr(app_state, "pool", None) if app_state else None
@@ -1090,14 +1099,23 @@ async def table_diagnostics(
         Comprehensive table metadata including all columns, constraints,
         geometry registration status, and permissions.
     """
-    _validate_sql_identifier(schema, "schema")
-    _validate_sql_identifier(table_name, "table_name")
+    err = _validate_sql_identifier(schema, "schema")
+    if err:
+        return err
+    err = _validate_sql_identifier(table_name, "table_name")
+    if err:
+        return err
 
     app_state = get_app_state_from_request(request)
     pool = getattr(app_state, "pool", None) if app_state else None
 
     if not pool:
-        return {"status": "error", "error": "Database pool not initialized"}
+        return error_response(
+            "Database pool not initialized",
+            503,
+            POOL_NOT_INITIALIZED,
+            hint="Check application logs for TiPG initialization errors",
+        )
 
     full_name = f"{schema}.{table_name}"
 

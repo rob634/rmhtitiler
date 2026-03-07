@@ -15,9 +15,10 @@ import time
 import logging
 
 from fastapi import APIRouter, Query, Request
-from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse
+from fastapi.responses import HTMLResponse, RedirectResponse
 
 from geotiler.config import settings
+from geotiler.errors import error_response, NOT_FOUND, SERVICE_UNAVAILABLE, BAD_REQUEST, QUERY_FAILED
 from geotiler.templates_utils import templates, get_template_context
 
 logger = logging.getLogger(__name__)
@@ -106,7 +107,7 @@ async def h3_region(request: Request, region_id: str):
     """
     region = REGIONS.get(region_id)
     if not region:
-        return JSONResponse({"error": f"Unknown region: {region_id}"}, status_code=404)
+        return error_response(f"Unknown region: {region_id}", 404, NOT_FOUND)
 
     server_side = _is_duckdb_ready(request)
     context = get_template_context(request, h3_server_side=server_side, **region)
@@ -127,10 +128,7 @@ async def h3_query(
     combination. Requires ENABLE_H3_DUCKDB=true.
     """
     if not _is_duckdb_ready(request):
-        return JSONResponse(
-            {"error": "H3 DuckDB not available"},
-            status_code=503,
-        )
+        return error_response("H3 DuckDB not available", 503, SERVICE_UNAVAILABLE)
 
     # Import here to avoid import error when duckdb is not installed
     from geotiler.services.duckdb import query_h3_data
@@ -140,6 +138,7 @@ async def h3_query(
         data, from_cache = await query_h3_data(request.app, crop, tech, scenario)
         query_ms = round((time.monotonic() - t0) * 1000, 1)
 
+        from fastapi.responses import JSONResponse
         return JSONResponse({
             "data": data,
             "count": len(data),
@@ -148,9 +147,9 @@ async def h3_query(
         })
 
     except ValueError as e:
-        return JSONResponse({"error": str(e)}, status_code=400)
+        return error_response(str(e), 400, BAD_REQUEST)
     except Exception as e:
         logger.error(f"H3 query error: {e}")
-        return JSONResponse({"error": "Query failed"}, status_code=500)
+        return error_response("Query failed", 500, QUERY_FAILED)
 
 

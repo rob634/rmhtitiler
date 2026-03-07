@@ -58,6 +58,7 @@ async def liveness():
     """
     return {
         "status": "alive",
+        "app": "rmhtitiler",
         "message": "Container is running",
     }
 
@@ -387,9 +388,17 @@ async def health(request: Request, response: Response):
         settings.enable_storage_auth and not storage_token_cache.is_valid
     )
 
+    # Determine if ALL critical dependencies are down
+    all_critical_down = (not db_ok) and (
+        settings.enable_storage_auth and not storage_token_cache.is_valid
+    )
+
     if not issues:
         overall_status = "healthy"
         response.status_code = 200
+    elif all_critical_down:
+        overall_status = "unhealthy"
+        response.status_code = 503
     elif has_critical_failure:
         overall_status = "degraded"
         response.status_code = 503
@@ -410,6 +419,8 @@ async def health(request: Request, response: Response):
 
     return {
         "status": overall_status,
+        "app": "rmhtitiler",
+        "role": "service-layer",
         "version": __version__,
         "timestamp": datetime.now(timezone.utc).isoformat(),
         "uptime_seconds": uptime_seconds,

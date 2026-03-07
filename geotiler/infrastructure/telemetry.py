@@ -63,7 +63,7 @@ def configure_azure_monitor() -> bool:
             connection_string=connection_string,
             resource_attributes={
                 "service.name": app_name,
-                "service.namespace": "geotiler",
+                "service.namespace": "rmhgeo-platform",
                 "deployment.environment": environment,
             },
             enable_live_metrics=True,

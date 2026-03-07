@@ -15,9 +15,10 @@ import logging
 import time
 from typing import AsyncIterator, Optional
 
-from fastapi import APIRouter, HTTPException, Query, Request
+from fastapi import APIRouter, Query, Request
 from starlette.responses import StreamingResponse
 
+from geotiler.errors import error_response, CAPACITY_EXCEEDED
 from geotiler.services.download import (
     handle_asset_download,
     handle_raster_crop,
@@ -77,13 +78,11 @@ async def download_raster_crop(
 
     try:
         if not await _try_acquire_semaphore(semaphore):
-            raise HTTPException(
-                status_code=503,
-                detail={
-                    "detail": "Download capacity exceeded",
-                    "status": 503,
-                    "retry_after_seconds": 10,
-                },
+            return error_response(
+                "Download capacity exceeded",
+                503,
+                CAPACITY_EXCEEDED,
+                retry_after_seconds=10,
             )
         acquired = True
 
@@ -112,7 +111,7 @@ async def download_raster_crop(
             headers=result.headers,
         )
 
-    except HTTPException:
+    except Exception:
         if acquired:
             semaphore.release()
         elapsed = round((time.monotonic() - t0) * 1000, 1)
@@ -150,13 +149,11 @@ async def download_vector_subset(
     acquired = False
     try:
         if not await _try_acquire_semaphore(semaphore):
-            raise HTTPException(
-                status_code=503,
-                detail={
-                    "detail": "Download capacity exceeded",
-                    "status": 503,
-                    "retry_after_seconds": 10,
-                },
+            return error_response(
+                "Download capacity exceeded",
+                503,
+                CAPACITY_EXCEEDED,
+                retry_after_seconds=10,
             )
         acquired = True
 
@@ -187,7 +184,7 @@ async def download_vector_subset(
             headers=result.headers,
         )
 
-    except HTTPException:
+    except Exception:
         if acquired:
             semaphore.release()
         elapsed = round((time.monotonic() - t0) * 1000, 1)
@@ -223,13 +220,11 @@ async def download_asset_full(
     acquired = False
     try:
         if not await _try_acquire_semaphore(semaphore):
-            raise HTTPException(
-                status_code=503,
-                detail={
-                    "detail": "Download capacity exceeded",
-                    "status": 503,
-                    "retry_after_seconds": 10,
-                },
+            return error_response(
+                "Download capacity exceeded",
+                503,
+                CAPACITY_EXCEEDED,
+                retry_after_seconds=10,
             )
         acquired = True
 
@@ -256,7 +251,7 @@ async def download_asset_full(
             headers=result.headers,
         )
 
-    except HTTPException:
+    except Exception:
         if acquired:
             semaphore.release()
         elapsed = round((time.monotonic() - t0) * 1000, 1)
