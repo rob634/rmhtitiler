@@ -423,7 +423,7 @@ def create_app() -> FastAPI:
     # Custom Swagger UI with requestInterceptor to fix double-encoding.
     # Swagger UI encodes query param values (/ → %2F) then re-encodes the
     # percent sign (%2F → %252F). The interceptor reverses the second pass.
-    @app.get("/docs", include_in_schema=False)
+    @app.get("/docs", include_in_schema=False, name="swagger_ui_html")
     async def custom_swagger_ui():
         return HTMLResponse(
             """<!DOCTYPE html>

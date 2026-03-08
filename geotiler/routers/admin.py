@@ -87,6 +87,8 @@ async def api_info(request: Request):
         "title": schema.get("info", {}).get("title", "geotiler"),
         "description": schema.get("info", {}).get("description", ""),
         "version": schema.get("info", {}).get("version", __version__),
+        "openapi_url": "/openapi.json",
+        "docs_url": "/docs",
         "auth_type": "OAuth Bearer Token (Managed Identity)",
         "endpoints": endpoints,
         "config": {

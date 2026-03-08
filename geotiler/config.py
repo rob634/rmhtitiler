@@ -15,7 +15,7 @@ Naming Convention:
 Key Configuration Notes:
     - Token TTL constants are tuned for Azure's 1-hour OAuth token lifetime
     - Storage tokens are refreshed in background to ensure GDAL always has valid credentials
-    - MosaicJSON is intentionally unsupported (requires static tokens)
+    - MosaicJSON was removed (pgSTAC searches handle mosaic compositing)
 
 Observability (read via os.environ in infrastructure modules):
     - APPLICATIONINSIGHTS_CONNECTION_STRING: App Insights telemetry (third-party)
