@@ -127,6 +127,25 @@ All pipeline executions for this application in chronological order.
 
 ---
 
+## Run 7: ETL Claude Bug Triage & Fix
+
+| Field | Value |
+|-------|-------|
+| **Date** | 08 MAR 2026 |
+| **Pipeline** | Manual (bug triage from external test report) |
+| **Scope** | 6 bugs reported by ETL Claude's 90-endpoint API test report |
+| **Source** | `https://github.com/rob634/geoetl/blob/main/GEOTILER_API_TEST_REPORT.md` |
+| **Target** | v0.9.3.0 at `rmhtitiler-ghcyd7g0bxdvc2hc.eastus-01.azurewebsites.net` |
+| **Status** | **3 FIXED, 2 OPEN, 1 NOT A BUG** |
+| **Fixes Applied** | BUG-001: `name="swagger_ui_html"` on `/docs` route (landing pages 500). BUG-002: `DROP EXTENSION postgis_raster` (bbox 500). BUG-006: Added `openapi_url`/`docs_url` to `/api` response. |
+| **Deferred** | BUG-003/004: TiPG exception handler registration (MEDIUM). PERF-001: Intermittent timeouts (infrastructure). |
+| **Not a Bug** | BUG-005: xarray requires `abfs://` URLs, not public `https://`. |
+| **Key Finding** | TiPG 1.3.1 PR #251 introduced `ST_Transform()` in bbox queries without explicit `::geometry` cast, causing ambiguity when `postgis_raster` is installed. Upstream issue documented in `docs/TIPG_BBOX_ISSUE.md`. |
+| **Version** | Deployed v0.9.3.0 with BUG-001/006 code fixes + TiPG pin bump to >=1.3.1 |
+| **Output** | `docs/DEFERRED_BUGS.md`, `docs/TIPG_BBOX_ISSUE.md` |
+
+---
+
 ## Cumulative Token Usage
 
 | Pipeline | Runs | Total Tokens |
