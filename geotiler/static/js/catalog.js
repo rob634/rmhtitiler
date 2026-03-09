@@ -9,7 +9,7 @@
 // ============================================================================
 
 /**
- * Load all collections (STAC + Vector) into the unified catalog grid.
+ * Load all collections (STAC + Vector) into the unified catalog list.
  * Called on DOMContentLoaded from the unified catalog template.
  * @param {boolean} stacEnabled - Whether STAC API is available
  * @param {boolean} tipgEnabled - Whether TiPG is available
@@ -29,9 +29,13 @@ async function loadUnifiedCatalog(stacEnabled, tipgEnabled) {
                     title: c.title || c.id,
                     description: c.description || '',
                     type: 'raster',
+                    source: 'stac',
+                    stac_version: c.stac_version || null,
+                    license: c.license || null,
                     extent: c.extent,
                     href: buildViewerUrl('raster', { collection: c.id }),
-                    source: 'stac',
+                    itemsHref: '/stac/collections/' + encodeURIComponent(c.id) + '/items',
+                    apiHref: '/stac/collections/' + encodeURIComponent(c.id),
                 }))
             );
         }
@@ -39,7 +43,7 @@ async function loadUnifiedCatalog(stacEnabled, tipgEnabled) {
 
     // Fetch Vector collections
     if (tipgEnabled) {
-        const result = await fetchJSON('/vector/collections');
+        const result = await fetchJSON('/vector/collections?f=json');
         if (result.ok && result.data.collections) {
             collections = collections.concat(
                 result.data.collections
@@ -49,16 +53,22 @@ async function loadUnifiedCatalog(stacEnabled, tipgEnabled) {
                         title: c.title || c.id,
                         description: c.description || '',
                         type: 'vector',
+                        source: 'tipg',
+                        itemType: c.itemType || 'feature',
+                        crs: (c.crs && c.crs[0]) ? c.crs[0] : null,
                         extent: c.extent,
                         href: buildViewerUrl('vector', { collection: c.id }),
-                        source: 'tipg',
+                        itemsHref: '/vector/collections/' + encodeURIComponent(c.id) + '/items?limit=10',
+                        apiHref: '/vector/collections/' + encodeURIComponent(c.id),
                     }))
             );
         }
     }
 
-    // Render collection cards
-    renderCollections(collections);
+    // Sort alphabetically by title
+    collections.sort((a, b) => a.title.localeCompare(b.title));
+
+    renderUnifiedList(collections, grid, emptyEl);
 
     // Wire up search
     const searchInput = document.getElementById('catalog-search');
@@ -70,7 +80,7 @@ async function loadUnifiedCatalog(stacEnabled, tipgEnabled) {
                 c.description.toLowerCase().includes(query) ||
                 c.id.toLowerCase().includes(query)
             );
-            renderCollections(filtered);
+            renderUnifiedList(filtered, grid, emptyEl);
         }, 300));
     }
 
@@ -87,7 +97,9 @@ async function loadUnifiedCatalog(stacEnabled, tipgEnabled) {
 function filterCatalog(type) {
     const collections = window._catalogCollections || [];
     const filtered = type === 'all' ? collections : collections.filter(c => c.type === type);
-    renderCollections(filtered);
+    const grid = document.getElementById('catalog-grid');
+    const emptyEl = document.getElementById('catalog-empty');
+    renderUnifiedList(filtered, grid, emptyEl);
 
     // Update active button styling
     document.querySelectorAll('[data-filter]').forEach(btn => {
@@ -98,13 +110,12 @@ function filterCatalog(type) {
 
 
 /**
- * Render collection cards into the catalog grid.
+ * Render unified collection rows.
  * @param {Array} collections - Array of collection objects
+ * @param {HTMLElement} grid - Container element
+ * @param {HTMLElement} emptyEl - Empty state element
  */
-function renderCollections(collections) {
-    const grid = document.getElementById('catalog-grid');
-    const emptyEl = document.getElementById('catalog-empty');
-
+function renderUnifiedList(collections, grid, emptyEl) {
     if (collections.length === 0) {
         grid.innerHTML = '';
         if (emptyEl) emptyEl.classList.remove('hidden');
@@ -112,17 +123,52 @@ function renderCollections(collections) {
     }
     if (emptyEl) emptyEl.classList.add('hidden');
 
-    grid.innerHTML = collections.map(c => `
-        <a href="${escapeHtml(c.href)}" class="card-link">
-            <div class="card collection-card">
-                <div class="card-header">
-                    <h3>${escapeHtml(c.title)}</h3>
-                    <span class="badge badge-${c.type === 'raster' ? 'info' : 'healthy'}">${escapeHtml(c.type)}</span>
+    const countHtml = `<div class="catalog-count">${collections.length} collection${collections.length !== 1 ? 's' : ''}</div>`;
+
+    grid.innerHTML = countHtml + '<div class="catalog-list">' + collections.map(c => {
+        const typeBadge = c.type === 'raster'
+            ? '<span class="badge badge-raster">Raster</span>'
+            : '<span class="badge badge-vector">Vector</span>';
+
+        const sourceBadge = c.source === 'stac'
+            ? '<span class="badge badge-stac">STAC</span>'
+            : '<span class="badge badge-ogc">OGC</span>';
+
+        // Build metadata items
+        const metaItems = [];
+        metaItems.push(metaItem('Platform', c.source === 'stac' ? 'STAC API' : 'TiPG / PostGIS'));
+        if (c.stac_version) metaItems.push(metaItem('STAC Version', c.stac_version));
+        if (c.license) metaItems.push(metaItem('License', c.license));
+        if (c.itemType) metaItems.push(metaItem('Item Type', c.itemType));
+
+        const spatial = formatBbox(c.extent);
+        if (spatial) metaItems.push(metaItem('Bbox', spatial));
+
+        const temporal = formatExtent(c.extent);
+        if (temporal) metaItems.push(metaItem('Temporal', temporal));
+
+        if (c.crs) metaItems.push(metaItem('CRS', formatCrs(c.crs)));
+
+        return `
+            <div class="catalog-row">
+                <div class="catalog-row-header">
+                    <h3 class="catalog-row-title">${escapeHtml(c.title)}</h3>
+                    ${typeBadge}
+                    ${sourceBadge}
+                    <span class="catalog-row-id">${escapeHtml(c.id)}</span>
                 </div>
-                <p>${escapeHtml(c.description).substring(0, 150)}</p>
+                ${c.description ? `<div class="catalog-row-description">${escapeHtml(c.description)}</div>` : ''}
+                <div class="catalog-row-meta">
+                    ${metaItems.join('')}
+                </div>
+                <div class="catalog-row-actions">
+                    <a href="${escapeHtml(c.href)}" class="btn btn-primary btn-sm">View on Map</a>
+                    <a href="${escapeHtml(c.itemsHref)}" class="btn btn-secondary btn-sm" target="_blank">Browse ${c.type === 'raster' ? 'Items' : 'Features'}</a>
+                    <a href="${escapeHtml(c.apiHref)}" class="btn btn-secondary btn-sm" target="_blank">API JSON</a>
+                </div>
             </div>
-        </a>
-    `).join('');
+        `;
+    }).join('') + '</div>';
 }
 
 
@@ -152,11 +198,16 @@ async function loadStacCatalog() {
         id: c.id,
         title: c.title || c.id,
         description: c.description || '',
+        stac_version: c.stac_version || null,
+        license: c.license || null,
         extent: c.extent,
         links: c.links || [],
     }));
 
-    renderStacCollections(collections, grid, emptyEl);
+    // Sort alphabetically
+    collections.sort((a, b) => a.title.localeCompare(b.title));
+
+    renderStacList(collections, grid, emptyEl);
 
     // Wire up search
     const searchInput = document.getElementById('stac-search');
@@ -168,18 +219,18 @@ async function loadStacCatalog() {
                 c.description.toLowerCase().includes(query) ||
                 c.id.toLowerCase().includes(query)
             );
-            renderStacCollections(filtered, grid, emptyEl);
+            renderStacList(filtered, grid, emptyEl);
         }, 300));
     }
 }
 
 /**
- * Render STAC collection cards with detailed metadata.
+ * Render STAC collection rows with detailed metadata.
  * @param {Array} collections - STAC collection objects
- * @param {HTMLElement} grid - Grid container element
+ * @param {HTMLElement} grid - Container element
  * @param {HTMLElement} emptyEl - Empty state element
  */
-function renderStacCollections(collections, grid, emptyEl) {
+function renderStacList(collections, grid, emptyEl) {
     if (collections.length === 0) {
         grid.innerHTML = '';
         if (emptyEl) emptyEl.classList.remove('hidden');
@@ -187,24 +238,40 @@ function renderStacCollections(collections, grid, emptyEl) {
     }
     if (emptyEl) emptyEl.classList.add('hidden');
 
-    grid.innerHTML = collections.map(c => {
+    const countHtml = `<div class="catalog-count">${collections.length} STAC collection${collections.length !== 1 ? 's' : ''}</div>`;
+
+    grid.innerHTML = countHtml + '<div class="catalog-list">' + collections.map(c => {
         const viewerUrl = buildViewerUrl('raster', { collection: c.id });
         const temporal = formatExtent(c.extent);
+        const spatial = formatBbox(c.extent);
+
+        const metaItems = [];
+        metaItems.push(metaItem('Platform', 'STAC API'));
+        if (c.stac_version) metaItems.push(metaItem('STAC Version', c.stac_version));
+        if (c.license) metaItems.push(metaItem('License', c.license));
+        if (spatial) metaItems.push(metaItem('Bbox', spatial));
+        if (temporal) metaItems.push(metaItem('Temporal', temporal));
+
         return `
-            <div class="card collection-card" onclick="showCollectionDetail(${escapeHtml(JSON.stringify(JSON.stringify(c)))})">
-                <div class="card-header">
-                    <h3>${escapeHtml(c.title)}</h3>
-                    <span class="badge badge-info">STAC</span>
+            <div class="catalog-row">
+                <div class="catalog-row-header">
+                    <h3 class="catalog-row-title">${escapeHtml(c.title)}</h3>
+                    <span class="badge badge-raster">Raster</span>
+                    <span class="badge badge-stac">STAC</span>
+                    <span class="catalog-row-id">${escapeHtml(c.id)}</span>
                 </div>
-                <p>${escapeHtml(c.description).substring(0, 200)}</p>
-                ${temporal ? `<p class="text-muted">${escapeHtml(temporal)}</p>` : ''}
-                <div class="btn-group" style="margin-top: var(--space-sm);">
-                    <a href="${escapeHtml(viewerUrl)}" class="btn btn-primary btn-sm" onclick="event.stopPropagation()">View on Map</a>
-                    <a href="/stac/collections/${escapeHtml(c.id)}/items" class="btn btn-secondary btn-sm" target="_blank" onclick="event.stopPropagation()">Browse Items</a>
+                ${c.description ? `<div class="catalog-row-description">${escapeHtml(c.description)}</div>` : ''}
+                <div class="catalog-row-meta">
+                    ${metaItems.join('')}
+                </div>
+                <div class="catalog-row-actions">
+                    <a href="${escapeHtml(viewerUrl)}" class="btn btn-primary btn-sm">View on Map</a>
+                    <a href="/stac/collections/${escapeHtml(c.id)}/items" class="btn btn-secondary btn-sm" target="_blank">Browse Items</a>
+                    <a href="/stac/collections/${escapeHtml(c.id)}" class="btn btn-secondary btn-sm" target="_blank">API JSON</a>
                 </div>
             </div>
         `;
-    }).join('');
+    }).join('') + '</div>';
 }
 
 
@@ -220,7 +287,7 @@ async function loadVectorCatalog() {
     const grid = document.getElementById('vector-grid');
     const emptyEl = document.getElementById('vector-empty');
 
-    const result = await fetchJSON('/vector/collections');
+    const result = await fetchJSON('/vector/collections?f=json');
     if (!result.ok) {
         grid.innerHTML = '';
         if (emptyEl) {
@@ -236,10 +303,16 @@ async function loadVectorCatalog() {
             id: c.id,
             title: c.title || c.id,
             description: c.description || '',
+            itemType: c.itemType || 'feature',
+            crs: (c.crs && c.crs[0]) ? c.crs[0] : null,
+            extent: c.extent,
             links: c.links || [],
         }));
 
-    renderVectorCollections(collections, grid, emptyEl);
+    // Sort alphabetically
+    collections.sort((a, b) => a.title.localeCompare(b.title));
+
+    renderVectorList(collections, grid, emptyEl);
 
     // Wire up search
     const searchInput = document.getElementById('vector-search');
@@ -251,18 +324,18 @@ async function loadVectorCatalog() {
                 c.description.toLowerCase().includes(query) ||
                 c.id.toLowerCase().includes(query)
             );
-            renderVectorCollections(filtered, grid, emptyEl);
+            renderVectorList(filtered, grid, emptyEl);
         }, 300));
     }
 }
 
 /**
- * Render Vector collection cards.
+ * Render Vector collection rows.
  * @param {Array} collections - Vector collection objects
- * @param {HTMLElement} grid - Grid container element
+ * @param {HTMLElement} grid - Container element
  * @param {HTMLElement} emptyEl - Empty state element
  */
-function renderVectorCollections(collections, grid, emptyEl) {
+function renderVectorList(collections, grid, emptyEl) {
     if (collections.length === 0) {
         grid.innerHTML = '';
         if (emptyEl) emptyEl.classList.remove('hidden');
@@ -270,29 +343,43 @@ function renderVectorCollections(collections, grid, emptyEl) {
     }
     if (emptyEl) emptyEl.classList.add('hidden');
 
-    grid.innerHTML = collections.map(c => {
+    const countHtml = `<div class="catalog-count">${collections.length} vector collection${collections.length !== 1 ? 's' : ''}</div>`;
+
+    grid.innerHTML = countHtml + '<div class="catalog-list">' + collections.map(c => {
         const viewerUrl = buildViewerUrl('vector', { collection: c.id });
+        const spatial = formatBbox(c.extent);
+
+        const metaItems = [];
+        metaItems.push(metaItem('Platform', 'TiPG / PostGIS'));
+        if (c.itemType) metaItems.push(metaItem('Item Type', c.itemType));
+        if (spatial) metaItems.push(metaItem('Bbox', spatial));
+        if (c.crs) metaItems.push(metaItem('CRS', formatCrs(c.crs)));
+
         return `
-            <a href="${escapeHtml(viewerUrl)}" class="card-link">
-                <div class="card collection-card">
-                    <div class="card-header">
-                        <h3>${escapeHtml(c.title)}</h3>
-                        <span class="badge badge-healthy">vector</span>
-                    </div>
-                    <p>${escapeHtml(c.description).substring(0, 200)}</p>
-                    <div class="btn-group" style="margin-top: var(--space-sm);">
-                        <span class="btn btn-primary btn-sm">View on Map</span>
-                        <a href="/vector/collections/${escapeHtml(c.id)}/items?limit=10" class="btn btn-secondary btn-sm" target="_blank" onclick="event.stopPropagation()">Browse Features</a>
-                    </div>
+            <div class="catalog-row">
+                <div class="catalog-row-header">
+                    <h3 class="catalog-row-title">${escapeHtml(c.title)}</h3>
+                    <span class="badge badge-vector">Vector</span>
+                    <span class="badge badge-ogc">OGC</span>
+                    <span class="catalog-row-id">${escapeHtml(c.id)}</span>
                 </div>
-            </a>
+                ${c.description ? `<div class="catalog-row-description">${escapeHtml(c.description)}</div>` : ''}
+                <div class="catalog-row-meta">
+                    ${metaItems.join('')}
+                </div>
+                <div class="catalog-row-actions">
+                    <a href="${escapeHtml(viewerUrl)}" class="btn btn-primary btn-sm">View on Map</a>
+                    <a href="/vector/collections/${escapeHtml(c.id)}/items?limit=10" class="btn btn-secondary btn-sm" target="_blank">Browse Features</a>
+                    <a href="/vector/collections/${escapeHtml(c.id)}" class="btn btn-secondary btn-sm" target="_blank">API JSON</a>
+                </div>
+            </div>
         `;
-    }).join('');
+    }).join('') + '</div>';
 }
 
 
 // ============================================================================
-// Collection Detail
+// Collection Detail (STAC detail panel)
 // ============================================================================
 
 /**
@@ -309,9 +396,13 @@ function showCollectionDetail(collectionJson) {
 
     const metadata = document.getElementById('detail-metadata');
     const temporal = formatExtent(c.extent);
+    const spatial = formatBbox(c.extent);
     metadata.innerHTML = `
         <table class="data-table">
             <tr><td><strong>ID</strong></td><td><code>${escapeHtml(c.id)}</code></td></tr>
+            ${c.stac_version ? `<tr><td><strong>STAC Version</strong></td><td>${escapeHtml(c.stac_version)}</td></tr>` : ''}
+            ${c.license ? `<tr><td><strong>License</strong></td><td>${escapeHtml(c.license)}</td></tr>` : ''}
+            ${spatial ? `<tr><td><strong>Bbox</strong></td><td><code>${escapeHtml(spatial)}</code></td></tr>` : ''}
             ${temporal ? `<tr><td><strong>Temporal</strong></td><td>${escapeHtml(temporal)}</td></tr>` : ''}
         </table>
     `;
@@ -328,11 +419,24 @@ function showCollectionDetail(collectionJson) {
 
 
 // ============================================================================
-// Extent Formatter
+// Helpers
 // ============================================================================
 
 /**
- * Format a STAC extent object into a human-readable string.
+ * Build a metadata item HTML snippet.
+ * @param {string} label - Label text
+ * @param {string} value - Value text
+ * @returns {string} HTML string
+ */
+function metaItem(label, value) {
+    return `<div class="catalog-meta-item">
+        <span class="catalog-meta-label">${escapeHtml(label)}</span>
+        <span class="catalog-meta-value">${escapeHtml(value)}</span>
+    </div>`;
+}
+
+/**
+ * Format a STAC extent object into a human-readable temporal string.
  * @param {object} extent - STAC extent object with temporal/spatial
  * @returns {string} Formatted extent description or empty string
  */
@@ -345,4 +449,30 @@ function formatExtent(extent) {
     const start = interval[0] ? interval[0].substring(0, 10) : 'open';
     const end = interval[1] ? interval[1].substring(0, 10) : 'present';
     return start + ' to ' + end;
+}
+
+/**
+ * Format spatial bbox from extent object.
+ * @param {object} extent - Extent object with spatial.bbox
+ * @returns {string} Formatted bbox string or empty string
+ */
+function formatBbox(extent) {
+    if (!extent || !extent.spatial || !extent.spatial.bbox) return '';
+    const bbox = extent.spatial.bbox[0];
+    if (!bbox || bbox.length < 4) return '';
+    return bbox.map(v => Number(v).toFixed(2)).join(', ');
+}
+
+/**
+ * Format a CRS URI to a short readable name.
+ * @param {string} crs - CRS URI string
+ * @returns {string} Short CRS name
+ */
+function formatCrs(crs) {
+    if (!crs) return '';
+    if (crs.includes('CRS84')) return 'WGS 84 (CRS84)';
+    if (crs.includes('4326')) return 'EPSG:4326';
+    // Return last segment of URI
+    const parts = crs.split('/');
+    return parts[parts.length - 1] || crs;
 }
