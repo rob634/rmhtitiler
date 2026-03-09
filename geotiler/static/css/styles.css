@@ -1811,7 +1811,7 @@ tr:hover {
 }
 
 /* ==========================================================================
-   Collection Cards
+   Collection Cards (legacy grid cards)
    ========================================================================== */
 .collection-card {
     background: var(--color-white);
@@ -1824,6 +1824,119 @@ tr:hover {
 .collection-card:hover {
     border-color: var(--color-primary);
     box-shadow: var(--shadow-sm);
+}
+
+/* ==========================================================================
+   Catalog List (full-width row layout)
+   ========================================================================== */
+.catalog-list {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-md);
+    margin: var(--space-lg) 0;
+}
+
+.catalog-row {
+    background: var(--color-white);
+    border: 1px solid var(--color-gray-light);
+    border-radius: var(--radius-lg);
+    padding: var(--space-lg);
+    transition: border-color 0.2s, box-shadow 0.2s;
+}
+
+.catalog-row:hover {
+    border-color: var(--color-primary);
+    box-shadow: var(--shadow-md);
+}
+
+.catalog-row-header {
+    display: flex;
+    align-items: center;
+    gap: var(--space-sm);
+    margin-bottom: var(--space-sm);
+    flex-wrap: wrap;
+}
+
+.catalog-row-title {
+    font-size: 1.1rem;
+    font-weight: 700;
+    color: var(--color-navy);
+    font-family: var(--font-sans);
+    margin: 0;
+}
+
+.catalog-row-description {
+    color: var(--color-gray);
+    font-size: 0.9rem;
+    line-height: 1.5;
+    margin-bottom: var(--space-md);
+}
+
+.catalog-row-meta {
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--space-sm) var(--space-lg);
+    margin-bottom: var(--space-md);
+    font-size: 0.82rem;
+    color: var(--color-gray);
+}
+
+.catalog-meta-item {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+}
+
+.catalog-meta-label {
+    font-weight: 600;
+    color: var(--color-navy);
+    text-transform: uppercase;
+    letter-spacing: 0.3px;
+    font-size: 0.72rem;
+}
+
+.catalog-meta-value {
+    font-family: var(--font-mono);
+    font-size: 0.8rem;
+    color: var(--color-gray);
+}
+
+.catalog-row-actions {
+    display: flex;
+    gap: var(--space-sm);
+    flex-wrap: wrap;
+}
+
+.catalog-row-id {
+    font-family: var(--font-mono);
+    font-size: 0.78rem;
+    color: var(--color-gray);
+    background: var(--color-bg);
+    padding: 2px 6px;
+    border-radius: var(--radius-sm);
+}
+
+/* Badge variants for catalog */
+.badge-raster { background: #e8f4fc; color: var(--color-cyan); }
+.badge-vector { background: #d1fae5; color: var(--color-success); }
+.badge-stac { background: #ede9fe; color: #7c3aed; }
+.badge-ogc { background: #fef3c7; color: var(--color-warning); }
+
+.catalog-count {
+    font-size: 0.85rem;
+    color: var(--color-gray);
+    margin-bottom: var(--space-md);
+}
+
+@media (max-width: 640px) {
+    .catalog-row-meta {
+        flex-direction: column;
+        gap: var(--space-xs);
+    }
+    .catalog-row-header {
+        flex-direction: column;
+        align-items: flex-start;
+    }
 }
 
 /* ==========================================================================
