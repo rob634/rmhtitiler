@@ -196,6 +196,12 @@ All app variables use the `GEOTILER_COMPONENT_SETTING` naming convention.
 | `GEOTILER_STAC_PREFIX` | URL prefix for STAC routes | `/stac` |
 | `AZURE_TENANT_ID` | Azure AD tenant ID (third-party, not prefixed) | `{tenant-guid}` |
 
+#### Database Connection Notes
+
+The main database connection (used by pgSTAC mosaics and stac-fastapi) is built with `search_path=pgstac,public`. This ensures stac-fastapi-pgstac can call unqualified pgstac SQL functions like `all_collections()` and `search()`. The TiPG connection additionally includes the `geo` schema: `search_path=geo,pgstac,public`.
+
+**Important:** Do not install the `postgis_raster` extension alongside `postgis`. It creates ambiguous `ST_Transform()` overloads that break TiPG bbox queries. See `docs/TIPG_BBOX_ISSUE.md` for details.
+
 #### Observability Settings
 
 | Variable | Purpose | Default |

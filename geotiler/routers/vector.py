@@ -23,7 +23,29 @@ from tipg.collections import register_collection_catalog
 from tipg.factory import Endpoints as TiPGEndpoints
 
 # Import STAC API database function for pool sharing
-from stac_fastapi.pgstac.db import get_connection as stac_get_connection
+from contextlib import asynccontextmanager
+from collections.abc import AsyncIterator
+from typing import Literal
+from asyncpg import Connection
+from fastapi import Request
+from stac_fastapi.pgstac.db import get_connection as _stac_get_connection_raw
+
+
+@asynccontextmanager
+async def stac_get_connection(
+    request: Request,
+    readwrite: Literal["r", "w"] = "r",
+) -> AsyncIterator[Connection]:
+    """Wrap stac-fastapi get_connection to set search_path on every acquire.
+
+    asyncpg runs RESET ALL when returning connections to the pool, which clears
+    the search_path set by TiPG's init callback. stac-fastapi-pgstac calls
+    pgstac functions (e.g. all_collections) without schema qualification,
+    so we must ensure pgstac is in the search_path for every connection.
+    """
+    async with _stac_get_connection_raw(request, readwrite) as conn:
+        await conn.execute("SET search_path TO pgstac, public;")
+        yield conn
 
 from geotiler.config import settings
 from geotiler.auth.postgres import get_postgres_credential, build_database_url

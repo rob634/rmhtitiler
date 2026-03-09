@@ -102,7 +102,7 @@ az appservice plan create --name rmhtitiler-plan --resource-group rmhazure_rg \
 # Create Web App
 az webapp create --name rmhtitiler --resource-group rmhazure_rg \
   --plan rmhtitiler-plan \
-  --container-image-name rmhazureacr.azurecr.io/rmhtitiler:v0.9.2.2
+  --container-image-name rmhazureacr.azurecr.io/rmhtitiler:v<version>
 
 # Required App Service settings
 az webapp config set --resource-group rmhazure_rg --name rmhtitiler \
@@ -358,14 +358,14 @@ These are third-party variables (no `GEOTILER_` prefix) that tune COG tile perfo
 
 ```bash
 az acr build --registry rmhazureacr --resource-group rmhazure_rg \
-  --image rmhtitiler:v0.9.2.2 .
+  --image rmhtitiler:v<version> .
 ```
 
 ### Deploy to App Service
 
 ```bash
 az webapp config container set --name rmhtitiler --resource-group rmhazure_rg \
-  --container-image-name rmhazureacr.azurecr.io/rmhtitiler:v0.9.2.2
+  --container-image-name rmhazureacr.azurecr.io/rmhtitiler:v<version>
 
 az webapp restart --name rmhtitiler --resource-group rmhazure_rg
 ```

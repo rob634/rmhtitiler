@@ -48,10 +48,5 @@ stac-fastapi.pgstac>=4.0.0
 PyJWT>=2.10.1
 cryptography>=44.0.1
 
-# --- Icechunk (virtual Zarr references) ------------------------------------
-# Cloud-native transactional tensor storage for VirtualiZarr references
-# Used by titiler.xarray custom opener for virtual Zarr stores
-icechunk>=1.1.9
-
 # --- H3 Explorer (optional, gated by ENABLE_H3_DUCKDB) --------------------
 duckdb>=1.1.0

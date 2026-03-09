@@ -1,6 +1,6 @@
 # TiTiler-xarray Implementation Guide
 
-**Version: 0.3.0** | **Status: Phase 1 Complete + Planetary Computer Support + Production Verified** ✅
+**Status: Production Verified** | v0.9.x uses titiler.xarray 0.24.x (pgstac 1.9.0), v0.10.x uses titiler.xarray 1.2.x (pgstac 2.1.0)
 
 ## Overview
 

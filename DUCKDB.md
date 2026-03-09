@@ -97,32 +97,7 @@ Returns H3 hexagon data for a given crop, technology level, and climate scenario
 
 ## Health Monitoring
 
-The `/health` endpoint reports `h3_duckdb` as a service:
-
-```json
-{
-    "services": {
-        "h3_duckdb": {
-            "status": "healthy",
-            "available": true,
-            "description": "H3 server-side DuckDB query engine",
-            "endpoints": ["/h3/query"],
-            "details": {
-                "init_success": true,
-                "last_init_time": "2025-01-15T10:30:00Z",
-                "row_count": 230000,
-                "columns": ["h3_index", "whea_a_production_mt", "..."],
-                "parquet_path": "/app/data/h3_data.parquet",
-                "download_time_ms": 3200.5
-            }
-        }
-    }
-}
-```
-
-Status values: `healthy` (working), `unavailable` (init failed), `disabled` (feature flag off).
-
-DuckDB is **not** included in `/readyz` — it is optional and feature-flagged. Its failure does not affect COG, TiPG, STAC, or pgSTAC services.
+H3 DuckDB is **not** included in `/health` or `/readyz` — it is optional and feature-flagged. Its failure does not affect COG, TiPG, STAC, or pgSTAC services. Check `/h3/query` directly to verify DuckDB is operational.
 
 ## Input Validation
 
