@@ -164,7 +164,7 @@ async def _initialize_database(app: FastAPI) -> None:
         return
 
     # Build connection URL
-    database_url = build_database_url(credential)
+    database_url = build_database_url(credential, search_path="pgstac,public")
 
     logger.info(f"Connecting to PostgreSQL...")
     logger.info(f"  Host: {settings.pg_host}")

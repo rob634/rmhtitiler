@@ -85,7 +85,7 @@ async def _refresh_postgres_with_pool_recreation(app: "FastAPI"):
             return
 
         # Rebuild DATABASE_URL with new token
-        new_database_url = build_database_url(new_token)
+        new_database_url = build_database_url(new_token, search_path="pgstac,public")
 
         # 1. Refresh titiler-pgstac pool (psycopg, app.state.dbpool)
         #    Atomic swap: create new pool first, then close old pool.
