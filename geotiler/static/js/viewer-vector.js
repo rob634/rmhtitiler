@@ -135,10 +135,10 @@ function displayCollectionMetadata(result) {
 
         var extent = result.data.bbox;
         metadataGrid.innerHTML =
-            '<div class="metadata-item"><div class="metadata-label">Features</div><div class="metadata-value">' + matched + '</div></div>' +
+            '<div class="metadata-item"><div class="metadata-label">Features</div><div class="metadata-value">' + escapeHtml(String(matched)) + '</div></div>' +
             '<div class="metadata-item"><div class="metadata-label">Format</div><div class="metadata-value mono">OGC</div></div>' +
             (extent ? '<div class="metadata-item full-width"><div class="metadata-label">Extent</div><div class="metadata-value mono">' +
-                extent.map(function(v) { return v.toFixed(4); }).join(', ') + '</div></div>' : '');
+                escapeHtml(extent.map(function(v) { return v != null ? v.toFixed(4) : '?'; }).join(', ')) + '</div></div>' : '');
     } else {
         featureCountEl.textContent = '';
         metadataGrid.innerHTML = '<div style="font-size:0.8rem;color:var(--color-gray);">Error loading metadata</div>';
