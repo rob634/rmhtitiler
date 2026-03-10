@@ -7,6 +7,7 @@
 let zarrMap = null;
 let currentZarrUrl = null;
 let zarrInfo = null;
+let zarrLoadGen = 0;
 
 const ZARR_SOURCE_ID = 'zarr-tiles';
 const ZARR_LAYER_ID = 'zarr-layer';
@@ -68,9 +69,11 @@ async function loadZarr() {
     currentZarrUrl = url;
     setQueryParam('url', url);
     showLoading(true);
+    const myGen = ++zarrLoadGen;
 
     // Fetch XArray info
     const result = await fetchJSON('/xarray/info?url=' + encodeURIComponent(url));
+    if (myGen !== zarrLoadGen) return;
     if (!result.ok) {
         showNotification(result.error || 'Failed to load dataset info', 'error');
         showLoading(false);

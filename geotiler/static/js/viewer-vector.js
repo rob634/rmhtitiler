@@ -9,6 +9,7 @@ let currentCollectionId = null;
 let currentRenderMode = 'mvt';
 let popup = null;
 let activeClickHandlers = [];
+let vectorLoadGen = 0;
 
 const VECTOR_SOURCE_ID = 'vector-data';
 const VECTOR_FILL_LAYER = 'vector-fill';
@@ -94,6 +95,7 @@ async function loadCollection(collectionId) {
     currentCollectionId = collectionId;
     setQueryParam('collection', collectionId);
     showLoading(true);
+    const myGen = ++vectorLoadGen;
 
     // Show collection info
     const infoPanel = document.getElementById('collection-info');
@@ -102,6 +104,7 @@ async function loadCollection(collectionId) {
     // Fetch items once, share between metadata and schema
     const prefix = '/vector/collections/' + encodeURIComponent(collectionId);
     const itemsResult = await fetchJSON(prefix + '/items?limit=1');
+    if (myGen !== vectorLoadGen) return;
 
     displayCollectionMetadata(itemsResult);
     displaySchema(itemsResult);
@@ -113,10 +116,11 @@ async function loadCollection(collectionId) {
 
     // Add layer based on current render mode
     if (currentRenderMode === 'mvt') {
-        addMvtLayer(collectionId);
+        await addMvtLayer(collectionId);
     } else {
-        addGeoJsonLayer(collectionId);
+        await addGeoJsonLayer(collectionId);
     }
+    if (myGen !== vectorLoadGen) return;
 
     showLoading(false);
 }
@@ -199,17 +203,36 @@ function toggleSection(id) {
 
 /**
  * Add MVT vector tile layer for a collection.
+ * Uses TileJSON for robust tile URL resolution, bounds, and zoom levels.
  * @param {string} collectionId - Collection identifier
  */
-function addMvtLayer(collectionId) {
+async function addMvtLayer(collectionId) {
     removeVectorLayer();
 
-    const tileUrl = '/vector/collections/' + encodeURIComponent(collectionId) + '/tiles/WebMercatorQuad/{z}/{x}/{y}';
+    const prefix = '/vector/collections/' + encodeURIComponent(collectionId);
+    const tilejsonUrl = prefix + '/tiles/WebMercatorQuad/tilejson.json';
+
+    // Fetch TileJSON for bounds and proper tile URL
+    const tj = await fetchJSON(tilejsonUrl);
+    if (!tj.ok) {
+        showNotification('Failed to load TileJSON: ' + (tj.error || 'unknown error'), 'error');
+        return;
+    }
+
+    const tilejson = tj.data;
 
     vectorMap.addSource(VECTOR_SOURCE_ID, {
         type: 'vector',
-        tiles: [tileUrl],
+        tiles: tilejson.tiles,
+        minzoom: tilejson.minzoom || 0,
+        maxzoom: tilejson.maxzoom || 22,
+        bounds: tilejson.bounds,
     });
+
+    // Determine source-layer name from TileJSON (fallback to 'default')
+    const sourceLayer = (tilejson.vector_layers && tilejson.vector_layers[0])
+        ? tilejson.vector_layers[0].id
+        : 'default';
 
     const fillColor = document.getElementById('fill-color').value;
     const fillOpacity = parseFloat(document.getElementById('fill-opacity').value);
@@ -222,7 +245,7 @@ function addMvtLayer(collectionId) {
         id: VECTOR_FILL_LAYER,
         type: 'fill',
         source: VECTOR_SOURCE_ID,
-        'source-layer': 'default',
+        'source-layer': sourceLayer,
         paint: {
             'fill-color': fillColor,
             'fill-opacity': fillOpacity,
@@ -235,7 +258,7 @@ function addMvtLayer(collectionId) {
         id: VECTOR_LINE_LAYER,
         type: 'line',
         source: VECTOR_SOURCE_ID,
-        'source-layer': 'default',
+        'source-layer': sourceLayer,
         paint: {
             'line-color': strokeColor,
             'line-width': strokeWidth,
@@ -247,7 +270,7 @@ function addMvtLayer(collectionId) {
         id: VECTOR_POINT_LAYER,
         type: 'circle',
         source: VECTOR_SOURCE_ID,
-        'source-layer': 'default',
+        'source-layer': sourceLayer,
         paint: {
             'circle-color': fillColor,
             'circle-radius': pointRadius,
@@ -256,6 +279,12 @@ function addMvtLayer(collectionId) {
         },
         filter: ['==', '$type', 'Point'],
     });
+
+    // Auto-zoom to data extent
+    if (tilejson.bounds && tilejson.bounds.length === 4) {
+        const b = tilejson.bounds;
+        vectorMap.fitBounds([[b[0], b[1]], [b[2], b[3]]], { padding: 50 });
+    }
 
     // Click handlers for feature inspection
     setupClickHandlers();

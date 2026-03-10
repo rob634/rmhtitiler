@@ -9,6 +9,7 @@ let h3Map = null;
 let deckOverlay = null;
 let currentH3Data = [];
 let currentPalette = 'emergency_red';
+let h3LoadGen = 0;
 
 
 // ============================================================================
@@ -99,12 +100,14 @@ async function queryH3() {
     const scenario = document.getElementById('scenario-select').value;
 
     showLoading(true);
+    const myGen = ++h3LoadGen;
 
     const url = '/h3/query?crop=' + encodeURIComponent(crop)
         + '&tech=' + encodeURIComponent(tech)
         + '&scenario=' + encodeURIComponent(scenario);
 
     const result = await fetchJSON(url);
+    if (myGen !== h3LoadGen) return;
     showLoading(false);
 
     if (!result.ok) {

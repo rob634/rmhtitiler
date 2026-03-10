@@ -10,6 +10,7 @@ let cogInfo = null;
 let currentStretch = 'auto';
 let pointQueryActive = false;
 let allBandStats = null;
+let rasterLoadGen = 0;
 
 const SOURCE_ID = 'raster-tiles';
 const LAYER_ID = 'raster-layer';
@@ -87,9 +88,11 @@ async function loadRaster() {
     currentCogUrl = url;
     setQueryParam('url', url);
     showLoading(true);
+    const myGen = ++rasterLoadGen;
 
     // Fetch COG info
     const result = await fetchJSON('/cog/info?url=' + encodeURIComponent(url));
+    if (myGen !== rasterLoadGen) return;
     if (!result.ok) {
         showNotification(result.error || 'Failed to load COG info', 'error');
         showLoading(false);
@@ -102,6 +105,7 @@ async function loadRaster() {
 
     // Fetch statistics
     await fetchStatistics(url);
+    if (myGen !== rasterLoadGen) return;
 
     addTileLayer(url, cogInfo.bounds);
     showLoading(false);
