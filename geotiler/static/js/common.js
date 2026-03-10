@@ -104,9 +104,11 @@ async function fetchJSON(url, options = {}) {
         const fetchOptions = {
             method,
             signal: controller.signal,
-            headers: { 'Content-Type': 'application/json' },
         };
-        if (body) fetchOptions.body = JSON.stringify(body);
+        if (body) {
+            fetchOptions.headers = { 'Content-Type': 'application/json' };
+            fetchOptions.body = JSON.stringify(body);
+        }
 
         const response = await fetch(url, fetchOptions);
         const data = await response.json();
