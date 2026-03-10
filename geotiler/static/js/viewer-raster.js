@@ -132,8 +132,8 @@ function displayMetadata(info) {
     metadata.innerHTML =
         '<div class="metadata-item"><div class="metadata-label">Bands</div><div class="metadata-value">' + escapeHtml(String(bandCount)) + '</div></div>' +
         '<div class="metadata-item"><div class="metadata-label">Data Type</div><div class="metadata-value mono">' + escapeHtml(info.dtype || 'Unknown') + '</div></div>' +
-        (info.width ? '<div class="metadata-item"><div class="metadata-label">Width</div><div class="metadata-value">' + info.width + ' px</div></div>' : '') +
-        (info.height ? '<div class="metadata-item"><div class="metadata-label">Height</div><div class="metadata-value">' + info.height + ' px</div></div>' : '') +
+        (info.width ? '<div class="metadata-item"><div class="metadata-label">Width</div><div class="metadata-value">' + escapeHtml(String(info.width)) + ' px</div></div>' : '') +
+        (info.height ? '<div class="metadata-item"><div class="metadata-label">Height</div><div class="metadata-value">' + escapeHtml(String(info.height)) + ' px</div></div>' : '') +
         '<div class="metadata-item"><div class="metadata-label">CRS</div><div class="metadata-value mono">' + escapeHtml(info.crs || 'Unknown') + '</div></div>' +
         '<div class="metadata-item full-width"><div class="metadata-label">Bounds</div><div class="metadata-value mono">' + escapeHtml(boundsStr) + '</div></div>' +
         (info.nodata !== null && info.nodata !== undefined ?
