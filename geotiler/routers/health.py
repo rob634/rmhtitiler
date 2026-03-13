@@ -308,31 +308,55 @@ async def health(request: Request, response: Response):
         )
 
 
-    # STAC API
+    # STAC API — has its own asyncpg pool (independent of TiPG)
     if settings.enable_stac_api:
-        if settings.enable_tipg and tipg_ok:
-            # Canary query: verify search_path includes pgstac schema
-            # This catches the asyncpg RESET ALL problem where search_path
-            # gets wiped and all_collections() becomes unfindable
-            stac_canary_ok = False
-            stac_canary_detail = {}
-            try:
-                app_state = get_app_state_from_request(request)
-                pool = getattr(app_state, "pool", None)
-                if pool:
-                    async with pool.acquire() as conn:
-                        row = await conn.fetchrow(
-                            "SELECT count(*) AS n FROM all_collections()"
-                        )
-                        stac_canary_ok = True
-                        stac_canary_detail["collection_count"] = row["n"]
-            except Exception as e:
-                stac_canary_detail["error"] = f"{type(e).__name__}: {e}"
-                issues.append(f"STAC canary failed: {stac_canary_detail['error']}")
+        stac_pool = getattr(request.app.state, "readpool", None)
+        stac_pool_ok = stac_pool is not None
+        stac_details = {
+            "router_prefix": settings.stac_prefix,
+            "pool": "independent (asyncpg)",
+        }
 
+        if stac_pool_ok:
+            # Pool diagnostics
+            stac_details["pool_size"] = stac_pool.get_size()
+            stac_details["pool_min"] = stac_pool.get_min_size()
+            stac_details["pool_max"] = stac_pool.get_max_size()
+            stac_details["pool_free"] = stac_pool.get_idle_size()
+
+            # Live probe: verify search_path, db_user, and collection_search()
+            try:
+                async with stac_pool.acquire() as conn:
+                    # db_user and search_path
+                    user_row = await conn.fetchrow("SELECT current_user AS u")
+                    stac_details["db_user"] = user_row["u"] if user_row else "unknown"
+                    sp = await conn.fetchval("SHOW search_path;")
+                    stac_details["search_path"] = sp
+
+                    # pgstac version (schema-qualified for reliability)
+                    try:
+                        ver = await conn.fetchval("SELECT pgstac.get_version()")
+                        stac_details["pgstac_version"] = ver
+                    except Exception:
+                        pass
+
+                    # collection_search() probe (unqualified — relies on server_settings search_path)
+                    result = await conn.fetchval(
+                        "SELECT * FROM collection_search($1::text::jsonb);",
+                        '{}',
+                    )
+                    stac_details["collection_search_ok"] = True
+                    cols = result.get("collections", []) if isinstance(result, dict) else (result or [])
+                    stac_details["collection_count"] = len(cols) if cols else 0
+            except Exception as stac_probe_err:
+                stac_details["collection_search_ok"] = False
+                stac_details["probe_error"] = f"{type(stac_probe_err).__name__}: {stac_probe_err}"
+                issues.append(f"STAC collection_search() probe failed: {stac_probe_err}")
+
+        if stac_pool_ok:
             services["stac_api"] = _build_service_status(
                 name="stac_api",
-                available=stac_canary_ok,
+                available=True,
                 description="STAC catalog browsing and search",
                 endpoints=[
                     "/stac",
@@ -341,30 +365,17 @@ async def health(request: Request, response: Response):
                     "/stac/collections/{id}/items",
                     "/stac/search",
                 ],
-                details={
-                    "router_prefix": settings.stac_prefix,
-                    "pool_shared_with": "tipg",
-                    "canary_query": "ok" if stac_canary_ok else "fail",
-                    **stac_canary_detail,
-                },
+                details=stac_details,
             )
-        elif not settings.enable_tipg:
-            services["stac_api"] = _build_service_status(
-                name="stac_api",
-                available=False,
-                description="STAC catalog browsing and search",
-                endpoints=[],
-                disabled_reason="Requires GEOTILER_ENABLE_TIPG=true (shared database pool)",
-            )
-            issues.append("STAC API requires GEOTILER_ENABLE_TIPG=true")
         else:
             services["stac_api"] = _build_service_status(
                 name="stac_api",
                 available=False,
                 description="STAC catalog browsing and search",
                 endpoints=[],
+                disabled_reason="STAC API pool not initialized",
             )
-            issues.append("STAC API pool not available")
+            issues.append("STAC API pool not initialized")
     else:
         services["stac_api"] = _build_service_status(
             name="stac_api",

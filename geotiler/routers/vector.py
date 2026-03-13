@@ -22,31 +22,6 @@ from tipg.database import close_db_connection as tipg_close_db_connection
 from tipg.collections import register_collection_catalog
 from tipg.factory import Endpoints as TiPGEndpoints
 
-# Import STAC API database function for pool sharing
-from contextlib import asynccontextmanager
-from collections.abc import AsyncIterator
-from typing import Literal
-from asyncpg import Connection
-from fastapi import Request
-from stac_fastapi.pgstac.db import get_connection as _stac_get_connection_raw
-
-
-@asynccontextmanager
-async def stac_get_connection(
-    request: Request,
-    readwrite: Literal["r", "w"] = "r",
-) -> AsyncIterator[Connection]:
-    """Wrap stac-fastapi get_connection to set search_path on every acquire.
-
-    asyncpg runs RESET ALL when returning connections to the pool, which clears
-    the search_path set by TiPG's init callback. stac-fastapi-pgstac calls
-    pgstac functions (e.g. all_collections) without schema qualification,
-    so we must ensure pgstac is in the search_path for every connection.
-    """
-    async with _stac_get_connection_raw(request, readwrite) as conn:
-        await conn.execute("SET search_path TO pgstac, public;")
-        yield conn
-
 from geotiler.config import settings
 from geotiler.auth.postgres import get_postgres_credential, build_database_url
 
@@ -55,34 +30,6 @@ if TYPE_CHECKING:
     from fastapi import FastAPI
 
 logger = logging.getLogger(__name__)
-
-
-def _patch_pool_search_path(pool, schemas: list[str]) -> None:
-    """Patch asyncpg pool with a setup callback that sets search_path on every acquire.
-
-    asyncpg's default pool reset runs RESET ALL on connection return, which clears
-    search_path back to the server/role default. TiPG's init callback only runs for
-    NEW connections, not on reacquire after reset. This setup callback runs on EVERY
-    pool.acquire(), ensuring search_path is always correct for all consumers
-    (TiPG, STAC API, diagnostics, etc.).
-
-    This is the idiomatic asyncpg fix — see asyncpg issue #541.
-    Uses pool._setup (private but stable since asyncpg 0.18).
-
-    Args:
-        pool: asyncpg Pool instance (app.state.pool).
-        schemas: List of schemas to include in search_path.
-    """
-    search_path_schemas = schemas.copy()
-    if "public" not in search_path_schemas:
-        search_path_schemas.append("public")
-    search_path = ", ".join(search_path_schemas)
-
-    async def _setup_search_path(conn):
-        await conn.execute(f"SET search_path TO {search_path};")
-
-    pool._setup = _setup_search_path
-    logger.info(f"Pool setup callback patched: search_path={search_path}")
 
 
 # =============================================================================
@@ -229,11 +176,6 @@ async def initialize_tipg(app: "FastAPI") -> None:
         # Build schemas list for search_path
         schemas = settings.tipg_schema_list.copy()
 
-        # Add pgstac schema if STAC API is enabled (stac-fastapi-pgstac needs it in search_path)
-        if settings.enable_stac_api and "pgstac" not in schemas:
-            schemas.append("pgstac")
-            logger.debug("Added pgstac schema for STAC API support")
-
         # Get settings using our auth system (pass schemas for connection-level search_path)
         postgres_settings = get_tipg_postgres_settings(schemas=schemas)
         db_settings = get_tipg_database_settings()
@@ -241,18 +183,6 @@ async def initialize_tipg(app: "FastAPI") -> None:
         # Create asyncpg connection pool (schemas is required keyword arg)
         await tipg_connect_to_db(app, settings=postgres_settings, schemas=schemas)
         logger.debug(f"TiPG asyncpg pool created: schemas={schemas}")
-
-        # Patch pool with setup callback to set search_path on every acquire
-        # (survives asyncpg's RESET ALL on connection return)
-        _patch_pool_search_path(app.state.pool, schemas)
-
-        # Set up STAC API database aliases to share the pool
-        # stac-fastapi-pgstac expects readpool/writepool and get_connection
-        if settings.enable_stac_api:
-            app.state.readpool = app.state.pool
-            app.state.writepool = app.state.pool
-            app.state.get_connection = stac_get_connection
-            logger.debug("STAC API database aliases configured")
 
         # Register collections from PostGIS schemas
         await register_collection_catalog(app, db_settings=db_settings)
@@ -355,10 +285,6 @@ async def _refresh_tipg_pool_inner(app: "FastAPI") -> None:
         # Build schemas list for search_path
         schemas = settings.tipg_schema_list.copy()
 
-        # Add pgstac schema if STAC API is enabled
-        if settings.enable_stac_api and "pgstac" not in schemas:
-            schemas.append("pgstac")
-
         # Get fresh credentials and settings (pass schemas for connection-level search_path)
         postgres_settings = get_tipg_postgres_settings(schemas=schemas)
         db_settings = get_tipg_database_settings()
@@ -367,17 +293,8 @@ async def _refresh_tipg_pool_inner(app: "FastAPI") -> None:
         # If this fails, old pool remains on app.state.pool (stale token may still work)
         await tipg_connect_to_db(app, settings=postgres_settings, schemas=schemas)
 
-        # Patch new pool with setup callback (same as startup)
-        _patch_pool_search_path(app.state.pool, schemas)
-
         # Re-register collection catalog
         await register_collection_catalog(app, db_settings=db_settings)
-
-        # Re-establish STAC API database aliases (pointing to new pool)
-        if settings.enable_stac_api:
-            app.state.readpool = app.state.pool
-            app.state.writepool = app.state.pool
-            app.state.get_connection = stac_get_connection
 
         # New pool is live — close old pool
         if old_pool and old_pool is not app.state.pool:

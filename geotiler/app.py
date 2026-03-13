@@ -72,6 +72,13 @@ async def lifespan(app: FastAPI):
     if settings.enable_tipg and settings.has_postgres_config:
         await vector.initialize_tipg(app)
 
+    # Initialize STAC API pool (own asyncpg pool with native server_settings)
+    if settings.enable_stac_api and settings.has_postgres_config:
+        try:
+            await stac.initialize_stac_pool(app)
+        except Exception:
+            logger.warning("STAC API pool failed - endpoints will be unavailable")
+
     # Initialize storage OAuth
     initialize_storage_auth()
 
@@ -117,6 +124,10 @@ async def lifespan(app: FastAPI):
     # Close H3 DuckDB
     if settings.enable_h3_duckdb:
         await close_duckdb(app)
+
+    # Close STAC pool (before TiPG - STAC is independent now)
+    if settings.enable_stac_api:
+        await stac.close_stac_pool(app)
 
     # Close TiPG pool
     if settings.enable_tipg:
@@ -376,18 +387,14 @@ def create_app() -> FastAPI:
         app.include_router(diagnostics.router, tags=["Diagnostics"])
 
     # STAC API (stac-fastapi-pgstac)
-    # Note: Requires TiPG to be enabled (shares asyncpg pool)
-    if settings.enable_stac_api and settings.enable_tipg:
+    # Now independent of TiPG — has its own asyncpg pool
+    if settings.enable_stac_api:
         try:
-            # StacApi adds routes directly to app with router_prefix
             stac.create_stac_api(app)
             logger.info(f"STAC API routes added at {settings.stac_prefix}")
         except Exception as e:
             logger.error(f"Failed to create STAC API: {e}")
             logger.warning("STAC API will not be available")
-    elif settings.enable_stac_api and not settings.enable_tipg:
-        logger.warning("STAC API requires TiPG to be enabled (shared pool)")
-        logger.warning("Set GEOTILER_ENABLE_TIPG=true to enable STAC API")
 
     # Landing pages for TiTiler components
     app.include_router(cog_landing.router, tags=["Landing Pages"])
@@ -395,7 +402,7 @@ def create_app() -> FastAPI:
     app.include_router(searches_landing.router, tags=["Landing Pages"])
 
     # STAC Explorer GUI
-    if settings.enable_stac_api and settings.enable_tipg:
+    if settings.enable_stac_api:
         app.include_router(stac_explorer.router, tags=["STAC Explorer"])
 
     # Documentation guides

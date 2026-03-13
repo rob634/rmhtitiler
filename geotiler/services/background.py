@@ -16,6 +16,7 @@ from geotiler.config import settings, BACKGROUND_REFRESH_INTERVAL_SECS
 from geotiler.auth.storage import refresh_storage_token_async
 from geotiler.auth.postgres import refresh_postgres_token_async, build_database_url
 from geotiler.routers.vector import refresh_tipg_pool
+from geotiler.routers.stac import refresh_stac_pool
 
 if TYPE_CHECKING:
     from fastapi import FastAPI
@@ -116,6 +117,13 @@ async def _refresh_postgres_with_pool_recreation(app: "FastAPI"):
                 await refresh_tipg_pool(app)
             except Exception as tipg_err:
                 logger.error(f"Failed to refresh TiPG pool: {tipg_err}")
+
+        # 3. Refresh STAC pool (asyncpg, app.state.readpool)
+        if settings.enable_stac_api:
+            try:
+                await refresh_stac_pool(app)
+            except Exception as stac_err:
+                logger.error(f"Failed to refresh STAC pool: {stac_err}")
 
     except Exception as e:
         logger.error(f"PostgreSQL token refresh failed: {e}")
