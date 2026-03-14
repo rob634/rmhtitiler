@@ -165,9 +165,12 @@ def _build_stac_postgres_settings() -> StacPostgresSettings:
         pghost=settings.pg_host,
         pgport=settings.pg_port,
         pgdatabase=settings.pg_db,
+        db_min_conn_size=settings.pool_stac_min,
+        db_max_conn_size=settings.pool_stac_max,
         server_settings=StacServerSettings(
             search_path="pgstac,public",
             application_name="geotiler-stac",
+            statement_timeout=str(settings.db_statement_timeout_ms),
         ),
     )
 

@@ -179,10 +179,14 @@ def build_database_url(password: str, search_path: Optional[str] = None) -> str:
         f"/{settings.pg_db}?sslmode=require"
     )
 
-    # Add search_path as connection option if specified
+    # Add connection options (search_path, statement_timeout)
+    option_parts = []
     if search_path:
-        # URL-encode the options value
-        options = quote_plus(f"-c search_path={search_path}")
+        option_parts.append(f"-c search_path={search_path}")
+    if settings.db_statement_timeout_ms > 0:
+        option_parts.append(f"-c statement_timeout={settings.db_statement_timeout_ms}")
+    if option_parts:
+        options = quote_plus(" ".join(option_parts))
         url += f"&options={options}"
 
     return url

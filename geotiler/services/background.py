@@ -96,7 +96,11 @@ async def _refresh_postgres_with_pool_recreation(app: "FastAPI"):
 
         try:
             old_pool = getattr(app.state, "dbpool", None)
-            db_settings = PostgresSettings(database_url=new_database_url)
+            db_settings = PostgresSettings(
+                database_url=new_database_url,
+                db_min_conn_size=settings.pool_pgstac_min,
+                db_max_conn_size=settings.pool_pgstac_max,
+            )
             await connect_to_db(app, settings=db_settings)
             logger.debug("titiler-pgstac pool recreated with fresh token")
 

@@ -144,7 +144,11 @@ def get_tipg_postgres_settings(schemas: list[str] | None = None) -> TiPGPostgres
 
     database_url = build_database_url(credential, search_path=search_path)
 
-    return TiPGPostgresSettings(database_url=database_url)
+    return TiPGPostgresSettings(
+        database_url=database_url,
+        db_min_conn_size=settings.pool_tipg_min,
+        db_max_conn_size=settings.pool_tipg_max,
+    )
 
 
 def get_tipg_database_settings() -> TiPGDatabaseSettings:

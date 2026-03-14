@@ -52,7 +52,6 @@ Dynamic tile server for Cloud Optimized GeoTIFFs (COGs), Zarr/NetCDF arrays, and
 | `geotiler/routers/vector.py` | TiPG integration (OGC Features + Vector Tiles) |
 | `geotiler/routers/admin.py` | Admin dashboard + refresh-collections webhook |
 | `geotiler/openapi.py` | OpenAPI schema post-processor (fixes upstream tags/descriptions) |
-| `geotiler/auth/admin_auth.py` | Azure AD token validation for admin endpoints |
 | `Dockerfile` | Production image (Managed Identity) |
 | `Dockerfile.local` | Local dev image (Azure CLI credentials) |
 | `docker-compose.yml` | Local development setup |
@@ -116,9 +115,10 @@ All app vars use `GEOTILER_COMPONENT_SETTING` convention with units in names.
 | `GEOTILER_TIPG_PREFIX` | URL prefix for TiPG routes (default: "/vector") |
 | `GEOTILER_ENABLE_TIPG_CATALOG_TTL` | Enable automatic catalog refresh (default: false) |
 | `GEOTILER_TIPG_CATALOG_TTL_SEC` | Catalog refresh interval in seconds (default: 60) |
-| `GEOTILER_ENABLE_ADMIN_AUTH` | Enable Azure AD auth for /admin/* endpoints (default: false) |
-| `GEOTILER_ADMIN_ALLOWED_APP_IDS` | Comma-separated MI client IDs allowed to call /admin/* |
-| `AZURE_TENANT_ID` | Azure AD tenant ID for token validation (third-party, not prefixed) |
+| `GEOTILER_POOL_TIPG_MAX` | TiPG pool max connections (default: 7) |
+| `GEOTILER_POOL_STAC_MAX` | STAC pool max connections (default: 7) |
+| `GEOTILER_POOL_PGSTAC_MAX` | titiler-pgstac pool max connections (default: 7) |
+| `GEOTILER_DB_STATEMENT_TIMEOUT_MS` | Per-connection query timeout in ms (default: 30000) |
 
 ---
 

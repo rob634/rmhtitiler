@@ -194,7 +194,13 @@ All app variables use the `GEOTILER_COMPONENT_SETTING` naming convention.
 | `GEOTILER_TIPG_PREFIX` | URL prefix for TiPG routes | `/vector` |
 | `GEOTILER_ENABLE_STAC_API` | Enable STAC API (requires TiPG) | `true` |
 | `GEOTILER_STAC_PREFIX` | URL prefix for STAC routes | `/stac` |
-| `AZURE_TENANT_ID` | Azure AD tenant ID (third-party, not prefixed) | `{tenant-guid}` |
+| `GEOTILER_POOL_TIPG_MIN` | TiPG asyncpg pool minimum connections | `1` |
+| `GEOTILER_POOL_TIPG_MAX` | TiPG asyncpg pool maximum connections | `7` |
+| `GEOTILER_POOL_STAC_MIN` | STAC asyncpg pool minimum connections | `1` |
+| `GEOTILER_POOL_STAC_MAX` | STAC asyncpg pool maximum connections | `7` |
+| `GEOTILER_POOL_PGSTAC_MIN` | titiler-pgstac psycopg pool minimum connections | `1` |
+| `GEOTILER_POOL_PGSTAC_MAX` | titiler-pgstac psycopg pool maximum connections | `7` |
+| `GEOTILER_DB_STATEMENT_TIMEOUT_MS` | Per-connection query timeout (ms). Kills stuck queries. | `30000` |
 
 #### Database Connection Notes
 
@@ -260,7 +266,7 @@ Endpoints for operational management and ETL pipeline integration.
 |----------|--------|-------------|
 | `/admin/refresh-collections` | POST | Refresh TiPG collection catalog (picks up new PostGIS tables) |
 
-**Authentication:** When `GEOTILER_ENABLE_ADMIN_AUTH=true`, requires an Azure AD Bearer token. The calling app's Managed Identity client ID must be listed in `GEOTILER_ADMIN_ALLOWED_APP_IDS`.
+**No authentication required.** This is a read-only tile server — network-level access restrictions (Azure App Service IP allowlist / VNet) are the appropriate security boundary.
 
 **Refresh Collections Response:**
 ```json
@@ -274,32 +280,17 @@ Endpoints for operational management and ETL pipeline integration.
 }
 ```
 
-**Usage - Local development (no auth):**
+**Usage:**
 ```bash
 curl -X POST http://localhost:8000/admin/refresh-collections
 ```
 
-**Usage - Production (Azure AD auth):**
-```python
-from azure.identity import DefaultAzureCredential
-import requests
-
-credential = DefaultAzureCredential()
-token = credential.get_token("https://management.azure.com/.default")
-
-response = requests.post(
-    f"{geotiler_url}/admin/refresh-collections",
-    headers={"Authorization": f"Bearer {token.token}"}
-)
-```
+**Note:** The TTL-based catalog refresh (`GEOTILER_ENABLE_TIPG_CATALOG_TTL`) is the preferred mechanism for automatic table discovery. The webhook is available for immediate refresh when needed.
 
 **Environment Variables:**
 
 | Variable | Required | Default | Description |
 |----------|----------|---------|-------------|
-| `GEOTILER_ENABLE_ADMIN_AUTH` | No | `false` | Enable Azure AD auth for /admin/* endpoints |
-| `GEOTILER_ADMIN_ALLOWED_APP_IDS` | If auth enabled | - | Comma-separated MI client IDs allowed to call /admin/* |
-| `AZURE_TENANT_ID` | If auth enabled | - | Azure AD tenant ID for token validation |
 | `GEOTILER_ENABLE_TIPG_CATALOG_TTL` | No | `false` | Enable automatic catalog refresh on a timer |
 | `GEOTILER_TIPG_CATALOG_TTL_SEC` | No | `60` | Auto-refresh interval in seconds (when TTL enabled) |
 

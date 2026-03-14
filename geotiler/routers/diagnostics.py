@@ -18,9 +18,8 @@ import logging
 import re
 from typing import Any, Optional
 
-from fastapi import APIRouter, Depends, Request, Query
+from fastapi import APIRouter, Request, Query
 
-from geotiler.auth.admin_auth import require_admin_auth
 from geotiler.config import settings
 from geotiler.errors import error_response, BAD_REQUEST, POOL_NOT_INITIALIZED
 from geotiler.services.database import get_app_state_from_request
@@ -82,7 +81,7 @@ async def _run_query_single(pool, query: str, *args) -> tuple[Any, Optional[str]
         return None, str(e)
 
 
-@router.get("/diagnostics", dependencies=[Depends(require_admin_auth)])
+@router.get("/diagnostics")
 async def tipg_diagnostics(request: Request):
     """
     Run comprehensive diagnostics for TiPG table discovery.
@@ -498,7 +497,7 @@ async def _diagnose_schema(pool, schema: str, issues: list) -> dict:
     return schema_diag
 
 
-@router.get("/diagnostics/verbose", dependencies=[Depends(require_admin_auth)])
+@router.get("/diagnostics/verbose")
 async def verbose_diagnostics(
     request: Request,
     schema: str = Query(default="geo", description="Schema to diagnose"),
@@ -1084,7 +1083,7 @@ async def verbose_diagnostics(
     return result
 
 
-@router.get("/diagnostics/table/{table_name}", dependencies=[Depends(require_admin_auth)])
+@router.get("/diagnostics/table/{table_name}")
 async def table_diagnostics(
     request: Request,
     table_name: str,

@@ -184,7 +184,11 @@ async def _initialize_database(app: FastAPI) -> None:
 
     # Connect to database
     try:
-        db_settings = PostgresSettings(database_url=database_url)
+        db_settings = PostgresSettings(
+            database_url=database_url,
+            db_min_conn_size=settings.pool_pgstac_min,
+            db_max_conn_size=settings.pool_pgstac_max,
+        )
         await connect_to_db(app, settings=db_settings)
         logger.info("Database connection established")
         db_error_cache.record_success()
@@ -384,7 +388,8 @@ def create_app() -> FastAPI:
             )
 
         # TiPG diagnostics endpoint (for debugging table discovery)
-        app.include_router(diagnostics.router, tags=["Diagnostics"])
+        if settings.enable_diagnostics:
+            app.include_router(diagnostics.router, tags=["Diagnostics"])
 
     # STAC API (stac-fastapi-pgstac)
     # Now independent of TiPG — has its own asyncpg pool
@@ -421,7 +426,8 @@ def create_app() -> FastAPI:
         logger.info("Download router mounted at /api/download")
 
     # Admin console (HTML at /, JSON at /api)
-    app.include_router(admin.router)
+    if settings.enable_admin:
+        app.include_router(admin.router)
 
     # Post-process OpenAPI spec (fix upstream tags/descriptions)
     from geotiler.openapi import customize_openapi

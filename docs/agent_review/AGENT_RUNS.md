@@ -126,6 +126,70 @@ All pipeline executions for this application in chronological order.
 
 ---
 
+## Run 8: Connection & Pool Architecture (COMPETE)
+
+| Field | Value |
+|-------|-------|
+| **Date** | 13 MAR 2026 |
+| **Pipeline** | COMPETE (Omega → Alpha+Beta → Gamma → Delta) |
+| **Scope** | Connection pool lifecycle, credential refresh, pool swap atomicity |
+| **Split** | B: Internal vs External |
+| **Alpha Scope** | Internal pool lifecycle invariants (init ordering, shutdown ordering, credential lifecycle, state machine completeness) |
+| **Beta Scope** | External boundary behavior (asyncpg RESET ALL, MI token expiry timing, network failure recovery, PostgreSQL restart handling) |
+| **Target Files** | `routers/stac.py`, `routers/vector.py`, `services/background.py`, `app.py`, `auth/postgres.py`, `auth/cache.py` |
+| **Status** | **COMPLETE** |
+| **Agents** | Omega (Split B) → Alpha + Beta (parallel) → Gamma → Delta |
+| **Findings** | Alpha: 3H/5M/3L, Beta: 1H/2M/3R/5EC, Gamma: 3 contradictions resolved, 6 blind spots |
+| **Top 5 Fixes** | F1: Sync postgres refresh race, F2: Sync storage refresh race, F3: pgstac refresh lock, F4: _CachedTokenCredential torn read, F5: _stac_api reset path |
+| **Accepted Risks** | TiPG RESET ALL (PROBABLE), STAC partial swap (PROBABLE), DAC in env vars (CONFIRMED) |
+| **Architecture Wins** | Async-first lock coordination, atomic pool swap, degraded-mode startup, dual-lock TokenCache, clean app.state namespace |
+| **Key Finding** | Sync token refresh functions (postgres AND storage) invalidate cache before acquiring new token — race window where concurrent callers see empty cache. Async versions already correct. |
+| **Output** | `docs/agent_review/agent_docs/COMPETE_POOL_ARCHITECTURE.md` |
+
+---
+
+## Run 9: pgSTAC Schema Surface (COMPETE)
+
+| Field | Value |
+|-------|-------|
+| **Date** | 13 MAR 2026 |
+| **Pipeline** | COMPETE (Omega → Alpha+Beta → Gamma → Delta) |
+| **Scope** | pgSTAC function calls, schema compatibility, search_path handling |
+| **Split** | C: Data vs Control Flow |
+| **Alpha Scope** | Data integrity — schema validation, function signatures, SQL injection vectors, type safety |
+| **Beta Scope** | Control flow — DDL execution ordering, migration idempotency, retry logic, partial failure |
+| **Target Files** | Cross-repo: `rmhgeoapi/pgstac_bootstrap.py`, `rmhgeoapi/db_maintenance.py`, `geotiler/routers/stac.py`, `geotiler/routers/health.py` |
+| **Status** | **COMPLETE** |
+| **Findings** | Alpha: 3H/4M/2L, Beta: 2H/3M/2L/3EC, Gamma: 3 contradictions resolved, 3 blind spots |
+| **Top 5 Fixes** | F1: Health probe `collection_search` not `all_collections`, F2: `configure_pgstac_roles` savepoint, F3: Search hash dedup via DB-side `search_tohash`, F4: Use `upsert_item` consistently, F5: `ST_Extent(geometry)` for collection extents |
+| **Accepted Risks** | Non-fatal partial state (CONFIRMED), search_items reconstitution gap (CONFIRMED), first-item bbox (PROBABLE), zarr detection ordering (CONFIRMED), GENERATED column workaround (CONFIRMED — WORKING) |
+| **Architecture Wins** | GENERATED column hash, CollectionSearchExtension adoption, non-fatal pgSTAC design, explicit search_path, repository separation, schema-qualified calls |
+| **Key Finding** | All TOP 5 FIXES target rmhgeoapi, not rmhtitiler — the tile server side is well-architected. Cross-codebase inconsistencies originate in the ETL/admin codebase (deprecated function probes, transaction abort on DuplicateObject, fragile Python-side hash dedup). |
+| **Output** | `docs/agent_review/agent_docs/COMPETE_PGSTAC_SCHEMA.md` |
+
+---
+
+## Run 10: Search Path & Auth Trust Boundary (COMPETE)
+
+| Field | Value |
+|-------|-------|
+| **Date** | 13 MAR 2026 |
+| **Pipeline** | COMPETE (Omega → Alpha+Beta → Gamma → Delta) |
+| **Scope** | Authentication flow, trust boundaries, token lifecycle, search_path enforcement |
+| **Split** | D: Security vs Functionality |
+| **Alpha Scope** | Functional correctness of auth flows, credential acquisition, token caching, pool recreation |
+| **Beta Scope** | Security — trust boundary violations, token exposure in logs, credential scope escalation, MITM vectors |
+| **Target Files** | `auth/postgres.py`, `auth/storage.py`, `auth/cache.py`, `auth/admin_auth.py`, `config.py` |
+| **Status** | **COMPLETE** |
+| **Findings** | Alpha: 5H/5M/2L, Beta: 1C/4H/5M/3L, Gamma: 3 contradictions, 3 agreements, 7 blind spots |
+| **Top 5 Fixes** | F1: JWT audience validation bypass (`verify_aud: False`), F2: `lru_cache` on JWKS client (None permanence + key rotation), F3: Async cache-miss thundering herd on IMDS failure, F4: JWT exception detail oracle, F5: `_CachedTokenCredential.get_token()` torn read |
+| **Accepted Risks** | `auth_use_cli=True` default (CONFIRMED), password length at DEBUG (CONFIRMED), credential in DSN URL (CONFIRMED), unauthenticated `/health` topology (CONFIRMED), keyvault_name URL interpolation (CONFIRMED), `quote_plus` DSN encoding (CONFIRMED), `oid` fallback documented but absent (doc debt), JWT claim key names in log (style) |
+| **Architecture Wins** | Dual-layer lock design, live-reference credential (`_CachedTokenCredential`), acquire-before-swap async refresh, `auth_use_cli` escape hatch, config validation at boundary, minimal token scope, clean config/credential separation |
+| **Key Finding** | `verify_aud: False` in admin JWT validation is a real trust boundary failure — any Azure AD token from the same tenant passes, regardless of intended resource. CRITICAL severity, requires App Registration and audience configuration. |
+| **Output** | `docs/agent_review/agent_docs/COMPETE_AUTH_TRUST.md` |
+
+---
+
 ## Cumulative Token Usage
 
 | Pipeline | Runs | Total Tokens |

@@ -6,7 +6,7 @@ All magic numbers are extracted as named constants.
 
 Naming Convention:
     All application env vars follow GEOTILER_COMPONENT_SETTING with units in names.
-    Third-party vars (AZURE_TENANT_ID, APPLICATIONINSIGHTS_CONNECTION_STRING,
+    Third-party vars (APPLICATIONINSIGHTS_CONNECTION_STRING,
     GDAL_*, POSTGRES_HOST/DB/USER/PORT/PASSWORD for pgSTAC container) are NOT prefixed.
 
     Boolean flags read as questions: GEOTILER_ENABLE_*
@@ -34,7 +34,6 @@ import os
 from typing import Literal, Optional, List
 from functools import lru_cache
 
-from pydantic import Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -113,6 +112,14 @@ class Settings(BaseSettings):
     enable_h3_duckdb: bool = False
     """Enable server-side DuckDB for H3 queries. Requires GEOTILER_H3_PARQUET_URL."""
 
+    enable_admin: bool = True
+    """Enable admin endpoints (refresh-collections webhook).
+    Disable on external/public instances where admin access is unnecessary."""
+
+    enable_diagnostics: bool = True
+    """Enable diagnostics endpoints (pool state, table metadata).
+    Disable on external/public instances to avoid information disclosure."""
+
     # =========================================================================
     # TiPG — GEOTILER_TIPG_*
     # =========================================================================
@@ -139,34 +146,42 @@ class Settings(BaseSettings):
         return [s.strip() for s in self.tipg_schemas.split(",") if s.strip()]
 
     # =========================================================================
+    # Connection Pool Sizes — GEOTILER_POOL_*
+    # =========================================================================
+    # Explicit limits prevent unbounded connection growth.
+    # geotiler runs 3 independent pools (TiPG/asyncpg, STAC/asyncpg, pgstac/psycopg).
+    # Total max = tipg + stac + pgstac (default 21). Size for shared database budget:
+    # internal server shares connections with rmhgeoapi ETL jobs.
+    pool_tipg_min: int = 1
+    """TiPG asyncpg pool minimum connections."""
+
+    pool_tipg_max: int = 7
+    """TiPG asyncpg pool maximum connections."""
+
+    pool_stac_min: int = 1
+    """STAC asyncpg pool minimum connections."""
+
+    pool_stac_max: int = 7
+    """STAC asyncpg pool maximum connections."""
+
+    pool_pgstac_min: int = 1
+    """titiler-pgstac psycopg pool minimum connections."""
+
+    pool_pgstac_max: int = 7
+    """titiler-pgstac psycopg pool maximum connections."""
+
+    db_statement_timeout_ms: int = 30000
+    """Per-connection statement_timeout in milliseconds (default 30s).
+    Kills any query running longer than this. Set per-connection via
+    server_settings/options, does not affect server-wide setting.
+    geotiler queries (tiles, catalog scans, STAC searches) should
+    never exceed 30s — if they do, something is stuck."""
+
+    # =========================================================================
     # STAC — GEOTILER_STAC_*
     # =========================================================================
     stac_prefix: str = "/stac"
     """URL prefix for STAC API routes (e.g., /stac/collections)."""
-
-    # =========================================================================
-    # Admin — GEOTILER_ENABLE_ADMIN_AUTH, GEOTILER_ADMIN_ALLOWED_APP_IDS
-    # =========================================================================
-    enable_admin_auth: bool = False
-    """Enable Azure AD authentication for /admin/* endpoints.
-    When disabled, admin endpoints are open (for local dev)."""
-
-    admin_allowed_app_ids: str = ""
-    """Comma-separated list of Azure AD app/client IDs allowed to call /admin/*.
-    Typically the Orchestrator app's Managed Identity client ID."""
-
-    azure_tenant_id: Optional[str] = Field(
-        default=None, validation_alias="AZURE_TENANT_ID"
-    )
-    """Azure AD tenant ID for token validation.
-    Read from AZURE_TENANT_ID (shared with Azure Identity SDK)."""
-
-    @property
-    def admin_allowed_app_id_list(self) -> list[str]:
-        """Parse comma-separated app IDs into list."""
-        if not self.admin_allowed_app_ids:
-            return []
-        return [s.strip() for s in self.admin_allowed_app_ids.split(",") if s.strip()]
 
     # =========================================================================
     # UI — GEOTILER_UI_*

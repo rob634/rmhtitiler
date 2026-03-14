@@ -5,13 +5,13 @@ Provides:
 - GET / - HTML admin dashboard with health visualization
 - GET /api - JSON API information
 - GET /_health-fragment - HTMX partial for auto-refresh
-- POST /admin/refresh-collections - Webhook to refresh TiPG collection catalog (auth required)
+- POST /admin/refresh-collections - Webhook to refresh TiPG collection catalog
 """
 
 import logging
 from datetime import datetime, timezone
 
-from fastapi import APIRouter, Request, Response, Depends
+from fastapi import APIRouter, Request, Response
 from fastapi.responses import HTMLResponse
 
 from geotiler import __version__
@@ -19,7 +19,6 @@ from geotiler.config import settings
 from geotiler.errors import error_response, TIPG_DISABLED, UPSTREAM_ERROR
 from geotiler.routers.health import health as get_health_data
 from geotiler.templates_utils import templates, get_template_context
-from geotiler.auth.admin_auth import require_admin_auth
 
 logger = logging.getLogger(__name__)
 
@@ -103,13 +102,10 @@ async def api_info(request: Request):
     }
 
 
-@router.post("/admin/refresh-collections", dependencies=[Depends(require_admin_auth)])
+@router.post("/admin/refresh-collections")
 async def refresh_collections(request: Request):
     """
     Webhook to refresh TiPG collection catalog.
-
-    **Authentication**: Requires Azure AD Bearer token when GEOTILER_ENABLE_ADMIN_AUTH=true.
-    The calling app's Managed Identity client ID must be in GEOTILER_ADMIN_ALLOWED_APP_IDS.
 
     Call this endpoint after ETL pipelines create new PostGIS tables
     to make them immediately visible in TiPG without waiting for TTL

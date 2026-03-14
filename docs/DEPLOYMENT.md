@@ -283,7 +283,7 @@ All application settings use the `GEOTILER_` prefix: `GEOTILER_COMPONENT_SETTING
 
 - Boolean flags: `GEOTILER_ENABLE_*`
 - Time values include units: `*_SEC`, `*_MS`
-- Third-party vars are NOT prefixed: `AZURE_TENANT_ID`, `APPLICATIONINSIGHTS_CONNECTION_STRING`, `GDAL_*`
+- Third-party vars are NOT prefixed: `APPLICATIONINSIGHTS_CONNECTION_STRING`, `GDAL_*`
 
 ### Application Settings
 
@@ -316,10 +316,14 @@ All application settings use the `GEOTILER_` prefix: `GEOTILER_COMPONENT_SETTING
 | `GEOTILER_TIPG_CATALOG_TTL_SEC` | `60` | Refresh interval in seconds |
 | **STAC** | | |
 | `GEOTILER_STAC_PREFIX` | `/stac` | URL prefix for STAC routes |
-| **Admin** | | |
-| `GEOTILER_ENABLE_ADMIN_AUTH` | `false` | Enable Azure AD auth for /admin/* |
-| `GEOTILER_ADMIN_ALLOWED_APP_IDS` | — | Comma-separated MI client IDs allowed to call /admin/* |
-| `AZURE_TENANT_ID` | — | Azure AD tenant ID (shared with Azure Identity SDK, not prefixed) |
+| **Connection Pools** | | |
+| `GEOTILER_POOL_TIPG_MIN` | `1` | TiPG asyncpg pool minimum connections |
+| `GEOTILER_POOL_TIPG_MAX` | `7` | TiPG asyncpg pool maximum connections |
+| `GEOTILER_POOL_STAC_MIN` | `1` | STAC asyncpg pool minimum connections |
+| `GEOTILER_POOL_STAC_MAX` | `7` | STAC asyncpg pool maximum connections |
+| `GEOTILER_POOL_PGSTAC_MIN` | `1` | titiler-pgstac psycopg pool minimum connections |
+| `GEOTILER_POOL_PGSTAC_MAX` | `7` | titiler-pgstac psycopg pool maximum connections |
+| `GEOTILER_DB_STATEMENT_TIMEOUT_MS` | `30000` | Per-connection query timeout (ms). Kills stuck queries. Set 0 to disable. |
 | **H3 Explorer** | | |
 | `GEOTILER_H3_PARQUET_URL` | — | Azure Blob URL to the H3 GeoParquet file |
 | `GEOTILER_H3_DATA_DIR` | `/app/data` | Local directory for cached parquet file |

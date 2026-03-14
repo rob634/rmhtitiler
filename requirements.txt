@@ -43,10 +43,5 @@ tipg>=0.12.0
 # Catalog browsing and search via stac-fastapi-pgstac
 stac-fastapi.pgstac>=4.0.0
 
-# --- Admin Endpoint Authentication ----------------------------------------
-# Azure AD JWT token validation for /admin/* endpoints
-PyJWT>=2.10.1
-cryptography>=44.0.1
-
 # --- H3 Explorer (optional, gated by ENABLE_H3_DUCKDB) --------------------
 duckdb>=1.1.0
