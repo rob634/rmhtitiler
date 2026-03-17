@@ -45,7 +45,7 @@
         </div>
         <div class="btn-group">
             <button class="btn btn-primary" onclick="openViewer()">Open Viewer</button>
-            <button class="btn btn-secondary" onclick="getVariables()">List Variables</button>
+            <button class="btn btn-secondary" onclick="getMetadata()">Metadata</button>
             <button class="btn btn-secondary" onclick="getInfo()">Get Info</button>
             <button class="btn btn-secondary" onclick="getTileJSON()">TileJSON</button>
         </div>
@@ -98,8 +98,8 @@
             </thead>
             <tbody>
                 <tr>
-                    <td><code>GET /xarray/variables</code></td>
-                    <td>List all variables in the dataset</td>
+                    <td><code>GET /xarray/metadata</code></td>
+                    <td>Get dataset metadata (variables, dimensions)</td>
                 </tr>
                 <tr>
                     <td><code>GET /xarray/info</code></td>
@@ -181,10 +181,10 @@ function getInfo() {
     window.location.href = endpoint;
 }
 
-function getVariables() {
+function getMetadata() {
     const url = document.getElementById('zarr-url').value;
     if (!url) { alert('Please enter a Zarr/NetCDF URL'); return; }
-    window.location.href = '/xarray/variables?url=' + encodeURIComponent(url);
+    window.location.href = '/xarray/metadata?url=' + encodeURIComponent(url);
 }
 
 function openViewer() {

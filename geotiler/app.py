@@ -48,7 +48,7 @@ from titiler.pgstac.db import close_db_connection, connect_to_db
 from titiler.pgstac.dependencies import SearchIdParams
 from titiler.pgstac.settings import PostgresSettings
 from titiler.xarray.factory import TilerFactory as XarrayTilerFactory
-from titiler.xarray.extensions import VariablesExtension
+from titiler.xarray.extensions import DatasetMetadataExtension
 
 logger = logging.getLogger(__name__)
 
@@ -232,7 +232,7 @@ def _mount_titiler_routers(app: FastAPI) -> None:
     xarray_tiler = XarrayTilerFactory(
         router_prefix="/xarray",
         extensions=[
-            VariablesExtension(),  # Adds /variables endpoint
+            DatasetMetadataExtension(),  # Adds /metadata endpoint
         ],
     )
     app.include_router(

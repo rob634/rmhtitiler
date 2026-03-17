@@ -8,7 +8,7 @@
 # v9 build:  az acr build ... --build-arg BASE_TAG=1.9.0
 # v10 build: az acr build ... --build-arg BASE_TAG=2.1.0 --build-arg REQUIREMENTS=requirements-v10.txt
 #
-ARG BASE_TAG=1.9.0
+ARG BASE_TAG=2.1.0
 FROM ghcr.io/stac-utils/titiler-pgstac:${BASE_TAG}
 #Use the JFROG Artifactory image for production deployments
 #FROM artifactory.worldbank.org/itsdt-docker-virtual/titiler-pgstac:${BASE_TAG}
