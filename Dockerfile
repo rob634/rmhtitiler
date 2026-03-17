@@ -8,6 +8,7 @@
 #     --image rmhtitiler:v<version> .
 #
 FROM ghcr.io/stac-utils/titiler-pgstac:2.1.0
+#FROM artifactory.worldbank.org/itsdt-docker-virtual/titiler-pgstac:2.1.0
 
 # Switch to root for installs (base image 2.x runs as non-root)
 USER root
