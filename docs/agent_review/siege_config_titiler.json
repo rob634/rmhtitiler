@@ -220,8 +220,85 @@
       }
     ]
   },
+  "invalid_inputs": {
+    "_comment": "Attack payloads for TOURNAMENT Provocateur and WARGAME Red agents. Each category targets a different input validation surface.",
+    "path_traversal": [
+      "../../etc/passwd",
+      "../../../proc/self/environ",
+      "/vsiaz/../../etc/shadow"
+    ],
+    "sql_injection": [
+      "'; DROP TABLE pgstac.collections;--",
+      "' OR '1'='1",
+      "UNION SELECT * FROM pg_tables--"
+    ],
+    "xss": [
+      "<script>alert(1)</script>",
+      "<img src=x onerror=alert(1)>",
+      "javascript:alert(1)"
+    ],
+    "oversized_params": "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
+    "unicode_abuse": [
+      "\u0000null_byte",
+      "\uFEFFbom_prefix",
+      "normal\u0000embedded"
+    ],
+    "invalid_coordinates": {
+      "z": [-1, 50, "abc"],
+      "x": [-1, 99999],
+      "y": [-1, 99999]
+    },
+    "invalid_bbox": [
+      [-9999, -9999, 9999, 9999],
+      [180, 90, -180, -90],
+      [0, 0, 0, 0]
+    ],
+    "nonexistent_resources": {
+      "collection": "does-not-exist-collection",
+      "search_id": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "cog_url": "/vsiaz/nonexistent-container/fake.tif",
+      "zarr_url": "abfs://nonexistent/fake.zarr"
+    },
+    "corrupt_stac_search": [
+      { "bbox": "not-an-array" },
+      { "bbox": [1, 2, 3] },
+      { "limit": -1 },
+      { "limit": 999999 }
+    ]
+  },
   "namespaces": {
-    "siege": "sg-",
-    "advocate": "adv-"
+    "sg": "SIEGE",
+    "tn": "TOURNAMENT",
+    "wg": "WARGAME",
+    "tp": "TOURNAMENT-Provocateur",
+    "adv": "ADVOCATE"
+  },
+  "wargame_attacks": {
+    "_comment": "Catalog of Red team attacks for WARGAME scenarios. Each category targets a different operational stress surface.",
+    "pool_stress": [
+      "Rapid sequential requests to exhaust connections",
+      "Cross-service simultaneous requests",
+      "Hold connections with large tile requests"
+    ],
+    "token_race": [
+      "Time requests during 45-min refresh window",
+      "Rapid requests immediately after token refresh",
+      "Monitor /health token_expiry for timing"
+    ],
+    "catalog_contention": [
+      "POST /admin/refresh-collections during vector reads",
+      "Rapid refresh-collections calls",
+      "Read vector collection immediately after refresh"
+    ],
+    "cache_poison": [
+      "Register duplicate STAC search params",
+      "Same tile with different param ordering",
+      "Tilejson then tiles with different rescale"
+    ],
+    "response_drift": [
+      "Same tile 10x (expect byte-identical)",
+      "Same /health 10x (expect stable pools)",
+      "Collections list 10x (expect consistent count)"
+    ]
   }
 }
