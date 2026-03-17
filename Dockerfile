@@ -1,17 +1,13 @@
 # Production Dockerfile for TiTiler-pgSTAC with Azure OAuth authentication
 # and Xarray/Zarr support
 #
-# Build args:
-#   BASE_TAG       - titiler-pgstac image tag (default: 1.9.0)
-#   REQUIREMENTS   - requirements file to use (default: requirements.txt)
+# Base: ghcr.io/stac-utils/titiler-pgstac:2.1.0 (Python 3.14, titiler-core 1.2.x)
 #
-# v9 build:  az acr build ... --build-arg BASE_TAG=1.9.0
-# v10 build: az acr build ... --build-arg BASE_TAG=2.1.0 --build-arg REQUIREMENTS=requirements-v10.txt
+# Build:
+#   az acr build --registry rmhazureacr --resource-group rmhazure_rg \
+#     --image rmhtitiler:v<version> .
 #
-ARG BASE_TAG=2.1.0
-FROM ghcr.io/stac-utils/titiler-pgstac:${BASE_TAG}
-#Use the JFROG Artifactory image for production deployments
-#FROM artifactory.worldbank.org/itsdt-docker-virtual/titiler-pgstac:${BASE_TAG}
+FROM ghcr.io/stac-utils/titiler-pgstac:2.1.0
 
 # Switch to root for installs (base image 2.x runs as non-root)
 USER root
@@ -20,8 +16,7 @@ USER root
 WORKDIR /app
 
 # Install dependencies
-ARG REQUIREMENTS=requirements.txt
-COPY ${REQUIREMENTS} requirements.txt
+COPY requirements.txt requirements.txt
 RUN pip install --no-cache-dir -r requirements.txt
 
 # Create data directory for DuckDB parquet cache

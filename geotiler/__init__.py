@@ -13,10 +13,7 @@ With Azure authentication:
 - Managed Identity for Azure PostgreSQL
 - Key Vault integration for secrets
 
-Version Scheme
---------------
-v0.9.x  = pgstac 1.9.0 base (titiler-core 0.24.x, titiler.xarray 0.24.x)
-v0.10.x = pgstac 2.1.0 base (titiler-core 1.2.x, titiler.xarray 1.2.x)
+Base Image: titiler-pgstac 2.1.0 (titiler-core 1.2.x, titiler.xarray 1.2.x)
 
 Supported Endpoints:
 - /cog/* - COG tiles

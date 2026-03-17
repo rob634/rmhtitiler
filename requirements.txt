@@ -1,11 +1,12 @@
 # =============================================================================
-# geotiler — Production Dependencies
+# geotiler — Production Dependencies (titiler-pgstac 2.1.0)
 # =============================================================================
-# Installed ON TOP of the base image (ghcr.io/stac-utils/titiler-pgstac:1.9.0)
+# Installed ON TOP of the base image (ghcr.io/stac-utils/titiler-pgstac:2.1.0)
 # which already provides: titiler-pgstac, titiler-core, rio-tiler, rasterio,
-# fastapi, starlette, uvicorn, psycopg, pydantic, asyncpg, etc.
+# fastapi, starlette, uvicorn, psycopg, pydantic, pydantic-settings, etc.
 #
-# This file is the SINGLE SOURCE OF TRUTH for dependencies.
+# NOTE: asyncpg is NOT in the base image — we install it explicitly.
+#
 # The Dockerfile uses: pip install -r requirements.txt
 # =============================================================================
 
@@ -16,17 +17,17 @@ azure-identity>=1.16.1
 azure-keyvault-secrets>=4.8.0
 
 # --- Xarray / Zarr --------------------------------------------------------
-# Multidimensional data support (Zarr, NetCDF)
+# Multidimensional data support (Zarr v3 only — ETL converts upstream formats)
 # NOTE: [minimal] DOES include zarr transitively via xarray. Do NOT add zarr
-# as a separate dependency — it is already installed. Pinned to 0.24.x to
-# match base image titiler-pgstac:1.9.0; upgrading to 0.25.x requires
-# migrating to titiler-pgstac 2.0.0.
-titiler.xarray[minimal]>=0.24.0,<0.25.0
+# as a separate dependency — it is already installed. Capped at <2.0 because
+# titiler.xarray 2.0.0 requires titiler-core 2.0 + rio-tiler 9.x, which
+# conflicts with the base image (titiler-core 1.2.0, rio-tiler 8.0.5).
+titiler.xarray[minimal]>=1.2.0,<2.0
+# xarray must be >=2024.10.0 for Zarr v3 format support (dimension_names).
+# The base image ships an older xarray that only reads Zarr v2 (_ARRAY_DIMENSIONS).
+xarray>=2024.10.0
 # Azure Data Lake filesystem for fsspec (Zarr access via abfs://)
 adlfs>=2024.4.1
-
-# --- Configuration ---------------------------------------------------------
-pydantic-settings>=2.0.0
 
 # --- Monitoring & Observability --------------------------------------------
 # Hardware metrics in /health endpoint
@@ -34,14 +35,18 @@ psutil>=5.9.0
 # Application Insights integration (set APPLICATIONINSIGHTS_CONNECTION_STRING)
 azure-monitor-opentelemetry>=1.6.0
 
+# --- Async PostgreSQL (not in base image) ----------------------------------
+# Required by tipg and stac-fastapi-pgstac for async connection pools
+asyncpg>=0.29.0
+
 # --- OGC Features + Vector Tiles (TiPG) -----------------------------------
 # OGC API - Features and OGC API - Tiles for PostGIS tables
 # https://github.com/developmentseed/tipg
-tipg>=0.12.0
+tipg>=1.3.1
 
 # --- STAC API --------------------------------------------------------------
 # Catalog browsing and search via stac-fastapi-pgstac
-stac-fastapi.pgstac>=4.0.0
+stac-fastapi.pgstac>=5.0.0,<7.0
 
 # --- H3 Explorer (optional, gated by ENABLE_H3_DUCKDB) --------------------
 duckdb>=1.1.0
