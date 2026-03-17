@@ -172,19 +172,57 @@ Live testing agents (SIEGE, WARGAME, TOURNAMENT) may only create state through t
 
 ---
 
+## Section 6: API Discoverability & Documentation Compliance
+
+**Applies to**: COMPETE (Alpha, Beta), ADVOCATE (Intern, Architect), TOURNAMENT (Provocateur)
+
+### 6.1 Every Endpoint Must Be in OpenAPI
+
+All endpoints exposed by the application must appear in the OpenAPI schema at `/openapi.json` and be browsable via Swagger UI at `/docs`. If an endpoint exists but isn't in the spec, it's a bug.
+
+**Violation**: Endpoints reachable via HTTP that don't appear in `/docs`. **Severity: HIGH**
+
+### 6.2 REST Spec Compliance
+
+Endpoints must comply with their declared OpenAPI spec:
+- Correct HTTP methods, status codes, and content types
+- Request parameters validated and documented (query params, path params, request bodies)
+- Response schemas match actual responses
+- Error responses use appropriate 4xx/5xx codes with descriptive messages (not bare 500s for client errors)
+
+**Violation**: Undocumented parameters, missing error codes, response schema mismatches. **Severity: HIGH**
+
+### 6.3 Self-Describing API
+
+If API usage is unclear, it must be discoverable through `/docs` (Swagger UI). This means:
+- All query parameters have descriptions and examples
+- Tags group related endpoints logically
+- Endpoint descriptions explain purpose, not just "Endpoint."
+- The OpenAPI post-processor (`geotiler/openapi.py`) fixes upstream tag/description issues — regressions here are bugs
+
+**Violation**: Generic descriptions ("Endpoint."), missing parameter docs, broken Swagger UI. **Severity: MEDIUM**
+
+### 6.4 Upstream Tag Hygiene
+
+The app integrates multiple upstream routers (titiler-core, titiler-pgstac, TiPG, stac-fastapi) that generate their own OpenAPI tags. The `customize_openapi()` post-processor must maintain clean, deduplicated, consistently-named tags across all integrated services.
+
+**Violation**: Duplicate tags, inconsistent naming between services, upstream defaults leaking through. **Severity: MEDIUM**
+
+---
+
 ## Quick Reference — Severity Mapping
 
 | Severity | Examples |
 |----------|---------|
 | **CRITICAL** | Shared pools, token scope mixing, startup crash on pool failure, cross-service dependency failure |
-| **HIGH** | Non-atomic pool swap, hardcoded Azure resources, background token in request path, health endpoint failure |
-| **MEDIUM** | Env var naming violation, version duplication, module-level Azure imports |
+| **HIGH** | Non-atomic pool swap, hardcoded Azure resources, background token in request path, health endpoint failure, undocumented endpoints, spec-violating responses |
+| **MEDIUM** | Env var naming violation, version duplication, module-level Azure imports, generic endpoint descriptions, broken Swagger UI |
 
 ## Scope Mapping — Which Sections Apply to Which Agents
 
 ### COMPETE
-- **Alpha** (Architecture): Sections 1, 2, 3, 4
-- **Beta** (Correctness): Sections 1, 2, 4, 5
+- **Alpha** (Architecture): Sections 1, 2, 3, 4, 6
+- **Beta** (Correctness): Sections 1, 2, 4, 5, 6
 - **Gamma** (Contradictions): All sections (cross-reference Alpha + Beta findings)
 
 ### REFLEXION
