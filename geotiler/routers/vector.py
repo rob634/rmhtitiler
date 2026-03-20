@@ -72,15 +72,17 @@ class TiPGStartupState:
         self.search_path_used = search_path
 
     def record_failure(self, init_type: str, error: str):
-        """Record failed initialization (clears stale collection data)."""
+        """Record failed initialization (clears all stale data)."""
         self.last_init_time = datetime.now(timezone.utc)
         self.last_init_type = init_type
         self.init_success = False
         self.init_error = error
-        # Clear stale collection data so diagnostics don't mix
-        # failed status with old successful collection counts
+        # Clear all stale data so diagnostics don't mix
+        # failed status with old successful state
+        self.schemas_configured = []
         self.collections_discovered = 0
         self.collection_ids = []
+        self.search_path_used = None
 
     def to_dict(self) -> dict:
         """Convert to dict for diagnostics endpoint."""
@@ -267,9 +269,7 @@ async def refresh_tipg_pool(app: "FastAPI") -> None:
         return
 
     # Prevent concurrent refresh (admin webhook + background task)
-    if not hasattr(app.state, "_tipg_refresh_lock"):
-        app.state._tipg_refresh_lock = asyncio.Lock()
-
+    # Lock is eagerly initialized in app.py lifespan startup
     if app.state._tipg_refresh_lock.locked():
         logger.info("TiPG pool refresh already in progress, skipping")
         return

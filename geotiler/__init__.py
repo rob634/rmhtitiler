@@ -23,6 +23,6 @@ Supported Endpoints:
 - /vector/* - OGC Features + Vector Tiles via TiPG
 """
 
-__version__ = "0.10.0.2"
+__version__ = "0.10.0.4"
 
 __all__ = ["__version__"]

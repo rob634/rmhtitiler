@@ -197,6 +197,8 @@ def refresh_postgres_token() -> Optional[str]:
     Force refresh of PostgreSQL OAuth token (sync version).
 
     Only applicable when using managed_identity auth mode.
+    Acquires new token BEFORE touching cache — no window where
+    concurrent readers see an empty cache.
 
     Returns:
         New OAuth token if successful, None if not using MI or refresh fails.
@@ -207,24 +209,16 @@ def refresh_postgres_token() -> Optional[str]:
 
     logger.info("Refreshing PostgreSQL OAuth token...")
 
-    # Save old cache state so we can restore if acquisition fails.
-    # invalidate() is needed to force _get_postgres_oauth_token() to acquire,
-    # but if acquisition fails, the old token (still valid) must survive.
-    old_token = postgres_token_cache.token
-    old_expires = postgres_token_cache.expires_at
-
-    postgres_token_cache.invalidate()
-
     try:
-        token = _get_postgres_oauth_token()
+        # Acquire new token directly (bypass cache check)
+        token, expires_at = _acquire_postgres_token()
+        if token and expires_at:
+            postgres_token_cache.set(token, expires_at)
         logger.info("PostgreSQL token refresh complete")
         return token
     except Exception as e:
         logger.error(f"PostgreSQL token refresh failed: {e}")
-        # Restore old token — it may still be valid for minutes
-        if old_token and old_expires:
-            postgres_token_cache.set(old_token, old_expires)
-            logger.warning("Restored previous cached token (may still be valid)")
+        logger.warning("Keeping existing cached token (may still be valid)")
         return None
 
 

@@ -180,8 +180,8 @@ class _CachedTokenCredential:
     async def get_token(self, *scopes, **kwargs):
         from azure.core.credentials import AccessToken
 
-        token = storage_token_cache.token
-        expires_at = storage_token_cache.expires_at
+        # Atomic snapshot — avoids torn read of token + expires_at
+        token, expires_at = storage_token_cache.get_snapshot()
         if token and expires_at:
             return AccessToken(token, int(expires_at.timestamp()))
         raise Exception("No cached storage token available for adlfs")
@@ -277,31 +277,24 @@ def refresh_storage_token() -> Optional[str]:
     Force refresh of storage OAuth token (sync version).
 
     Used by background refresh task to proactively update tokens.
+    Acquires new token BEFORE touching cache — no window where
+    concurrent readers see an empty cache.
 
     Returns:
         New OAuth token if successful, None otherwise.
     """
     logger.debug("Refreshing storage token (sync)")
 
-    # Save old cache state so we can restore if acquisition fails.
-    # invalidate() is needed to force get_storage_oauth_token() to acquire,
-    # but if acquisition fails, the old token (still valid) must survive.
-    old_token = storage_token_cache.token
-    old_expires = storage_token_cache.expires_at
-
-    storage_token_cache.invalidate()
-
     try:
-        token = get_storage_oauth_token()
-        if token:
+        # Acquire new token directly (bypass cache check)
+        token, expires_at = _acquire_storage_token()
+        if token and expires_at:
+            storage_token_cache.set(token, expires_at)
             configure_gdal_auth(token)
         return token
     except Exception as e:
         logger.error(f"Storage token refresh failed: {e}")
-        # Restore old token — it may still be valid for minutes
-        if old_token and old_expires:
-            storage_token_cache.set(old_token, old_expires)
-            logger.warning("Restored previous cached token (may still be valid)")
+        logger.warning("Keeping existing cached token (may still be valid)")
         return None
 
 

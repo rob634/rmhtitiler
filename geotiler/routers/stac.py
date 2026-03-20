@@ -17,6 +17,7 @@ Architecture:
 """
 
 import asyncio
+import json
 import logging
 from typing import Optional
 
@@ -246,10 +247,14 @@ async def _verify_stac_pool(app) -> None:
             # Test collection_search() — the function used by pgstac ≥0.8.2
             # (replaces the deprecated all_collections())
             try:
+                # Inline JSON literal to avoid stac-fastapi-pgstac's custom
+                # jsonb codec (bytes vs str DataError on parameterized queries)
                 result = await conn.fetchval(
-                    "SELECT * FROM collection_search($1::text::jsonb);",
-                    '{}',
+                    "SELECT * FROM collection_search('{}'::jsonb);",
                 )
+                # Result may be dict, JSON string, or bytes depending on codec
+                if isinstance(result, (str, bytes)):
+                    result = json.loads(result)
                 if isinstance(result, dict):
                     cols = result.get("collections", [])
                     count = len(cols) if cols else 0
@@ -262,9 +267,9 @@ async def _verify_stac_pool(app) -> None:
 
             # Also verify search() is callable (used by /stac/search)
             try:
+                # Inline JSON literal (same codec issue as collection_search above)
                 await conn.fetchval(
-                    "SELECT * FROM search($1::text::jsonb);",
-                    '{"limit": 0}'
+                    "SELECT * FROM search('{\"limit\": 0}'::jsonb);",
                 )
                 logger.info("STAC pool verification: search() OK")
             except Exception as search_err:
@@ -308,9 +313,7 @@ async def refresh_stac_pool(app) -> None:
         return
 
     # Prevent concurrent refresh
-    if not hasattr(app.state, "_stac_refresh_lock"):
-        app.state._stac_refresh_lock = asyncio.Lock()
-
+    # Lock is eagerly initialized in app.py lifespan startup
     if app.state._stac_refresh_lock.locked():
         logger.info("STAC pool refresh already in progress, skipping")
         return

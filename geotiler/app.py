@@ -65,6 +65,10 @@ async def lifespan(app: FastAPI):
     # =========================================================================
     logger.info(f"Starting geotiler v{__version__} (auth_use_cli={settings.auth_use_cli}, storage_auth={settings.enable_storage_auth}, pg_auth={settings.pg_auth_mode})")
 
+    # Initialize refresh locks eagerly (avoids lazy hasattr/setattr pattern)
+    app.state._tipg_refresh_lock = asyncio.Lock()
+    app.state._stac_refresh_lock = asyncio.Lock()
+
     # Initialize database connection (titiler-pgstac)
     await _initialize_database(app)
 

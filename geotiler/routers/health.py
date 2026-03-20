@@ -16,6 +16,7 @@ The /health endpoint returns a structured response with:
 - config: Current configuration flags
 """
 
+import json
 import sys
 import os
 import logging
@@ -89,14 +90,28 @@ async def readiness(request: Request, response: Response):
         ready = False
         issues.append(f"database: {db_error}")
 
-    # Check 2: Storage OAuth token (if Azure auth enabled)
+    # Check 2: TiPG pool (if enabled)
+    if settings.enable_tipg:
+        tipg_pool = getattr(request.app.state, "pool", None)
+        if tipg_pool is None:
+            ready = False
+            issues.append("tipg: pool not initialized")
+
+    # Check 3: STAC pool (if enabled)
+    if settings.enable_stac_api:
+        stac_pool = getattr(request.app.state, "readpool", None)
+        if stac_pool is None:
+            ready = False
+            issues.append("stac_api: pool not initialized")
+
+    # Check 4: Storage OAuth token (if Azure auth enabled)
     if settings.enable_storage_auth:
         token_ok, token_issue = _check_token_ready(storage_token_cache, "storage_oauth")
         if not token_ok:
             ready = False
             issues.append(token_issue)
 
-    # Check 3: PostgreSQL OAuth token (if using managed identity)
+    # Check 5: PostgreSQL OAuth token (if using managed identity)
     if settings.pg_auth_mode == "managed_identity":
         pg_ok, pg_issue = _check_token_ready(postgres_token_cache, "postgres_oauth")
         if not pg_ok:
@@ -175,7 +190,7 @@ async def health(request: Request, response: Response):
         token_status = storage_token_cache.get_status()
         if token_status["has_token"]:
             ttl = token_status["ttl_seconds"]
-            storage_oauth_ok = ttl > 60  # At least 1 minute remaining
+            storage_oauth_ok = ttl > READYZ_MIN_TTL_SECS
             dependencies["storage_oauth"] = {
                 "status": "ok" if ttl > 300 else "warning",
                 "expires_in_seconds": ttl,
@@ -341,11 +356,16 @@ async def health(request: Request, response: Response):
                         pass
 
                     # collection_search() probe (unqualified — relies on server_settings search_path)
+                    # Inline the JSON literal instead of $1 parameter to avoid
+                    # stac-fastapi-pgstac's custom jsonb codec returning bytes
+                    # where asyncpg expects str (DataError: expected str, got bytes)
                     result = await conn.fetchval(
-                        "SELECT * FROM collection_search($1::text::jsonb);",
-                        '{}',
+                        "SELECT * FROM collection_search('{}'::jsonb);",
                     )
                     stac_details["collection_search_ok"] = True
+                    # Result may be dict, JSON string, or bytes depending on codec
+                    if isinstance(result, (str, bytes)):
+                        result = json.loads(result)
                     cols = result.get("collections", []) if isinstance(result, dict) else (result or [])
                     stac_details["collection_count"] = len(cols) if cols else 0
             except Exception as stac_probe_err:
@@ -448,6 +468,9 @@ def _check_token_ready(cache: TokenCache, name: str) -> Tuple[bool, str]:
     """
     Check if token cache is valid for readiness.
 
+    Uses get_status() for a single lock acquisition to avoid TOCTOU
+    race between reading token presence and TTL.
+
     Args:
         cache: TokenCache instance to check.
         name: Name for error messages (e.g., "storage_oauth").
@@ -455,10 +478,11 @@ def _check_token_ready(cache: TokenCache, name: str) -> Tuple[bool, str]:
     Returns:
         Tuple of (is_ready: bool, error_message: str)
     """
-    if not cache.token:
+    status = cache.get_status()
+    if not status["has_token"]:
         return False, f"{name}: no token"
 
-    ttl = cache.ttl_seconds()
+    ttl = status["ttl_seconds"]
     if ttl is not None and ttl < READYZ_MIN_TTL_SECS:
         return False, f"{name}: expires in {int(ttl)}s"
 

@@ -155,6 +155,16 @@ class TokenCache:
             return None
         return (self.expires_at - datetime.now(timezone.utc)).total_seconds()
 
+    def get_snapshot(self) -> tuple[Optional[str], Optional[datetime]]:
+        """
+        Atomically read token and expires_at as a pair.
+
+        Returns:
+            Tuple of (token, expires_at) read under a single lock acquisition.
+        """
+        with self._lock:
+            return self.token, self.expires_at
+
     def get_status(self) -> dict:
         """
         Get cache status for health checks.
@@ -189,9 +199,10 @@ class ErrorCache:
     _lock: Lock = field(default_factory=Lock, repr=False)
 
     def record_success(self) -> None:
-        """Record a successful operation, clearing last error."""
+        """Record a successful operation, clearing last error and its timestamp."""
         with self._lock:
             self.last_error = None
+            self.last_error_time = None
             self.last_success_time = datetime.now(timezone.utc)
 
     def record_error(self, error: str) -> None:

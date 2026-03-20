@@ -69,7 +69,7 @@ from internal DB                          from external DB
 |---|---|---|
 | `AssetResolver` reads routes table | Per request | `geotiler/services/asset_resolver.py` |
 | `/assets/{slug}/latest` endpoint | Per request | `geotiler/routers/versioned_assets.py` |
-| 307 redirect to native TiTiler/TiPG | Per request | Router handlers |
+| Internal proxy to native TiTiler/TiPG handlers | Per request | Router handlers |
 | Zone selection (b2b vs b2c table) | At startup (config) | `geotiler/config.py` |
 | Version listing endpoint | Per request | Router handlers |
 
@@ -171,11 +171,19 @@ GET /assets/fathom-flood-pluvial-100yr/versions
 ## URL Patterns (rmhtitiler)
 
 All endpoints are under `/assets/{slug}`. The service layer resolves the slug + version
-from the routes table and redirects (307) to the native endpoint.
+from the routes table and **internally proxies** to the native TiTiler/TiPG handler,
+returning the response directly. No 307 redirects — the client sees a single request/response.
+
+**Why internal proxy, not 307 redirect:**
+- **Single round trip** — client gets the tile/data in one request, not two
+- **Blob URLs stay internal** — clients never see storage paths or `?url=` parameters
+- **APIM-compatible** — works cleanly behind Azure API Management without redirect rewriting
+- **Complexity trade-off** — the router must call native handlers in-process, which couples
+  it to TiTiler/TiPG internals, but the security and UX benefits justify this
 
 ### Raster
 
-| Endpoint | Redirects To |
+| Endpoint | Proxies Internally To |
 |---|---|
 | `GET /assets/{slug}/tiles/{z}/{x}/{y}?version=latest` | `/cog/tiles/{z}/{x}/{y}?url={blob_url}` |
 | `GET /assets/{slug}/tilejson.json?version=latest` | `/cog/tilejson.json?url={blob_url}` |
@@ -184,7 +192,7 @@ from the routes table and redirects (307) to the native endpoint.
 
 ### Vector
 
-| Endpoint | Redirects To |
+| Endpoint | Proxies Internally To |
 |---|---|
 | `GET /assets/{slug}/vector/tiles/{z}/{x}/{y}?version=latest` | `/vector/collections/{schema.table}/tiles/{z}/{x}/{y}` |
 | `GET /assets/{slug}/vector/items?version=latest` | `/vector/collections/{schema.table}/items` |
@@ -192,12 +200,12 @@ from the routes table and redirects (307) to the native endpoint.
 
 ### Zarr
 
-| Endpoint | Redirects To |
+| Endpoint | Proxies Internally To |
 |---|---|
 | `GET /assets/{slug}/xarray/tiles/{z}/{x}/{y}?version=latest` | `/xarray/tiles/{z}/{x}/{y}?url={zarr_url}` |
 | `GET /assets/{slug}/xarray/tilejson.json?version=latest` | `/xarray/tilejson.json?url={zarr_url}` |
 
-### Metadata (no redirect — returns JSON directly)
+### Metadata (returns JSON directly)
 
 | Endpoint | Returns |
 |---|---|
@@ -431,7 +439,7 @@ This design **supersedes** `docs/VERSIONED_ASSETS_IMPLEMENTATION.md` (31 JAN 202
 | Who writes | N/A (read from app) | Orchestrator at approval time |
 | ADF integration | None | Routes replicated alongside data |
 
-The `AssetResolver` class, 307 redirect pattern, and router structure carry forward.
+The `AssetResolver` class, internal proxy pattern, and router structure carry forward.
 The backing data source and URL shape change.
 
 ---

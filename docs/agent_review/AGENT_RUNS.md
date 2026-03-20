@@ -190,6 +190,29 @@ All pipeline executions for this application in chronological order.
 
 ---
 
+## Run 11: Database Interaction Layer (COMPETE)
+
+| Field | Value |
+|-------|-------|
+| **Date** | 19 MAR 2026 |
+| **Pipeline** | COMPETE (Omega → Alpha+Beta → Gamma → Delta) |
+| **Scope** | Database interaction layer — pool lifecycle, credential refresh, health probes, codec/serialization boundaries |
+| **Split** | B: Internal vs External |
+| **Alpha Scope** | Internal logic — state management, data transformation, validation, error classification, internal consistency |
+| **Beta Scope** | External boundaries — API contract compliance, dependency resilience, serialization/codec mismatches, auth at boundaries, timeout behavior |
+| **Target Files** | `routers/health.py`, `routers/stac.py`, `routers/vector.py`, `routers/admin.py`, `services/database.py`, `app.py` |
+| **Gamma Priority Files** | `config.py`, `middleware/azure_auth.py`, `errors.py`, `openapi.py` |
+| **Status** | **COMPLETE** |
+| **Triggered By** | bytes-vs-str DataError in STAC probe queries (fixed in v0.10.0.3) |
+| **Findings** | Alpha: 3H/3M/2L, Beta: 1H/2M/3R/4EC, Gamma: 3 contradictions, 3 agreements, 5 blind spots |
+| **Top 5 Fixes** | F1: Unauthenticated admin webhook (CRITICAL), F2: _CachedTokenCredential torn read, F3: collection_search str result handling, F4: Sync token refresh race window, F5: readyz only checks pgstac pool |
+| **Accepted Risks** | Lazy lock creation (safe via cooperative scheduling), _check_token_ready TOCTOU (self-corrects), /api prefix breadth (no current misuse), STAC storage auth overhead (negligible), stale TiPGStartupState schemas, error_response **context (all callers internal), background task error swallowing |
+| **Architecture Wins** | Save-and-restore token refresh, TiPGStartupState diagnostic model, atomic pool swap, structured health endpoint, middleware skip-list pattern, env var naming conventions |
+| **Key Finding** | Unauthenticated `/admin/refresh-collections` webhook allows any network-reachable caller to trigger serial pool recreation — DoS vector. Also found `collection_search()` result type ambiguity where fetchval may return JSON string instead of dict, causing len() to count characters. |
+| **Output** | `docs/agent_review/agent_docs/COMPETE_DB_INTERACTION_LAYER.md` |
+
+---
+
 ## Cumulative Token Usage
 
 | Pipeline | Runs | Total Tokens |
