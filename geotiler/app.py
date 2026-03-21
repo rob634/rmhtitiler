@@ -69,8 +69,9 @@ async def lifespan(app: FastAPI):
     app.state._tipg_refresh_lock = asyncio.Lock()
     app.state._stac_refresh_lock = asyncio.Lock()
 
-    # Initialize database connection (titiler-pgstac)
-    await _initialize_database(app)
+    # Initialize database connection (titiler-pgstac) — only if needed
+    if settings.needs_pgstac_pool:
+        await _initialize_database(app)
 
     # Initialize TiPG (OGC Features + Vector Tiles)
     if settings.enable_tipg and settings.has_postgres_config:
@@ -138,7 +139,8 @@ async def lifespan(app: FastAPI):
         await vector.close_tipg(app)
 
     # Close titiler-pgstac pool
-    await close_db_connection(app)
+    if settings.needs_pgstac_pool:
+        await close_db_connection(app)
     logger.info("Shutdown complete")
 
 
@@ -213,7 +215,7 @@ async def _initialize_database(app: FastAPI) -> None:
 
 def _mount_titiler_routers(app: FastAPI) -> None:
     """
-    Mount all TiTiler routers.
+    Mount TiTiler routers based on feature flags.
 
     Endpoint Overview:
     - /cog/* - Cloud Optimized GeoTIFF tiles (rio-tiler 8.x)
@@ -224,55 +226,61 @@ def _mount_titiler_routers(app: FastAPI) -> None:
     # =========================================================================
     # TiTiler COG Endpoint - Direct file access
     # =========================================================================
-    cog = TilerFactory(
-        router_prefix="/cog",
-        add_viewer=True,
-    )
-    app.include_router(cog.router, prefix="/cog", tags=["Cloud Optimized GeoTIFF"])
+    if settings.enable_cog:
+        cog = TilerFactory(
+            router_prefix="/cog",
+            add_viewer=True,
+        )
+        app.include_router(cog.router, prefix="/cog", tags=["Cloud Optimized GeoTIFF"])
+        logger.info("COG router mounted at /cog")
 
     # =========================================================================
     # TiTiler Xarray Endpoint - Zarr/NetCDF multidimensional data
     # =========================================================================
-    xarray_tiler = XarrayTilerFactory(
-        router_prefix="/xarray",
-        extensions=[
-            DatasetMetadataExtension(),  # Adds /metadata endpoint
-        ],
-    )
-    app.include_router(
-        xarray_tiler.router, prefix="/xarray", tags=["Multidimensional (Zarr/NetCDF)"]
-    )
+    if settings.enable_xarray:
+        xarray_tiler = XarrayTilerFactory(
+            router_prefix="/xarray",
+            extensions=[
+                DatasetMetadataExtension(),  # Adds /metadata endpoint
+            ],
+        )
+        app.include_router(
+            xarray_tiler.router, prefix="/xarray", tags=["Multidimensional (Zarr/NetCDF)"]
+        )
+        logger.info("Xarray router mounted at /xarray")
 
     # =========================================================================
     # TiTiler-pgSTAC Search Endpoints - For STAC catalog searches
     # =========================================================================
-    pgstac_mosaic = MosaicTilerFactory(
-        path_dependency=SearchIdParams,
-        router_prefix="/searches/{search_id}",
-        add_statistics=True,
-        add_viewer=True,
-    )
-    app.include_router(
-        pgstac_mosaic.router, prefix="/searches/{search_id}", tags=["STAC Search"]
-    )
+    if settings.enable_pgstac_search:
+        pgstac_mosaic = MosaicTilerFactory(
+            path_dependency=SearchIdParams,
+            router_prefix="/searches/{search_id}",
+            add_statistics=True,
+            add_viewer=True,
+        )
+        app.include_router(
+            pgstac_mosaic.router, prefix="/searches/{search_id}", tags=["STAC Search"]
+        )
 
-    # Add search management routes
-    add_search_list_route(app, prefix="/searches", tags=["STAC Search"])
-    add_search_register_route(
-        app,
-        prefix="/searches",
-        tile_dependencies=[
-            pgstac_mosaic.layer_dependency,
-            pgstac_mosaic.dataset_dependency,
-            pgstac_mosaic.pixel_selection_dependency,
-            pgstac_mosaic.process_dependency,
-            pgstac_mosaic.render_dependency,
-            pgstac_mosaic.assets_accessor_dependency,
-            pgstac_mosaic.reader_dependency,
-            pgstac_mosaic.backend_dependency,
-        ],
-        tags=["STAC Search"],
-    )
+        # Add search management routes
+        add_search_list_route(app, prefix="/searches", tags=["STAC Search"])
+        add_search_register_route(
+            app,
+            prefix="/searches",
+            tile_dependencies=[
+                pgstac_mosaic.layer_dependency,
+                pgstac_mosaic.dataset_dependency,
+                pgstac_mosaic.pixel_selection_dependency,
+                pgstac_mosaic.process_dependency,
+                pgstac_mosaic.render_dependency,
+                pgstac_mosaic.assets_accessor_dependency,
+                pgstac_mosaic.reader_dependency,
+                pgstac_mosaic.backend_dependency,
+            ],
+            tags=["STAC Search"],
+        )
+        logger.info("pgSTAC search router mounted at /searches")
 
 
 def create_app() -> FastAPI:
@@ -406,9 +414,12 @@ def create_app() -> FastAPI:
             logger.warning("STAC API will not be available")
 
     # Landing pages for TiTiler components
-    app.include_router(cog_landing.router, tags=["Landing Pages"])
-    app.include_router(xarray_landing.router, tags=["Landing Pages"])
-    app.include_router(searches_landing.router, tags=["Landing Pages"])
+    if settings.enable_cog:
+        app.include_router(cog_landing.router, tags=["Landing Pages"])
+    if settings.enable_xarray:
+        app.include_router(xarray_landing.router, tags=["Landing Pages"])
+    if settings.enable_pgstac_search:
+        app.include_router(searches_landing.router, tags=["Landing Pages"])
 
     # STAC Explorer GUI
     if settings.enable_stac_api:

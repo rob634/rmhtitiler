@@ -238,42 +238,69 @@ async def health(request: Request, response: Response):
     # =========================================================================
 
     # COG Tiles (TiTiler core)
-    cog_available = True
-    if settings.enable_storage_auth:
-        cog_available = storage_oauth_ok
+    if settings.enable_cog:
+        cog_available = True
+        if settings.enable_storage_auth:
+            cog_available = storage_oauth_ok
 
-    services["cog"] = _build_service_status(
-        name="cog",
-        available=cog_available,
-        description="Cloud-Optimized GeoTIFF tile serving",
-        endpoints=["/cog/info", "/cog/tiles/{z}/{x}/{y}", "/cog/statistics", "/cog/preview"],
-    )
+        services["cog"] = _build_service_status(
+            name="cog",
+            available=cog_available,
+            description="Cloud-Optimized GeoTIFF tile serving",
+            endpoints=["/cog/info", "/cog/tiles/{z}/{x}/{y}", "/cog/statistics", "/cog/preview"],
+        )
+    else:
+        services["cog"] = _build_service_status(
+            name="cog",
+            available=False,
+            description="Cloud-Optimized GeoTIFF tile serving",
+            endpoints=[],
+            disabled_reason="GEOTILER_ENABLE_COG=false",
+        )
 
     # XArray (Zarr/NetCDF)
-    xarray_available = True
-    if settings.enable_storage_auth:
-        xarray_available = storage_oauth_ok
+    if settings.enable_xarray:
+        xarray_available = True
+        if settings.enable_storage_auth:
+            xarray_available = storage_oauth_ok
 
-    services["xarray"] = _build_service_status(
-        name="xarray",
-        available=xarray_available,
-        description="Zarr/NetCDF multidimensional array tiles",
-        endpoints=["/xarray/info", "/xarray/tiles/{z}/{x}/{y}"],
-    )
+        services["xarray"] = _build_service_status(
+            name="xarray",
+            available=xarray_available,
+            description="Zarr/NetCDF multidimensional array tiles",
+            endpoints=["/xarray/info", "/xarray/tiles/{z}/{x}/{y}"],
+        )
+    else:
+        services["xarray"] = _build_service_status(
+            name="xarray",
+            available=False,
+            description="Zarr/NetCDF multidimensional array tiles",
+            endpoints=[],
+            disabled_reason="GEOTILER_ENABLE_XARRAY=false",
+        )
 
     # pgSTAC Mosaic
-    services["pgstac"] = _build_service_status(
-        name="pgstac",
-        available=db_ok,
-        description="STAC mosaic searches and dynamic tiling",
-        endpoints=[
-            "/searches/{search_id}/info",
-            "/searches/{search_id}/tiles/{z}/{x}/{y}",
-            "/mosaic/tiles/{z}/{x}/{y}",
-        ],
-    )
-    if not db_ok:
-        issues.append("pgSTAC mosaic unavailable - database connection required")
+    if settings.enable_pgstac_search:
+        services["pgstac"] = _build_service_status(
+            name="pgstac",
+            available=db_ok,
+            description="STAC mosaic searches and dynamic tiling",
+            endpoints=[
+                "/searches/{search_id}/info",
+                "/searches/{search_id}/tiles/{z}/{x}/{y}",
+                "/mosaic/tiles/{z}/{x}/{y}",
+            ],
+        )
+        if not db_ok:
+            issues.append("pgSTAC mosaic unavailable - database connection required")
+    else:
+        services["pgstac"] = _build_service_status(
+            name="pgstac",
+            available=False,
+            description="STAC mosaic searches and dynamic tiling",
+            endpoints=[],
+            disabled_reason="GEOTILER_ENABLE_PGSTAC_SEARCH=false",
+        )
 
     # TiPG (OGC Features + Vector Tiles)
     tipg_ok = False

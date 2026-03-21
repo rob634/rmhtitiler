@@ -103,6 +103,15 @@ class Settings(BaseSettings):
     # =========================================================================
     # Feature Flags — GEOTILER_ENABLE_*
     # =========================================================================
+    enable_cog: bool = True
+    """Enable Cloud Optimized GeoTIFF tile endpoints (/cog/*)."""
+
+    enable_xarray: bool = True
+    """Enable Zarr/NetCDF multidimensional tile endpoints (/xarray/*)."""
+
+    enable_pgstac_search: bool = True
+    """Enable pgSTAC dynamic mosaic search endpoints (/searches/*)."""
+
     enable_tipg: bool = True
     """Enable TiPG OGC Features + Vector Tiles API."""
 
@@ -119,6 +128,11 @@ class Settings(BaseSettings):
     enable_diagnostics: bool = True
     """Enable diagnostics endpoints (pool state, table metadata).
     Disable on external/public instances to avoid information disclosure."""
+
+    @property
+    def needs_pgstac_pool(self) -> bool:
+        """Whether any enabled component requires the titiler-pgstac psycopg pool."""
+        return self.enable_cog or self.enable_xarray or self.enable_pgstac_search
 
     # =========================================================================
     # TiPG — GEOTILER_TIPG_*

@@ -110,6 +110,9 @@ All app vars use `GEOTILER_COMPONENT_SETTING` convention with units in names.
 | `GEOTILER_PG_DB` | PostgreSQL database name |
 | `GEOTILER_PG_USER` | PostgreSQL username |
 | `GEOTILER_PG_AUTH_MODE` | Auth mode: `password`, `key_vault`, or `managed_identity` |
+| `GEOTILER_ENABLE_COG` | Enable COG tile endpoints at `/cog/*` (default: true) |
+| `GEOTILER_ENABLE_XARRAY` | Enable Zarr/NetCDF tile endpoints at `/xarray/*` (default: true) |
+| `GEOTILER_ENABLE_PGSTAC_SEARCH` | Enable pgSTAC mosaic search at `/searches/*` (default: true) |
 | `GEOTILER_ENABLE_TIPG` | Enable TiPG OGC Features + Vector Tiles (default: true) |
 | `GEOTILER_TIPG_SCHEMAS` | Comma-separated PostGIS schemas to expose (default: "geo") |
 | `GEOTILER_TIPG_PREFIX` | URL prefix for TiPG routes (default: "/vector") |

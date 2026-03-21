@@ -305,6 +305,9 @@ All application settings use the `GEOTILER_` prefix: `GEOTILER_COMPONENT_SETTING
 | `GEOTILER_KEYVAULT_NAME` | — | Azure Key Vault name (for `key_vault` auth mode) |
 | `GEOTILER_KEYVAULT_SECRET_NAME` | `postgres-password` | Secret name containing PG password |
 | **Feature Flags** | | |
+| `GEOTILER_ENABLE_COG` | `true` | Enable COG tile endpoints (`/cog/*`) |
+| `GEOTILER_ENABLE_XARRAY` | `true` | Enable Zarr/NetCDF tile endpoints (`/xarray/*`) |
+| `GEOTILER_ENABLE_PGSTAC_SEARCH` | `true` | Enable pgSTAC mosaic search endpoints (`/searches/*`) |
 | `GEOTILER_ENABLE_TIPG` | `true` | Enable TiPG (OGC Features + Vector Tiles) |
 | `GEOTILER_ENABLE_STAC_API` | `true` | Enable STAC catalog API |
 | `GEOTILER_ENABLE_H3_DUCKDB` | `false` | Enable server-side DuckDB for H3 queries |
