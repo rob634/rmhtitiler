@@ -382,21 +382,16 @@ def create_app() -> FastAPI:
         )
         logger.info(f"TiPG router mounted at {settings.tipg_prefix}")
 
-        # Optional: CatalogUpdateMiddleware for automatic catalog refresh
+        # Optional: TTL-based automatic catalog refresh
         if settings.enable_tipg_catalog_ttl:
-            from tipg.middleware import CatalogUpdateMiddleware
-            from tipg.collections import register_collection_catalog
-            from tipg.settings import DatabaseSettings as TiPGDatabaseSettings
+            from geotiler.middleware.catalog_ttl import CatalogTTLMiddleware
 
-            db_settings = TiPGDatabaseSettings(schemas=settings.tipg_schema_list)
             app.add_middleware(
-                CatalogUpdateMiddleware,
-                func=register_collection_catalog,
+                CatalogTTLMiddleware,
                 ttl=settings.tipg_catalog_ttl_sec,
-                db_settings=db_settings,
             )
             logger.info(
-                f"TiPG CatalogUpdateMiddleware enabled: TTL={settings.tipg_catalog_ttl_sec}s"
+                f"CatalogTTLMiddleware enabled: TTL={settings.tipg_catalog_ttl_sec}s"
             )
 
         # TiPG diagnostics endpoint (for debugging table discovery)
