@@ -56,6 +56,12 @@ class Settings(BaseSettings):
     )
 
     # =========================================================================
+    # Logging — GEOTILER_LOG_LEVEL
+    # =========================================================================
+    log_level: str = "INFO"
+    """Root log level: DEBUG, INFO, WARNING, ERROR, CRITICAL."""
+
+    # =========================================================================
     # Auth — GEOTILER_ENABLE_STORAGE_AUTH, GEOTILER_STORAGE_ACCOUNT, GEOTILER_AUTH_USE_CLI
     # =========================================================================
     enable_storage_auth: bool = False

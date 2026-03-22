@@ -45,9 +45,11 @@ class CatalogTTLMiddleware:
         # Then refresh in background if needed
         if needs_refresh:
             self._last_refresh = now
+            logger.debug(f"TTL expired ({self.ttl}s) — triggering catalog refresh")
             request = Request(scope)
             try:
                 from geotiler.routers.vector import refresh_tipg_pool
                 await refresh_tipg_pool(request.app)
+                logger.debug("TTL catalog refresh complete")
             except Exception as e:
                 logger.warning(f"TTL catalog refresh failed: {e}")

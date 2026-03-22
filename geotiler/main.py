@@ -55,7 +55,10 @@ _telemetry_enabled = configure_azure_monitor()
 from geotiler.infrastructure.logging import LoggerFactory
 
 # Use JSON logging if App Insights is enabled, plain text otherwise
-LoggerFactory.configure(use_json=_telemetry_enabled)
+# Log level read directly from env (config.py not yet importable here)
+import logging as _logging
+_log_level = getattr(_logging, os.environ.get("GEOTILER_LOG_LEVEL", "INFO").upper(), _logging.INFO)
+LoggerFactory.configure(use_json=_telemetry_enabled, level=_log_level)
 
 # ============================================================================
 # STEP 3: IMPORT AND CREATE APPLICATION
