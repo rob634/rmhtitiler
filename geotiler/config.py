@@ -131,6 +131,10 @@ class Settings(BaseSettings):
     """Enable admin endpoints (refresh-collections webhook).
     Disable on external/public instances where admin access is unnecessary."""
 
+    enable_admin_auth: bool = False
+    """Require Admin app role for admin/diagnostics endpoints.
+    Enable alongside Easy Auth in Azure. No-op when Easy Auth is not configured."""
+
     enable_diagnostics: bool = True
     """Enable diagnostics endpoints (pool state, table metadata).
     Disable on external/public instances to avoid information disclosure."""

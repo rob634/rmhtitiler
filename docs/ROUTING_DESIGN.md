@@ -1,25 +1,104 @@
-# Versioned Asset Routing — Cross-Project Design
+# API URL Control — Hybrid Routing Design
 
 **Created**: 02 MAR 2026
+**Updated**: 24 MAR 2026
 **Status**: APPROVED DESIGN — awaiting implementation
 **Scope**: rmhgeoapi (ETL) + rmhtitiler (Service Layer)
-**Supersedes**: `docs/VERSIONED_ASSETS_IMPLEMENTATION.md` (31 JAN 2026) — outdated patterns
+**Supersedes**: `docs/archive/VERSIONED_ASSETS_IMPLEMENTATION.md` (31 JAN 2026) — outdated patterns
 
 ---
 
 ## Problem
 
-The service layer (rmhtitiler) needs to resolve friendly URLs like
-`/assets/fathom-pluvial-100yr/latest` to concrete TiTiler/TiPG endpoints without
-crossing the internal/external security boundary.
+The service layer (rmhtitiler) needs clean, human-readable API URLs for consumers.
+The current raw endpoints expose infrastructure details:
 
-The previous design (Jan 2026) had the external TiTiler querying `app.geospatial_assets`
-on the internal database. This breaks the airgap — the `app` schema contains internal
-infrastructure details and must never be replicated externally.
+| Component | Raw URL (current) | Problem |
+|-----------|-------------------|---------|
+| COG | `/cog/tiles/{z}/{x}/{y}?url=/vsiaz/silver/path.tif` | Blob paths leaked to clients |
+| Xarray | `/xarray/tiles/{z}/{x}/{y}?url=abfs://container/path.zarr` | Blob paths leaked to clients |
+| Vector | `/vector/collections/geo.t_floods_v3/items` | Table naming = infrastructure detail |
+| STAC | `/stac/collections/floods-jakarta` | Already clean — ETL controls collection ID |
 
 ---
 
-## Solution: `geo.b2c_routes` + `geo.b2b_routes`
+## Solution: Hybrid Approach
+
+Different components get different URL control strategies based on what drives their URLs.
+
+### Strategy Summary
+
+| Component | URL Driver | Control Strategy | Needs Proxy Router? |
+|-----------|-----------|-----------------|---------------------|
+| **Vector (TiPG)** | PostGIS table name | ETL names tables with clean names | **No** — table name IS the URL |
+| **STAC** | Collection ID | ETL sets collection IDs at ingest | **No** — collection ID IS the URL |
+| **COG (TiTiler)** | Blob storage path | Slug → blob path lookup table | **Yes** — proxy hides blob URL |
+| **Xarray (Zarr)** | Blob storage path | Slug → blob path lookup table | **Yes** — proxy hides blob URL |
+
+### Why Hybrid?
+
+The original design (Mar 2026 v1) proposed a proxy for all four components. But for
+vector and STAC, the URLs are already controlled at the data layer:
+
+- **Vector:** TiPG exposes tables as `/vector/collections/{schema}.{table_name}/...`.
+  If ETL names the table `floods_jakarta_2024` in the `geo` schema, the URL is
+  `/vector/collections/geo.floods_jakarta_2024/items` — no proxy needed.
+
+- **STAC:** Collection IDs are set during STAC materialization in the ETL.
+  `/stac/collections/fathom-pluvial-100yr` is already human-readable.
+
+The proxy pattern is only needed where blob storage paths are in the URL (COG, Xarray),
+because those paths contain infrastructure details that must stay internal.
+
+---
+
+## Strategy 1: ETL-Side Table/Collection Naming (Vector + STAC)
+
+### Vector Tables
+
+ETL controls the table name at creation time. Clean naming convention:
+
+```
+{dataset}_{resource}[_{version}]
+```
+
+Examples:
+```
+geo.floods_jakarta_2024        → /vector/collections/geo.floods_jakarta_2024/items
+geo.parcels_fairfax             → /vector/collections/geo.parcels_fairfax/items
+geo.infrastructure_roads_v2     → /vector/collections/geo.infrastructure_roads_v2/items
+```
+
+**Rules:**
+- Lowercase, underscores (PostgreSQL convention)
+- No `t_` prefix — the table name is the public-facing identifier
+- Version suffix only when multiple versions coexist (otherwise just update in place)
+- Must start with a letter (PostgreSQL constraint)
+
+**Who:** rmhgeoapi `core/schema/sql_generator.py` already controls table naming.
+Rename convention is the only change needed.
+
+### STAC Collections
+
+Collection IDs are set during `pgstac.collections` INSERT in the ETL:
+
+```
+fathom-pluvial-100yr           → /stac/collections/fathom-pluvial-100yr
+era5-temperature-hourly         → /stac/collections/era5-temperature-hourly
+```
+
+**Who:** rmhgeoapi `services/stac_materializer.py` already controls this.
+No change needed — collection IDs are already slugified.
+
+---
+
+## Strategy 2: Proxy Router with Route Tables (COG + Xarray)
+
+For raster (COG) and multidimensional (Xarray/Zarr) data, blob storage paths must be
+hidden from clients. A proxy router resolves a friendly slug to a concrete blob path
+and forwards the request to the native TiTiler handler internally.
+
+### Route Tables: `geo.b2c_routes` + `geo.b2b_routes`
 
 Route tables live in the `geo` schema so they replicate alongside vector data. The
 orchestrator (rmhgeoapi) writes routes at approval time. The service layer (rmhtitiler)
@@ -31,11 +110,9 @@ INTERNAL                                  EXTERNAL
 rmhpostgres (geopgflex)                   [external-server] (geopgflex)
 ├── app schema (NEVER leaves)
 ├── geo schema                            ├── geo schema (ADF replica)
-│   ├── table_catalog                     │   ├── table_catalog
 │   ├── b2b_routes  ← internal routing    │   ├── b2c_routes  ← public routing
 │   ├── b2c_routes  ← source of truth     │   ├── [user vector tables]
-│   ├── feature_collection_styles         │   └── feature_collection_styles
-│   └── [user vector tables]              │
+│   └── [user vector tables]              │   └── feature_collection_styles
 ├── pgstac schema                         ├── pgstac schema (ADF replica)
 │   ├── collections                       │   ├── collections
 │   └── items                             │   └── items
@@ -47,44 +124,7 @@ from internal DB                          from external DB
 (same code, different table)              (behind Cloudflare, no easy auth)
 ```
 
----
-
-## Who Does What
-
-### rmhgeoapi (Orchestrator / ETL)
-
-| Responsibility | When | Where |
-|---|---|---|
-| DDL: create `geo.b2c_routes` + `geo.b2b_routes` tables | Schema ensure/rebuild | `core/schema/sql_generator.py` |
-| Generate slug from platform_refs | At approval time | `services/asset_approval_service.py` |
-| Write route record (b2c and/or b2b) | At approval time | `services/asset_approval_service.py` |
-| Flip `is_latest` on new version approval | At approval time | `infrastructure/release_repository.py` |
-| Clear route on revocation | At revoke time | `services/asset_approval_service.py` |
-| Trigger ADF for PUBLIC releases | At approval time | `services/asset_approval_service.py` |
-| ADF pipeline definition | Infrastructure | Azure Data Factory |
-
-### rmhtitiler (Service Layer)
-
-| Responsibility | When | Where |
-|---|---|---|
-| `AssetResolver` reads routes table | Per request | `geotiler/services/asset_resolver.py` |
-| `/assets/{slug}/latest` endpoint | Per request | `geotiler/routers/versioned_assets.py` |
-| Internal proxy to native TiTiler/TiPG handlers | Per request | Router handlers |
-| Zone selection (b2b vs b2c table) | At startup (config) | `geotiler/config.py` |
-| Version listing endpoint | Per request | Router handlers |
-
-### Neither (ADF Pipeline)
-
-| Responsibility | When | Where |
-|---|---|---|
-| Copy `geo.b2c_routes` rows → external DB | Per PUBLIC approval | ADF `export_to_public` |
-| Copy `pgstac.items` rows → external DB | Per PUBLIC approval | ADF `export_to_public` |
-| Copy vector tables → external DB | Per PUBLIC approval | ADF `export_to_public` |
-| Copy blobs silver → silver-ext | Per PUBLIC approval | ADF `export_to_public` |
-
----
-
-## Schema: `geo.b2c_routes`
+### Schema
 
 Both `b2c_routes` and `b2b_routes` share the same structure. They are separate tables
 (not filtered views) because they replicate to different databases.
@@ -96,17 +136,16 @@ CREATE TABLE geo.b2c_routes (
     version_id      VARCHAR(50)   NOT NULL,
 
     -- Classification
-    data_type       VARCHAR(20)   NOT NULL,  -- 'raster', 'vector', 'zarr'
+    data_type       VARCHAR(20)   NOT NULL,  -- 'raster', 'zarr'
 
     -- Version resolution
     is_latest       BOOLEAN       NOT NULL DEFAULT FALSE,
     version_ordinal INTEGER       NOT NULL,
 
-    -- Target resources (populated by data_type)
-    table_name      VARCHAR(63),             -- vector: geo.{table_name}
-    stac_item_id    VARCHAR(200),            -- raster/zarr: pgstac item
+    -- Target resources
+    blob_path       VARCHAR(500)  NOT NULL,  -- raster: /vsiaz/..., zarr: abfs://...
+    stac_item_id    VARCHAR(200),            -- pgstac item (for metadata lookup)
     stac_collection_id VARCHAR(200),         -- STAC collection
-    blob_path       VARCHAR(500),            -- direct download path
 
     -- Display
     title           VARCHAR(300)  NOT NULL,
@@ -139,9 +178,10 @@ CREATE INDEX idx_b2c_routes_data_type
 
 `geo.b2b_routes` uses the identical DDL (different table name).
 
----
+**Note:** `table_name` column removed from previous design. Vector routing is handled
+by ETL naming (Strategy 1), not the proxy router. Only `blob_path` targets remain.
 
-## Slug Generation
+### Slug Generation
 
 Deterministic from platform_refs, using existing `_slugify_for_stac()` from
 `config/platform_config.py`:
@@ -157,31 +197,18 @@ slug = _slugify_for_stac(f"{dataset_id}-{resource_id}")
 #   → slug = "aerial-imagery-site-alpha"
 ```
 
-The slug is a **flattened single-segment identifier**. External URLs use it directly:
+### URL Patterns (Proxy Router)
 
-```
-GET /assets/fathom-flood-pluvial-100yr/latest
-GET /assets/fathom-flood-pluvial-100yr/v1
-GET /assets/fathom-flood-pluvial-100yr/v2
-GET /assets/fathom-flood-pluvial-100yr/versions
-```
-
----
-
-## URL Patterns (rmhtitiler)
-
-All endpoints are under `/assets/{slug}`. The service layer resolves the slug + version
-from the routes table and **internally proxies** to the native TiTiler/TiPG handler,
-returning the response directly. No 307 redirects — the client sees a single request/response.
+All proxy endpoints are under `/assets/{slug}`. The service layer resolves the slug +
+version from the routes table and **internally proxies** to the native TiTiler handler,
+returning the response directly. No 307 redirects.
 
 **Why internal proxy, not 307 redirect:**
-- **Single round trip** — client gets the tile/data in one request, not two
+- **Single round trip** — client gets the tile/data in one request
 - **Blob URLs stay internal** — clients never see storage paths or `?url=` parameters
-- **APIM-compatible** — works cleanly behind Azure API Management without redirect rewriting
-- **Complexity trade-off** — the router must call native handlers in-process, which couples
-  it to TiTiler/TiPG internals, but the security and UX benefits justify this
+- **APIM-compatible** — works behind Azure API Management without redirect rewriting
 
-### Raster
+#### Raster (COG)
 
 | Endpoint | Proxies Internally To |
 |---|---|
@@ -190,38 +217,28 @@ returning the response directly. No 307 redirects — the client sees a single r
 | `GET /assets/{slug}/preview?version=latest` | `/cog/preview?url={blob_url}` |
 | `GET /assets/{slug}/info?version=latest` | `/cog/info?url={blob_url}` |
 
-### Vector
-
-| Endpoint | Proxies Internally To |
-|---|---|
-| `GET /assets/{slug}/vector/tiles/{z}/{x}/{y}?version=latest` | `/vector/collections/{schema.table}/tiles/{z}/{x}/{y}` |
-| `GET /assets/{slug}/vector/items?version=latest` | `/vector/collections/{schema.table}/items` |
-| `GET /assets/{slug}/vector/tilejson.json?version=latest` | `/vector/collections/{schema.table}/tilejson.json` |
-
-### Zarr
+#### Xarray (Zarr/NetCDF)
 
 | Endpoint | Proxies Internally To |
 |---|---|
 | `GET /assets/{slug}/xarray/tiles/{z}/{x}/{y}?version=latest` | `/xarray/tiles/{z}/{x}/{y}?url={zarr_url}` |
 | `GET /assets/{slug}/xarray/tilejson.json?version=latest` | `/xarray/tilejson.json?url={zarr_url}` |
 
-### Metadata (returns JSON directly)
+#### Metadata (returns JSON directly)
 
 | Endpoint | Returns |
 |---|---|
 | `GET /assets/{slug}/versions` | All versions with ordinal, is_latest, created_at |
 | `GET /assets/{slug}/info?version=latest` | Asset metadata + links to native endpoints |
 
----
-
-## AssetResolver (rmhtitiler)
+### AssetResolver (rmhtitiler)
 
 Zone-parameterized: same code, different backing table.
 
 ```python
 class AssetResolver:
     """
-    Resolves slug + version to concrete asset targets.
+    Resolves slug + version to concrete blob paths for COG/Xarray assets.
 
     Zone-parameterized: internal deployments use geo.b2b_routes,
     external deployments use geo.b2c_routes. Set via config.
@@ -234,8 +251,8 @@ class AssetResolver:
     async def resolve(self, slug: str, version: str = "latest") -> Optional[ResolvedAsset]:
         if version == "latest":
             query = f"""
-                SELECT slug, version_id, data_type, table_name,
-                       stac_item_id, stac_collection_id, blob_path,
+                SELECT slug, version_id, data_type, blob_path,
+                       stac_item_id, stac_collection_id,
                        title, version_ordinal
                 FROM {self._table}
                 WHERE slug = $1 AND is_latest = TRUE
@@ -243,8 +260,8 @@ class AssetResolver:
             row = await self._pool.fetchrow(query, slug)
         else:
             query = f"""
-                SELECT slug, version_id, data_type, table_name,
-                       stac_item_id, stac_collection_id, blob_path,
+                SELECT slug, version_id, data_type, blob_path,
+                       stac_item_id, stac_collection_id,
                        title, version_ordinal
                 FROM {self._table}
                 WHERE slug = $1 AND version_id = $2
@@ -274,8 +291,40 @@ GEOTILER_ROUTES_TABLE: str = "geo.b2c_routes"  # external default
 # Internal deployments override to "geo.b2b_routes"
 ```
 
-No `lineage_id` hash computation needed. No cross-schema queries. No `app` schema
-dependency. The slug IS the lookup key.
+---
+
+## Who Does What
+
+### rmhgeoapi (Orchestrator / ETL)
+
+| Responsibility | When | Where |
+|---|---|---|
+| Name vector tables with clean conventions | At table creation | `core/schema/sql_generator.py` |
+| Set STAC collection IDs as slugs | At STAC materialization | `services/stac_materializer.py` |
+| DDL: create `geo.b2c_routes` + `geo.b2b_routes` | Schema ensure/rebuild | `core/schema/sql_generator.py` |
+| Write route record for COG/Zarr assets | At approval time | `services/asset_approval_service.py` |
+| Flip `is_latest` on new version approval | At approval time | `infrastructure/release_repository.py` |
+| Clear route on revocation | At revoke time | `services/asset_approval_service.py` |
+| Trigger ADF for PUBLIC releases | At approval time | `services/asset_approval_service.py` |
+
+### rmhtitiler (Service Layer)
+
+| Responsibility | When | Where |
+|---|---|---|
+| `AssetResolver` reads routes table (COG/Xarray only) | Per request | `geotiler/services/asset_resolver.py` |
+| `/assets/{slug}/*` proxy endpoints | Per request | `geotiler/routers/versioned_assets.py` |
+| Internal proxy to native TiTiler handlers | Per request | Router handlers |
+| Zone selection (b2b vs b2c table) | At startup (config) | `geotiler/config.py` |
+| Vector/STAC URLs work natively — no proxy needed | Always | TiPG + stac-fastapi |
+
+### ADF Pipeline: `export_to_public`
+
+| Responsibility | When | Where |
+|---|---|---|
+| Copy `geo.b2c_routes` rows → external DB | Per PUBLIC approval | ADF `export_to_public` |
+| Copy `pgstac.items` rows → external DB | Per PUBLIC approval | ADF `export_to_public` |
+| Copy vector tables → external DB | Per PUBLIC approval | ADF `export_to_public` |
+| Copy blobs silver → silver-ext | Per PUBLIC approval | ADF `export_to_public` |
 
 ---
 
@@ -285,43 +334,42 @@ dependency. The slug IS the lookup key.
 
 ```python
 # In asset_approval_service.py, after STAC materialization:
+# Only for raster/zarr — vector URLs are controlled by table naming
 
-slug = _slugify_for_stac(f"{asset.dataset_id}-{asset.resource_id}")
+if asset.data_type in ('raster', 'zarr'):
+    slug = _slugify_for_stac(f"{asset.dataset_id}-{asset.resource_id}")
 
-route = {
-    'slug': slug,
-    'version_id': version_id,           # "v1", "v2"
-    'data_type': asset.data_type,       # "raster", "vector", "zarr"
-    'is_latest': True,
-    'version_ordinal': release.version_ordinal,
-    'table_name': table_name,           # vector only
-    'stac_item_id': release.stac_item_id,
-    'stac_collection_id': release.stac_collection_id,
-    'blob_path': release.blob_path,     # raster/zarr blob
-    'title': asset.title or slug,
-    'asset_id': asset.asset_id,
-    'release_id': release.release_id,
-    'cleared_by': reviewer,
-    'cleared_at': now
-}
+    route = {
+        'slug': slug,
+        'version_id': version_id,
+        'data_type': asset.data_type,
+        'is_latest': True,
+        'version_ordinal': release.version_ordinal,
+        'blob_path': release.blob_path,
+        'stac_item_id': release.stac_item_id,
+        'stac_collection_id': release.stac_collection_id,
+        'title': asset.title or slug,
+        'asset_id': asset.asset_id,
+        'release_id': release.release_id,
+        'cleared_by': reviewer,
+        'cleared_at': now
+    }
 
-# 1. Flip previous is_latest to FALSE for this slug
-route_repo.clear_latest(slug)
+    # 1. Flip previous is_latest to FALSE for this slug
+    route_repo.clear_latest(slug)
 
-# 2. Upsert new route (INSERT ON CONFLICT UPDATE)
-route_repo.upsert_route('b2c_routes', route)
-
-# 3. Also write to b2b_routes (internal always gets a route)
-route_repo.upsert_route('b2b_routes', route)
+    # 2. Upsert new route
+    route_repo.upsert_route('b2c_routes', route)
+    route_repo.upsert_route('b2b_routes', route)
 ```
 
 ### On Approval (clearance_state = OUO)
 
 ```python
 # Internal only — write b2b_routes, skip b2c_routes
-route_repo.clear_latest(slug, table='b2b_routes')
-route_repo.upsert_route('b2b_routes', route)
-# No b2c_routes entry — not public
+if asset.data_type in ('raster', 'zarr'):
+    route_repo.clear_latest(slug, table='b2b_routes')
+    route_repo.upsert_route('b2b_routes', route)
 ```
 
 ### On Revocation
@@ -335,69 +383,6 @@ route_repo.delete_route(slug, version_id, table='b2b_routes')
 route_repo.promote_next_latest(slug, table='b2c_routes')
 route_repo.promote_next_latest(slug, table='b2b_routes')
 ```
-
----
-
-## ADF Pipeline: `export_to_public`
-
-Triggered per PUBLIC approval. Copies only the specific release's artifacts.
-
-### Pipeline Parameters (passed from rmhgeoapi)
-
-```json
-{
-    "release_id": "abc123...",
-    "asset_id": "def456...",
-    "data_type": "raster|vector|zarr",
-    "slug": "fathom-flood-pluvial-100yr",
-    "version_id": "v1",
-
-    "stac_item_id": "fathom-flood-pluvial-100yr-v1",
-    "stac_collection_id": "fathom-flood-pluvial-100yr",
-
-    "table_names": ["floods_pluvial_100yr_v1"],
-    "blob_path": "silver-cogs/fathom-flood/pluvial-100yr/v1/data.cog.tif"
-}
-```
-
-### Pipeline Activities
-
-```
-export_to_public
-├── 1. Copy Route Record
-│   INSERT INTO geo.b2c_routes (from internal geo.b2c_routes)
-│   Target: external DB → geo.b2c_routes
-│
-├── 2. Copy Data (conditional on data_type)
-│   ├── IF vector:
-│   │   Copy geo.{table_name} → external DB geo.{table_name}
-│   │   Copy geo.table_catalog row → external DB
-│   │
-│   ├── IF raster:
-│   │   Copy blob: silver-cogs/{path} → silverext-cogs/{path}
-│   │   Copy pgstac.items row → external DB
-│   │   Copy pgstac.collections row → external DB (upsert)
-│   │
-│   └── IF zarr:
-│       Copy blob: silver-zarr/{path} → silverext-zarr/{path}
-│       Copy pgstac.items row → external DB
-│       Copy pgstac.collections row → external DB (upsert)
-│
-├── 3. Copy Styles (if vector)
-│   Copy geo.feature_collection_styles rows for this collection
-│
-└── 4. Audit Log
-    Record: who approved, when, what was copied, ADF run_id
-```
-
-### ADF Connection Targets
-
-| Source | Target | Method |
-|---|---|---|
-| Internal PostgreSQL `geo` schema | External PostgreSQL `geo` schema | ADF Copy Activity (PostgreSQL→PostgreSQL) |
-| Internal PostgreSQL `pgstac` schema | External PostgreSQL `pgstac` schema | ADF Copy Activity |
-| Internal blob `silver-cogs` | External blob `silverext-cogs` | ADF Copy Activity (Blob→Blob) |
-| Internal blob `silver-zarr` | External blob `silverext-zarr` | ADF Copy Activity (Blob→Blob) |
 
 ---
 
@@ -419,28 +404,8 @@ Each zone gets:
 
 The service layer code is **identical** across zones. Only the config changes:
 - `GEOTILER_ROUTES_TABLE` → which routes table to read
-- `POSTGRES_*` → which database to connect to
-- `AZURE_STORAGE_ACCOUNT` → which blob storage to serve from
-
----
-
-## Relationship to Previous Design
-
-This design **supersedes** `docs/VERSIONED_ASSETS_IMPLEMENTATION.md` (31 JAN 2026).
-
-| Aspect | Old Design (Jan 2026) | New Design (Mar 2026) |
-|---|---|---|
-| Lookup source | `app.geospatial_assets` | `geo.b2c_routes` / `geo.b2b_routes` |
-| Identity | `lineage_id` (SHA256 hash) | `slug` (human-readable) |
-| URL shape | `/assets/{dataset}/{resource}?version=latest` | `/assets/{slug}/latest` |
-| Security boundary | Crosses it (reads `app` schema) | Respects it (reads `geo` schema) |
-| Zone support | Single zone only | Multi-zone (b2b, b2c, future b2r) |
-| DB dependency | TiTiler → internal rmhgeoapi DB | TiTiler → zone-local DB |
-| Who writes | N/A (read from app) | Orchestrator at approval time |
-| ADF integration | None | Routes replicated alongside data |
-
-The `AssetResolver` class, internal proxy pattern, and router structure carry forward.
-The backing data source and URL shape change.
+- `GEOTILER_PG_*` → which database to connect to
+- `GEOTILER_STORAGE_ACCOUNT` → which blob storage to serve from
 
 ---
 
@@ -448,20 +413,20 @@ The backing data source and URL shape change.
 
 ### rmhgeoapi (ETL — do first)
 
+- [ ] Adopt clean table naming convention (drop `t_` prefix, use `{dataset}_{resource}` pattern)
 - [ ] Add `geo.b2c_routes` + `geo.b2b_routes` DDL to `core/schema/sql_generator.py`
 - [ ] Create `infrastructure/route_repository.py` (upsert, delete, clear_latest, promote_next)
-- [ ] Wire route creation into `services/asset_approval_service.py` (approve + revoke)
+- [ ] Wire route creation into `services/asset_approval_service.py` (raster/zarr only)
 - [ ] Add `slug` parameter to ADF pipeline trigger
 - [ ] Deploy + `action=ensure` to create tables
-- [ ] Verify: approve a release → route record appears
+- [ ] Verify: approve a raster release → route record appears
 
 ### rmhtitiler (Service Layer — do second)
 
 - [ ] Update `geotiler/config.py` with `GEOTILER_ROUTES_TABLE` setting
-- [ ] Rewrite `geotiler/services/asset_resolver.py` to query routes table (not `app` schema)
-- [ ] Update `geotiler/routers/versioned_assets.py` for slug-based URLs
-- [ ] Add zarr endpoint support
-- [ ] Register router in `geotiler/app.py`
+- [ ] Rewrite `geotiler/services/asset_resolver.py` to query routes table
+- [ ] Create `geotiler/routers/versioned_assets.py` for `/assets/{slug}/*` proxy endpoints
+- [ ] Register router in `geotiler/app.py` behind `GEOTILER_ENABLE_ASSETS` feature flag
 - [ ] Health check: verify routes table connectivity
 
 ### ADF (Infrastructure — do when provisioned)
@@ -475,11 +440,30 @@ The backing data source and URL shape change.
 
 ---
 
+## Relationship to Previous Designs
+
+| Aspect | Old Design (Jan 2026) | Proxy-Only (Mar 2026 v1) | Hybrid (Mar 2026 v2, current) |
+|---|---|---|---|
+| Vector URL control | Proxy via lineage ID | Proxy via slug | ETL table naming (no proxy) |
+| STAC URL control | N/A | Proxy via slug | ETL collection ID (no proxy) |
+| COG URL control | Proxy via lineage ID | Proxy via slug | Proxy via slug (unchanged) |
+| Xarray URL control | N/A | Proxy via slug | Proxy via slug (unchanged) |
+| Route table scope | All data types | All data types | Raster + Zarr only |
+| Lookup source | `app.geospatial_assets` | `geo.b2c_routes` | `geo.b2c_routes` (unchanged) |
+| Security boundary | Crosses it | Respects it | Respects it |
+
+**Key insight:** For vector and STAC, the "URL" is the data identifier itself (table name,
+collection ID). Controlling the name at creation time is simpler and more reliable than
+routing through a lookup table. The proxy pattern is reserved for COG/Xarray where the
+URL contains an opaque blob storage path that must be hidden from clients.
+
+---
+
 ## References
 
 - `rmhgeoapi/services/asset_approval_service.py` — approval workflow
 - `rmhgeoapi/infrastructure/data_factory.py` — ADF repository
 - `rmhgeoapi/config/platform_config.py` — `_slugify_for_stac()`, naming patterns
 - `rmhgeoapi/docs_claude/APPROVAL_WORKFLOW.md` — approval state machine
-- `rmhtitiler/docs/VERSIONED_ASSETS_IMPLEMENTATION.md` — superseded design (reference only)
+- `rmhtitiler/docs/archive/VERSIONED_ASSETS_IMPLEMENTATION.md` — superseded design (reference only)
 - `rmhtitiler/archive/SERVICE-LAYER-API-DESIGN.md` — service layer endpoints (still valid)

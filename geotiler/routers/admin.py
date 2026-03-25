@@ -11,7 +11,9 @@ Provides:
 import logging
 from datetime import datetime, timezone
 
-from fastapi import APIRouter, Request, Response
+from fastapi import APIRouter, Depends, Request, Response
+
+from geotiler.auth.roles import require_admin
 from fastapi.responses import HTMLResponse
 
 from geotiler import __version__
@@ -102,7 +104,7 @@ async def api_info(request: Request):
     }
 
 
-@router.post("/admin/refresh-collections")
+@router.post("/admin/refresh-collections", dependencies=[Depends(require_admin)])
 async def refresh_collections(request: Request):
     """
     Webhook to refresh TiPG collection catalog.
