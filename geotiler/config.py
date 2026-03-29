@@ -139,6 +139,14 @@ class Settings(BaseSettings):
     """Enable diagnostics endpoints (pool state, table metadata).
     Disable on external/public instances to avoid information disclosure."""
 
+    enable_validation: bool = False
+    """Enable dataset validation endpoints at /validate/*.
+    Provides data quality checks for vector, COG, Zarr, and STAC datasets."""
+
+    enable_validation_full_scan: bool = False
+    """Allow depth=full on validation endpoints (expensive full-table scans).
+    Only enable on internal instances — external instances should leave this false."""
+
     @property
     def needs_pgstac_pool(self) -> bool:
         """Whether any enabled component requires the titiler-pgstac psycopg pool."""

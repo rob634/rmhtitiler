@@ -435,6 +435,12 @@ def create_app() -> FastAPI:
         app.include_router(download.router, tags=["Download"])
         logger.info("Download router mounted at /api/download")
 
+    # Validation endpoints (data quality checks)
+    if settings.enable_validation:
+        from geotiler.routers import validate
+        app.include_router(validate.router, tags=["Validation"])
+        logger.info("Validation router mounted at /validate")
+
     # Admin console (HTML at /, JSON at /api)
     if settings.enable_admin:
         app.include_router(admin.router)
