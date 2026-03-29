@@ -127,8 +127,9 @@ async def _check_srid_consistent(pool, schema: str, table: str, geom_col: str, d
                 )
             else:
                 rows = await conn.fetch(
-                    f'SELECT DISTINCT ST_SRID("{geom_col}") as srid FROM "{schema}"."{table}" '
-                    f'WHERE "{geom_col}" IS NOT NULL LIMIT 10'
+                    f'SELECT DISTINCT ST_SRID("{geom_col}") as srid '
+                    f'FROM (SELECT "{geom_col}" FROM "{schema}"."{table}" '
+                    f'WHERE "{geom_col}" IS NOT NULL LIMIT 100) sub'
                 )
         srids = [r["srid"] for r in rows]
         if len(srids) == 0:

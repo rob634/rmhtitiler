@@ -6,6 +6,7 @@ Uses raw asyncpg on the STAC read pool (app.state.readpool)
 querying pgstac.collections and pgstac.items directly.
 """
 
+import json
 import logging
 from datetime import datetime
 
@@ -33,13 +34,20 @@ async def _check_collection_exists(pool, collection_id: str) -> dict:
 
 
 async def _check_item_count(pool, collection_id: str) -> dict:
-    """Check that the collection has items."""
+    """Check that the collection has items. Uses pgstac collection metadata first."""
     try:
         async with pool.acquire() as conn:
+            # pgstac tracks item count in the collection content
             count = await conn.fetchval(
-                "SELECT count(*) FROM pgstac.items WHERE collection = $1",
+                "SELECT (content->>'item_count')::int FROM pgstac.collections WHERE id = $1",
                 collection_id,
             )
+            # Fall back to direct count if metadata unavailable
+            if count is None:
+                count = await conn.fetchval(
+                    "SELECT count(*) FROM pgstac.items WHERE collection = $1",
+                    collection_id,
+                )
         if count and count > 0:
             return check("item_count", Status.PASS, f"{count:,} items", {"count": count})
         return check("item_count", Status.WARN, "Collection has no items", {"count": 0})
@@ -81,7 +89,7 @@ async def _check_assets_have_href(pool, collection_id: str, depth: Depth) -> dic
                         break
             elif isinstance(assets, str):
                 # asyncpg may return JSON as string
-                import json
+
                 try:
                     parsed = json.loads(assets)
                     for asset in parsed.values():
