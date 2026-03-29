@@ -18,16 +18,14 @@ azure-keyvault-secrets>=4.8.0
 
 # --- Xarray / Zarr --------------------------------------------------------
 # Multidimensional data support (Zarr v3 only — ETL converts upstream formats)
-# NOTE: [minimal] DOES include zarr transitively via xarray. Do NOT add zarr
-# as a separate dependency — it is already installed. Capped at <2.0 because
-# titiler.xarray 2.0.0 requires titiler-core 2.0 + rio-tiler 9.x, which
-# conflicts with the base image (titiler-core 1.2.0, rio-tiler 8.0.5).
-titiler.xarray[minimal]>=1.2.0,<2.0
+# titiler.xarray 1.2.x uses obstore (Rust object_store) for Azure blob access.
+# Capped at <2.0 because titiler.xarray 2.0.0 requires titiler-core 2.0 +
+# rio-tiler 9.x, which conflicts with the base image (titiler-core 1.2.0,
+# rio-tiler 8.0.5).
+titiler.xarray>=1.2.0,<2.0
 # xarray must be >=2024.10.0 for Zarr v3 format support (dimension_names).
 # The base image ships an older xarray that only reads Zarr v2 (_ARRAY_DIMENSIONS).
 xarray>=2024.10.0
-# Azure Data Lake filesystem for fsspec (Zarr access via abfs://)
-adlfs>=2024.4.1
 
 # --- Monitoring & Observability --------------------------------------------
 # Hardware metrics in /health endpoint

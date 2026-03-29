@@ -2,7 +2,7 @@
 Azure Storage OAuth authentication.
 
 Handles OAuth token acquisition for Azure Blob Storage using Managed Identity
-or Azure CLI credentials. Configures GDAL and fsspec for authenticated access.
+or Azure CLI credentials. Configures GDAL (COG /vsiaz/) and obstore (Zarr abfs://).
 """
 
 import asyncio
@@ -137,114 +137,44 @@ def _acquire_storage_token() -> tuple[Optional[str], Optional[datetime]]:
         raise
 
 
-def configure_gdal_auth(token: str) -> None:
+def configure_storage_auth(token: str) -> None:
     """
-    Configure GDAL for Azure blob access using OAuth token.
+    Configure GDAL and obstore for Azure blob access using OAuth token.
 
-    Sets both environment variables and GDAL config options to ensure
-    /vsiaz/ paths work correctly with Azure Storage.
+    Sets environment variables for both consumers:
+    - GDAL (COG tiles via /vsiaz/): AZURE_STORAGE_ACCOUNT + AZURE_STORAGE_ACCESS_TOKEN
+    - obstore (Zarr tiles via abfs://): AZURE_STORAGE_ACCOUNT_NAME + AZURE_STORAGE_TOKEN
 
     Args:
         token: OAuth bearer token for Azure Storage.
     """
     if not settings.storage_account:
-        logger.warning("GEOTILER_STORAGE_ACCOUNT not set, skipping GDAL config")
+        logger.warning("GEOTILER_STORAGE_ACCOUNT not set, skipping storage auth config")
         return
 
-    # Set environment variables (used by GDAL, obstore)
+    # GDAL env vars — used by rasterio for /vsiaz/ COG access
     os.environ["AZURE_STORAGE_ACCOUNT"] = settings.storage_account
-    os.environ["AZURE_STORAGE_ACCESS_TOKEN"] = token  # GDAL /vsiaz/
-    os.environ["AZURE_STORAGE_TOKEN"] = token  # obstore (titiler.xarray)
+    os.environ["AZURE_STORAGE_ACCESS_TOKEN"] = token
 
-    # Also set GDAL config options directly (more reliable)
+    # obstore env vars — used by titiler-xarray for abfs:// Zarr access
+    os.environ["AZURE_STORAGE_ACCOUNT_NAME"] = settings.storage_account
+    os.environ["AZURE_STORAGE_TOKEN"] = token
+
+    # Also set GDAL config options directly (more reliable than env vars)
     try:
         from rasterio import _env
         _env.set_gdal_config("AZURE_STORAGE_ACCOUNT", settings.storage_account)
         _env.set_gdal_config("AZURE_STORAGE_ACCESS_TOKEN", token)
-        logger.debug(f"GDAL configured for storage account: {settings.storage_account}")
+        logger.debug(f"Storage auth configured for account: {settings.storage_account}")
     except Exception as e:
         logger.warning(f"Could not set GDAL config directly: {e}")
-
-
-class _CachedTokenCredential:
-    """
-    Async TokenCredential that delegates to the app's storage_token_cache.
-
-    adlfs uses the async Azure BlobServiceClient, which calls
-    credential.get_token() on each blob request. This credential
-    always returns the latest token from our shared cache, so background
-    token refreshes are automatically picked up without clearing
-    fsspec's filesystem instance cache.
-    """
-
-    async def get_token(self, *scopes, **kwargs):
-        from azure.core.credentials import AccessToken
-
-        # Atomic snapshot — avoids torn read of token + expires_at
-        token, expires_at = storage_token_cache.get_snapshot()
-        if token and expires_at:
-            return AccessToken(token, int(expires_at.timestamp()))
-        raise Exception("No cached storage token available for adlfs")
-
-    async def close(self):
-        pass
-
-    async def __aenter__(self):
-        return self
-
-    async def __aexit__(self, *args):
-        pass
-
-
-# Singleton — reused across fsspec filesystem instances
-_cached_credential = _CachedTokenCredential()
-_fsspec_configured = False
-
-
-def configure_fsspec_auth() -> None:
-    """
-    Configure fsspec/adlfs for Azure Zarr access.
-
-    Passes the app's pre-acquired bearer token to adlfs via fsspec config
-    and a shared credential object. This avoids adlfs trying its own
-    DefaultAzureCredential (which fails silently in some Azure environments
-    and falls back to anonymous access).
-    """
-    global _fsspec_configured
-
-    if not settings.storage_account:
-        return
-
-    os.environ["AZURE_STORAGE_ACCOUNT_NAME"] = settings.storage_account
-
-    if not _fsspec_configured:
-        try:
-            import fsspec
-
-            fsspec.config.conf["abfs"] = {
-                "account_name": settings.storage_account,
-                "credential": _cached_credential,
-            }
-
-            # Clear any previously-cached anonymous filesystem instances
-            try:
-                from adlfs import AzureBlobFileSystem
-                AzureBlobFileSystem.clear_instance_cache()
-            except (ImportError, AttributeError):
-                pass
-
-            _fsspec_configured = True
-            logger.info(f"fsspec/adlfs configured with managed credential for account: {settings.storage_account}")
-        except Exception as e:
-            logger.warning(f"Could not configure fsspec credential: {e}")
-            logger.debug(f"fsspec/adlfs configured for account: {settings.storage_account}")
 
 
 def initialize_storage_auth() -> Optional[str]:
     """
     Initialize storage authentication on application startup.
 
-    Acquires initial OAuth token and configures GDAL/fsspec.
+    Acquires initial OAuth token and configures GDAL + obstore.
 
     Returns:
         OAuth token if successful, None if auth is disabled.
@@ -260,8 +190,7 @@ def initialize_storage_auth() -> Optional[str]:
     try:
         token = get_storage_oauth_token()
         if token:
-            configure_gdal_auth(token)
-            configure_fsspec_auth()
+            configure_storage_auth(token)
             mode = "Azure CLI" if settings.auth_use_cli else "Managed Identity"
             logger.info(f"Storage auth initialized: account={settings.storage_account} mode={mode}")
         return token
@@ -290,7 +219,7 @@ def refresh_storage_token() -> Optional[str]:
         token, expires_at = _acquire_storage_token()
         if token and expires_at:
             storage_token_cache.set(token, expires_at)
-            configure_gdal_auth(token)
+            configure_storage_auth(token)
         return token
     except Exception as e:
         logger.error(f"Storage token refresh failed: {e}")
@@ -316,7 +245,7 @@ async def refresh_storage_token_async() -> Optional[str]:
             token, expires_at = await asyncio.to_thread(_acquire_storage_token)
             if token and expires_at:
                 storage_token_cache.set_unlocked(token, expires_at)
-                configure_gdal_auth(token)
+                configure_storage_auth(token)
             return token
         except Exception as e:
             logger.error(f"Storage token refresh failed: {e}")

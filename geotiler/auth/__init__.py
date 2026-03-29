@@ -10,8 +10,7 @@ from geotiler.auth.cache import (
 from geotiler.auth.storage import (
     get_storage_oauth_token,
     get_storage_oauth_token_async,
-    configure_gdal_auth,
-    configure_fsspec_auth,
+    configure_storage_auth,
     initialize_storage_auth,
     refresh_storage_token,
     refresh_storage_token_async,
@@ -34,8 +33,7 @@ __all__ = [
     "db_error_cache",
     # Storage auth (sync)
     "get_storage_oauth_token",
-    "configure_gdal_auth",
-    "configure_fsspec_auth",
+    "configure_storage_auth",
     "initialize_storage_auth",
     "refresh_storage_token",
     # Storage auth (async)

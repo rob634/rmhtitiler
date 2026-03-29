@@ -159,7 +159,7 @@ curl -X POST http://localhost:8000/admin/refresh-collections | jq
 | `docs/TIPG_CATALOG_ARCHITECTURE.md` | **IMPORTANT** - TiPG catalog, multi-instance behavior, refresh limitations |
 | `docs/TIPG_BBOX_ISSUE.md` | TiPG ST_Transform ambiguity bug (upstream issue for DevSeed) |
 | `docs/DEFERRED_BUGS.md` | ETL bug triage resolution log |
-| `docs/ROUTING_DESIGN.md` | Versioned asset routing design (planned, not yet implemented) |
+| `docs/ROUTING_DESIGN.md` | Hybrid URL control: ETL naming for vector/STAC, proxy router for COG/Xarray (planned, not yet implemented) |
 | `DUCKDB.md` | H3 Explorer server-side DuckDB architecture |
 
 ---

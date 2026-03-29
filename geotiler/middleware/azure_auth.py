@@ -13,8 +13,7 @@ from geotiler.config import settings
 from geotiler.errors import error_response, AUTH_UNAVAILABLE
 from geotiler.auth.storage import (
     get_storage_oauth_token_async,
-    configure_gdal_auth,
-    configure_fsspec_auth,
+    configure_storage_auth,
 )
 
 logger = logging.getLogger(__name__)
@@ -36,7 +35,7 @@ class AzureAuthMiddleware(BaseHTTPMiddleware):
 
     Configures authentication for:
     - GDAL: AZURE_STORAGE_ACCOUNT + AZURE_STORAGE_ACCESS_TOKEN (for /vsiaz/ COG access)
-    - fsspec/adlfs: AZURE_STORAGE_ACCOUNT_NAME (for abfs:// Zarr access)
+    - obstore: AZURE_STORAGE_ACCOUNT_NAME + AZURE_STORAGE_TOKEN (for abfs:// Zarr access)
 
     Skips paths that don't access storage (health probes, static files, docs).
 
@@ -58,12 +57,8 @@ class AzureAuthMiddleware(BaseHTTPMiddleware):
                 token = await get_storage_oauth_token_async()
 
                 if token:
-                    # Configure GDAL for COG access via /vsiaz/
-                    configure_gdal_auth(token)
-
-                    # Configure fsspec/adlfs for Zarr access
-                    configure_fsspec_auth()
-
+                    # Configure GDAL (/vsiaz/) + obstore (abfs://)
+                    configure_storage_auth(token)
                     logger.debug(f"Auth configured, token length: {len(token)} chars")
                 else:
                     logger.warning("No OAuth token available for request")
