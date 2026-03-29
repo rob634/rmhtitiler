@@ -26,6 +26,9 @@ titiler.xarray>=1.2.0,<2.0
 # xarray must be >=2024.10.0 for Zarr v3 format support (dimension_names).
 # The base image ships an older xarray that only reads Zarr v2 (_ARRAY_DIMENSIONS).
 xarray>=2024.10.0
+# Pin obstore to 0.8.x — titiler-xarray 1.2.1 was tested against 0.8.2.
+# obstore 0.9.x has Rust panics on error paths that crash ASGI handlers silently.
+obstore>=0.8.0,<0.9
 
 # --- Monitoring & Observability --------------------------------------------
 # Hardware metrics in /health endpoint

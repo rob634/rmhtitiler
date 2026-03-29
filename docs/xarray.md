@@ -1,6 +1,6 @@
 # TiTiler-xarray Implementation Guide
 
-**Status: Production Verified** | v0.9.x uses titiler.xarray 0.24.x (pgstac 1.9.0), v0.10.x uses titiler.xarray 1.2.x (pgstac 2.1.0)
+**Status: Production Verified** | v0.10.x uses titiler.xarray 1.2.x with obstore (pgstac 2.1.0). v0.9.x used 0.24.x with fsspec/adlfs (archived).
 
 ## Overview
 
@@ -24,20 +24,22 @@ Both approaches share the same Azure authentication pattern and can coexist.
 ### Target State
 - Same COG functionality preserved
 - NEW: Zarr/NetCDF support via xarray
-- fsspec/adlfs handles Azure Blob access for Zarr
-- Same OAuth token works for both GDAL and fsspec
+- obstore (Rust object_store) handles Azure Blob access for Zarr v3
+- Same OAuth token works for both GDAL (COG) and obstore (Zarr)
 
 ### Key Libraries
 ```
 titiler.core          - Base TiTiler functionality (already installed)
-titiler.xarray        - Xarray/Zarr support (NEW)
+titiler.xarray        - Xarray/Zarr support (uses obstore for storage I/O)
 titiler.pgstac        - pgSTAC integration (for unified approach)
-adlfs                 - Azure Data Lake filesystem for fsspec (NEW)
-zarr                  - Zarr array library (NEW)
-h5netcdf              - NetCDF reader (NEW, optional)
-fsspec                - Filesystem abstraction (NEW)
-obstore               - Rust-based object storage with PC support (NEW)
+obstore               - Rust-based Azure Blob / Planetary Computer storage (via object_store crate)
+zarr                  - Zarr v3 array library (uses obstore as default storage backend)
+xarray                - Multidimensional array framework (>=2024.10.0 for Zarr v3)
 ```
+
+> **Note:** fsspec/adlfs was used in v0.9.x (titiler.xarray 0.24.x). As of v0.10.x,
+> titiler.xarray 1.2.x uses obstore as its default storage backend. adlfs is no longer
+> a dependency. See `requirements.txt` for current pins.
 
 ---
 
@@ -155,7 +157,7 @@ This installs:
 
 ### Why Separate /pc/* Endpoints?
 
-The standard `/xarray/*` endpoints use `fsspec/adlfs` for Azure storage access, which works well with OAuth tokens for your own storage. However, Planetary Computer data requires SAS tokens fetched from their API.
+The standard `/xarray/*` endpoints use `obstore` for Azure storage access, which works well with OAuth tokens for your own storage. However, Planetary Computer data requires SAS tokens fetched from their API.
 
 The `obstore` library used by `titiler-xarray` strips query parameters from URLs, making it impossible to pass SAS tokens via URL query strings. The `/pc/*` endpoints solve this by:
 
@@ -281,17 +283,21 @@ Coverage: Global (0.25° resolution)
 
 ## Approach 1: Parallel Routes (Simplest)
 
+> **⚠ LEGACY CODE BELOW** — The code examples in Approach 1 and 2 were written for
+> v0.9.x (titiler.xarray 0.24.x + fsspec/adlfs). The current implementation (v0.10.x)
+> uses titiler.xarray 1.2.x + obstore. For the current auth pattern, see
+> `geotiler/auth/storage.py` and `geotiler/middleware/azure_auth.py`.
+
 This approach adds a separate `/xarray` router alongside existing `/cog` endpoints. Minimal changes to existing code.
 
 ### Dependencies to Add
 
 ```txt
-# requirements.txt additions
-titiler.xarray[full]>=0.18.0
-adlfs>=2024.4.1
+# requirements.txt (current v0.10.x)
+titiler.xarray>=1.2.0,<2.0    # uses obstore for Azure blob I/O
+xarray>=2024.10.0              # Zarr v3 support
+obstore>=0.8.0,<0.9            # pinned to match titiler-xarray test matrix
 ```
-
-The `[full]` extra includes: fsspec, zarr, h5netcdf, s3fs, aiohttp
 
 ### Implementation
 
@@ -1045,14 +1051,12 @@ async def root():
 
 ## Azure URL Formats Reference
 
-| Reader | Protocol | Example |
-|--------|----------|---------|
-| GDAL (COG) | `/vsiaz/` | `/vsiaz/container/path/file.tif` |
-| fsspec (Zarr) | `abfs://` | `abfs://container/path/store.zarr` |
-| fsspec (Zarr) | `az://` | `az://container/path/store.zarr` |
-| fsspec (Zarr) | `https://` | `https://account.blob.core.windows.net/container/store.zarr` |
+| Reader | Protocol | Example | Auth env var |
+|--------|----------|---------|-------------|
+| GDAL (COG) | `/vsiaz/` | `/vsiaz/container/path/file.tif` | `AZURE_STORAGE_ACCESS_TOKEN` |
+| obstore (Zarr) | `abfs://` | `abfs://container/path/store.zarr` | `AZURE_STORAGE_TOKEN` |
 
-Note: GDAL uses `/vsiaz/` virtual filesystem. fsspec uses `abfs://` or `az://` protocols via the `adlfs` package.
+Note: GDAL uses `/vsiaz/` virtual filesystem with `AZURE_STORAGE_ACCOUNT`. obstore uses `abfs://` protocol with `AZURE_STORAGE_ACCOUNT_NAME`. Both env vars are set by `configure_storage_auth()` in `geotiler/auth/storage.py`.
 
 ---
 
@@ -1242,33 +1246,25 @@ CMD ["uvicorn", "custom_main:app", "--host", "0.0.0.0", "--port", "8000"]
 ### requirements.txt
 
 ```txt
-# Core TiTiler
-titiler.core>=0.18.0
-
-# Xarray support (Zarr, NetCDF)
-titiler.xarray[full]>=0.18.0
-
-# pgSTAC support (for unified approach)
-titiler.pgstac[psycopg-binary]>=1.0.0
+# Xarray support — uses obstore for Azure blob I/O (Zarr v3)
+titiler.xarray>=1.2.0,<2.0
+xarray>=2024.10.0
+obstore>=0.8.0,<0.9
 
 # Azure authentication
-azure-identity>=1.15.0
-
-# Azure blob storage for fsspec
-adlfs>=2024.4.1
-
-# Server
-uvicorn[standard]>=0.27.0
+azure-identity>=1.16.1
 ```
+
+> See `requirements.txt` in the project root for the full, current dependency list.
 
 ---
 
 ## Implementation Checklist
 
 ### Phase 1: Parallel Routes (Quick Win) ✅ COMPLETE
-- [x] Add `titiler.xarray[full]` and `adlfs` to requirements
+- [x] Add `titiler.xarray` and `obstore` to requirements
 - [x] Add `XarrayTilerFactory` router to existing app
-- [x] Add `setup_fsspec_azure_credentials()` to middleware
+- [x] Add `configure_storage_auth()` to middleware
 - [x] Update Dockerfile
 
 ### Phase 1.5: Planetary Computer Integration ✅ COMPLETE (v0.2.0)
@@ -1307,11 +1303,11 @@ uvicorn[standard]>=0.27.0
 
 ## Notes for Implementation
 
-1. **Start with Approach 1** - it's additive and low risk
-2. **fsspec auth**: adlfs uses `DefaultAzureCredential` automatically - same credential chain as azure-identity
-3. **Zarr chunking**: For best tile performance, Zarr stores should have spatial chunks ~256x256 or 512x512
-4. **Consolidated metadata**: Ensure Zarr stores have consolidated metadata (`zarr.consolidate_metadata()`) for faster opens
+1. **Storage auth**: obstore reads `AZURE_STORAGE_ACCOUNT_NAME` + `AZURE_STORAGE_TOKEN` from env vars, set by `configure_storage_auth()`
+2. **Zarr v3 only**: titiler.xarray 1.2.x reads Zarr v3 format (with `zarr.json`). v2 stores (`.zgroup`/`.zmetadata`) are not supported.
+3. **Zarr chunking**: For best tile performance, Zarr stores should have spatial chunks ~256x256 or 512x512, `time=1`
+4. **Consolidated metadata**: Ensure Zarr stores have consolidated metadata for faster opens
 5. **Variable parameter**: Unlike COGs, Zarr requires specifying which variable to render via `?variable=` query param
-6. **Time slicing**: For temporal data, use `?bidx=1` (1-based band index) to select time step - **NOT** `?time=`
-7. **CMIP6 calendars**: Climate data often uses `noleap` calendar - add `?decode_times=false` to bypass cftime errors
-8. **URL format**: Use HTTPS URLs (`https://account.blob.core.windows.net/...`) or full ABFS (`abfs://container@account.dfs.core.windows.net/...`)
+6. **Time slicing**: For temporal data, use `?bidx=1` (1-based band index) to select time step — **NOT** `?time=`
+7. **CMIP6 calendars**: Climate data often uses `noleap` calendar — add `?decode_times=false` to bypass cftime errors
+8. **URL format**: Use `abfs://container/path/store.zarr` — the storage account comes from `AZURE_STORAGE_ACCOUNT_NAME` env var

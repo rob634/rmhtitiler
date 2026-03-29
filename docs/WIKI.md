@@ -106,8 +106,8 @@ This document uses **logical names** instead of Azure resource names. See [WIKI_
 │       │              │             │             │             │        │
 │       ▼              ▼             ▼             ▼             ▼        │
 │  ┌──────────┐  ┌──────────┐  ┌─────────────────────────┐  ┌──────────┐│
-│  │  GDAL    │  │ fsspec/  │  │       asyncpg           │  │  TiPG    ││
-│  │ /vsiaz/  │  │  adlfs   │  │  pgSTAC + stac-fastapi  │  │          ││
+│  │  GDAL    │  │ obstore  │  │       asyncpg           │  │  TiPG    ││
+│  │ /vsiaz/  │  │ (Rust)   │  │  pgSTAC + stac-fastapi  │  │          ││
 │  └────┬─────┘  └────┬─────┘  └────────────┬────────────┘  └────┬─────┘│
 │       │              │                     │                    │       │
 └───────┼──────────────┼─────────────────────┼────────────────────┼───────┘
@@ -140,7 +140,7 @@ TiTiler works with **both** Azure storage account types:
 | **Standard Blob Storage** | `false` | ✅ Yes | Default for most accounts |
 | **Data Lake Gen2** | `true` | ✅ Yes | Hierarchical Namespace enabled |
 
-**Why both work:** The `adlfs` library (fsspec's Azure filesystem) defaults to the `blob.core.windows.net` endpoint, not the DFS endpoint. HNS only enables the DFS API as an additional option - but adlfs doesn't require it.
+**Why both work:** The `obstore` library (Rust object_store) uses the `blob.core.windows.net` endpoint by default. HNS only enables the DFS API as an additional option — obstore doesn't require it.
 
 **Architecture implication:** You can serve Zarr/NetCDF data from **either** storage type without code changes. Choose based on other factors (e.g., Data Lake analytics needs, cost, existing infrastructure).
 
@@ -349,7 +349,7 @@ Cloud Optimized GeoTIFF endpoints using GDAL's `/vsiaz/` virtual filesystem.
 
 **Prefix:** `/xarray`
 
-Multidimensional data endpoints using xarray + fsspec/adlfs.
+Multidimensional data endpoints using xarray + obstore (Zarr v3).
 
 #### URL Formats for Zarr
 

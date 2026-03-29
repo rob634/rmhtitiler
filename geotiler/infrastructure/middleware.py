@@ -1,5 +1,5 @@
 # ============================================================================
-# REQUEST TIMING MIDDLEWARE
+# REQUEST TIMING MIDDLEWARE (pure ASGI)
 # ============================================================================
 # STATUS: Infrastructure - HTTP request instrumentation
 # PURPOSE: Track request latency, status, and response size for all endpoints
@@ -7,16 +7,15 @@
 """
 Request Timing Middleware for geotiler.
 
+Pure ASGI middleware — avoids Starlette's BaseHTTPMiddleware which swallows
+exceptions from downstream handlers (encode/starlette#1012).
+
 Captures metrics for every HTTP request:
 - Total request duration
 - HTTP status code
 - Response size (bytes)
 - Endpoint path (with tile coordinates extracted)
 - Slow request flagging
-
-This middleware provides the foundation for understanding overall API
-performance. For deeper insights into specific operations, use the
-@track_latency decorator on internal functions.
 
 Environment Variables:
 ----------------------
@@ -68,11 +67,9 @@ import logging
 import os
 import re
 import time
-from typing import Callable
+from urllib.parse import parse_qs
 
-from starlette.middleware.base import BaseHTTPMiddleware
-from starlette.requests import Request
-from starlette.responses import Response
+from starlette.types import ASGIApp, Receive, Scope, Send
 
 logger = logging.getLogger(__name__)
 
@@ -132,9 +129,9 @@ def _extract_tile_info(path: str) -> dict:
     return {}
 
 
-class RequestTimingMiddleware(BaseHTTPMiddleware):
+class RequestTimingMiddleware:
     """
-    Middleware to track request timing and metrics.
+    Pure ASGI middleware to track request timing and metrics.
 
     Captures for every request:
     - duration_ms: Total request processing time
@@ -144,95 +141,101 @@ class RequestTimingMiddleware(BaseHTTPMiddleware):
     - method: HTTP method
     - slow: True if duration > threshold
 
-    For tile endpoints, also captures:
-    - z, x, y: Tile coordinates
-
     Logs are tagged with [REQUEST] prefix for easy filtering in App Insights.
     """
 
-    async def dispatch(self, request: Request, call_next: Callable) -> Response:
-        """Process request and log timing metrics."""
+    def __init__(self, app: ASGIApp) -> None:
+        self.app = app
+
+    async def __call__(self, scope: Scope, receive: Receive, send: Send) -> None:
+        if scope["type"] != "http":
+            await self.app(scope, receive, send)
+            return
 
         # Fast path: skip timing if observability disabled
-        # Still process the request, just don't log metrics
         if not _is_observability_enabled():
-            return await call_next(request)
+            await self.app(scope, receive, send)
+            return
+
+        path: str = scope.get("path", "")
 
         # Skip timing for health probes (too noisy)
-        path = request.url.path
         if path in ("/livez", "/readyz", "/health"):
-            return await call_next(request)
+            await self.app(scope, receive, send)
+            return
+
+        method = scope.get("method", "?")
+        query_string = scope.get("query_string", b"").decode("latin-1")
+        query_params = parse_qs(query_string)
 
         start = time.perf_counter()
+        status_code = 500
         response_bytes = 0
-        status_code = 500  # Default in case of unhandled exception
+
+        async def send_wrapper(message):
+            nonlocal status_code, response_bytes
+
+            if message["type"] == "http.response.start":
+                status_code = message.get("status", 500)
+                for name, value in message.get("headers", []):
+                    if name == b"content-length":
+                        response_bytes = int(value)
+                        break
+
+            await send(message)
 
         try:
-            response = await call_next(request)
-            status_code = response.status_code
-
-            # Get response size if available
-            content_length = response.headers.get("content-length")
-            if content_length:
-                response_bytes = int(content_length)
-
-            return response
-
+            await self.app(scope, receive, send_wrapper)
         except Exception as e:
-            # Log exception but let it propagate
             logger.exception(f"Request failed: {e}")
             raise
-
         finally:
             duration_ms = (time.perf_counter() - start) * 1000
             is_slow = duration_ms > SLOW_THRESHOLD_MS
 
-            # Build custom dimensions
             endpoint = _normalize_endpoint(path)
             custom_dims = {
                 "endpoint": endpoint,
-                "method": request.method,
+                "method": method,
                 "duration_ms": round(duration_ms, 2),
                 "status_code": status_code,
                 "response_bytes": response_bytes,
                 "slow": is_slow,
             }
 
-            # Add tile coordinates if present
             tile_info = _extract_tile_info(path)
             if tile_info:
                 custom_dims.update(tile_info)
 
-            # Add query params that might be useful (URL, format)
-            if "url" in request.query_params:
-                # Truncate URL to avoid huge log entries
-                url = request.query_params["url"]
+            url_values = query_params.get("url")
+            if url_values:
+                url = url_values[0]
                 custom_dims["source_url"] = url[:200] if len(url) > 200 else url
 
-            if "format" in request.query_params:
-                custom_dims["format"] = request.query_params["format"]
+            format_values = query_params.get("format")
+            if format_values:
+                custom_dims["format"] = format_values[0]
 
             extra = {"custom_dimensions": custom_dims}
 
-            # Log with appropriate level
             if status_code >= 500:
                 logger.error(
-                    f"[REQUEST] {request.method} {endpoint} -> {status_code} ({duration_ms:.0f}ms)",
+                    f"[REQUEST] {method} {endpoint} -> {status_code} ({duration_ms:.0f}ms)",
                     extra=extra
                 )
             elif is_slow:
                 logger.warning(
-                    f"[REQUEST] SLOW {request.method} {endpoint} -> {status_code} ({duration_ms:.0f}ms)",
+                    f"[REQUEST] SLOW {method} {endpoint} -> {status_code} ({duration_ms:.0f}ms)",
                     extra=extra
                 )
             elif status_code >= 400:
                 logger.warning(
-                    f"[REQUEST] {request.method} {endpoint} -> {status_code} ({duration_ms:.0f}ms)",
+                    f"[REQUEST] {method} {endpoint} -> {status_code} ({duration_ms:.0f}ms)",
                     extra=extra
                 )
             else:
                 logger.info(
-                    f"[REQUEST] {request.method} {endpoint} -> {status_code} ({duration_ms:.0f}ms)",
+                    f"[REQUEST] {method} {endpoint} -> {status_code} ({duration_ms:.0f}ms)",
                     extra=extra
                 )
 

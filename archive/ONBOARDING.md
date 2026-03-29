@@ -1,6 +1,9 @@
 # TiTiler-pgSTAC Project Onboarding Guide
 
-**Welcome to the TiTiler-pgSTAC project!** This guide will help you understand how we've customized the base TiTiler-pgSTAC application and how it integrates with our broader ETL data pipeline.
+> **⚠ ARCHIVED** — This document reflects the v0.9.x architecture. Key changes in v0.10.x:
+> middleware converted from BaseHTTPMiddleware to pure ASGI, fsspec/adlfs replaced by
+> obstore, `configure_gdal_auth()` renamed to `configure_storage_auth()`.
+> See `docs/WIKI.md` and `docs/xarray.md` for current architecture.
 
 **Last Updated**: November 18, 2025
 **Audience**: New developers joining the project
