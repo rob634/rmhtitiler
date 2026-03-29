@@ -37,6 +37,11 @@ Dynamic tile server for Cloud Optimized GeoTIFFs (COGs), Zarr/NetCDF arrays, and
 - `GET /h3` - H3 Explorer (interactive map)
 - `GET /h3/query` - H3 DuckDB server-side query
 - `POST /admin/refresh-collections` - Webhook to refresh TiPG catalog (ETL integration, see note below)
+- `GET /validate/vector/{collection}` - Vector dataset quality check
+- `GET /validate/cog?url=...` - COG dataset quality check
+- `GET /validate/zarr?url=...&variable=...` - Zarr dataset quality check
+- `GET /validate/stac/{collection}` - STAC collection quality check
+- `GET /validate/all` - Validate all registered datasets
 
 **TiPG Multi-Instance Warning:** In multi-instance deployments (ASE), the refresh webhook only updates ONE instance. Other instances keep stale catalogs until they restart or TTL refresh triggers. See `docs/TIPG_CATALOG_ARCHITECTURE.md` for details and workarounds.
 
@@ -51,6 +56,8 @@ Dynamic tile server for Cloud Optimized GeoTIFFs (COGs), Zarr/NetCDF arrays, and
 | `geotiler/routers/health.py` | Health probe endpoints |
 | `geotiler/routers/vector.py` | TiPG integration (OGC Features + Vector Tiles) |
 | `geotiler/routers/admin.py` | Admin dashboard + refresh-collections webhook |
+| `geotiler/routers/validate.py` | Dataset validation endpoints (/validate/*) |
+| `geotiler/services/validate/` | Validation check functions (vector, cog, zarr, stac) |
 | `geotiler/openapi.py` | OpenAPI schema post-processor (fixes upstream tags/descriptions) |
 | `Dockerfile` | Production image (Managed Identity) |
 | `Dockerfile.local` | Local dev image (Azure CLI credentials) |
@@ -122,6 +129,8 @@ All app vars use `GEOTILER_COMPONENT_SETTING` convention with units in names.
 | `GEOTILER_POOL_STAC_MAX` | STAC pool max connections (default: 7) |
 | `GEOTILER_POOL_PGSTAC_MAX` | titiler-pgstac pool max connections (default: 7) |
 | `GEOTILER_DB_STATEMENT_TIMEOUT_MS` | Per-connection query timeout in ms (default: 30000) |
+| `GEOTILER_ENABLE_VALIDATION` | Enable dataset validation endpoints at /validate/* (default: false) |
+| `GEOTILER_ENABLE_VALIDATION_FULL_SCAN` | Allow expensive full-scan validation depth (default: false) |
 
 ---
 
