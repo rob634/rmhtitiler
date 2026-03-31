@@ -28,7 +28,7 @@ from geotiler import __version__
 from geotiler.config import settings
 from geotiler.middleware.azure_auth import AzureAuthMiddleware
 from geotiler.infrastructure.middleware import RequestTimingMiddleware
-from geotiler.routers import health, admin, vector, stac, diagnostics, home, catalog, reference, system, viewer
+from geotiler.routers import health, admin, vector, stac, diagnostics, home, catalog, reference, system, viewer, preview
 from geotiler.routers import cog_landing, xarray_landing, searches_landing, stac_explorer, docs_guide, map_viewer, h3_explorer
 from geotiler.services.background import start_token_refresh
 from geotiler.services.duckdb import initialize_duckdb, close_duckdb
@@ -368,6 +368,9 @@ def create_app() -> FastAPI:
 
     # Map viewers
     app.include_router(viewer.router)
+
+    # Preview viewers (iframe-embeddable, auth-gated later)
+    app.include_router(preview.router)
 
     # TiTiler endpoints
     _mount_titiler_routers(app)
