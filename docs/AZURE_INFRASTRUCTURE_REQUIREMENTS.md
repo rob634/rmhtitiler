@@ -32,6 +32,8 @@ The app sets `Content-Security-Policy: frame-ancestors *` and `X-Frame-Options: 
 - A WAF, Front Door, or APIM policy injects `X-Frame-Options: DENY` or a restrictive `Content-Security-Policy` globally — this would override the app's headers and block iframe embedding
 - Confirm no upstream proxy strips or overrides these headers
 
+**Important**: The viewer pages embedded in iframes make JavaScript API calls (fetch) back to the tile server for tile data, metadata, etc. These are cross-origin requests when the embedding page is on a different domain. The `Access-Control-Allow-Origin` header that allows these calls comes from the **Azure App Service CORS configuration** (not from app code). Without CORS configured, the iframe will load but the map inside it will fail to fetch tiles and data. Both CORS and the iframe headers are required for preview embeds to work end-to-end.
+
 ## Managed Identities
 
 | Identity | Type | Purpose | RBAC Role Required |

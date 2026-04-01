@@ -52,9 +52,12 @@ function initRasterViewer() {
 
     // Auto-load from query parameter
     const urlParam = getQueryParam('url');
+    const collParam = getQueryParam('collection');
     if (urlParam) {
         document.getElementById('cog-url').value = urlParam;
         rasterMap.on('load', () => loadRaster());
+    } else if (collParam) {
+        rasterMap.on('load', () => loadFromStacCollection(collParam));
     }
 }
 
@@ -64,6 +67,83 @@ function updateMapStatus() {
     document.getElementById('map-zoom').textContent = 'Zoom: ' + zoom.toFixed(1);
     document.getElementById('map-coords').textContent =
         center.lat.toFixed(4) + ', ' + center.lng.toFixed(4);
+}
+
+
+// ============================================================================
+// Load from STAC Collection
+// ============================================================================
+
+/**
+ * Resolve a STAC collection to a COG asset URL and load it.
+ * Called when viewer is opened with ?collection=X from the catalog.
+ * @param {string} collectionId - STAC collection identifier
+ */
+async function loadFromStacCollection(collectionId) {
+    showLoading(true);
+
+    // Fetch first item from STAC collection
+    const result = await fetchJSON('/stac/collections/' + encodeURIComponent(collectionId) + '/items?limit=1');
+    if (!result.ok) {
+        showNotification('STAC collection "' + collectionId + '" not found or unavailable', 'error');
+        showLoading(false);
+        return;
+    }
+
+    const features = (result.data && result.data.features) || [];
+    if (features.length === 0) {
+        showNotification('STAC collection "' + collectionId + '" has no items to display', 'error');
+        showLoading(false);
+        return;
+    }
+
+    // Find a viewable raster asset from the first item
+    const item = features[0];
+    const cogUrl = extractCogUrl(item);
+    if (!cogUrl) {
+        showNotification('No viewable raster asset found in "' + collectionId + '"', 'error');
+        showLoading(false);
+        return;
+    }
+
+    // Set URL input and load normally
+    document.getElementById('cog-url').value = cogUrl;
+    showLoading(false);
+    loadRaster();
+}
+
+/**
+ * Extract a COG/GeoTIFF URL from a STAC item's assets.
+ * Tries well-known asset keys first, then falls back to media type / extension matching.
+ * @param {object} item - STAC item with assets
+ * @returns {string|null} COG URL (converted to /vsiaz/ if applicable) or null
+ */
+function extractCogUrl(item) {
+    if (!item || !item.assets) return null;
+
+    // Try well-known asset keys in priority order
+    var preferredKeys = ['visual', 'data', 'image', 'default', 'cog', 'analytic'];
+    for (var i = 0; i < preferredKeys.length; i++) {
+        var asset = item.assets[preferredKeys[i]];
+        if (asset && asset.href) return toVsiaz(asset.href);
+    }
+
+    // Try matching by media type or file extension
+    var entries = Object.entries(item.assets);
+    for (var j = 0; j < entries.length; j++) {
+        var a = entries[j][1];
+        if (!a.href) continue;
+        var isGeoTiff = (a.type && (a.type.indexOf('geotiff') !== -1 || a.type.indexOf('tiff') !== -1));
+        var hasTifExt = (a.href.endsWith('.tif') || a.href.endsWith('.tiff'));
+        if (isGeoTiff || hasTifExt) return toVsiaz(a.href);
+    }
+
+    // Last resort: first asset with any href
+    for (var k = 0; k < entries.length; k++) {
+        if (entries[k][1].href) return toVsiaz(entries[k][1].href);
+    }
+
+    return null;
 }
 
 

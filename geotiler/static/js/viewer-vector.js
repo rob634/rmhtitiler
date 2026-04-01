@@ -65,7 +65,11 @@ async function initVectorViewer(tipgEnabled) {
         const collParam = getQueryParam('collection');
         if (collParam) {
             select.value = collParam;
-            vectorMap.on('load', () => loadCollection(collParam));
+            if (select.value === collParam) {
+                vectorMap.on('load', () => loadCollection(collParam));
+            } else {
+                showNotification('Collection "' + collParam + '" is not available on this server', 'error');
+            }
         }
     } else {
         showNotification('Failed to load vector collections', 'error');
@@ -101,10 +105,16 @@ async function loadCollection(collectionId) {
     const infoPanel = document.getElementById('collection-info');
     infoPanel.classList.remove('hidden');
 
-    // Fetch items once, share between metadata and schema
+    // Validate collection is accessible
     const prefix = '/vector/collections/' + encodeURIComponent(collectionId);
     const itemsResult = await fetchJSON(prefix + '/items?limit=1');
     if (myGen !== vectorLoadGen) return;
+
+    if (!itemsResult.ok) {
+        showNotification('Collection "' + collectionId + '" could not be loaded: ' + (itemsResult.error || 'unknown error'), 'error');
+        showLoading(false);
+        return;
+    }
 
     displayCollectionMetadata(itemsResult);
     displaySchema(itemsResult);
@@ -215,7 +225,8 @@ async function addMvtLayer(collectionId) {
     // Fetch TileJSON for bounds and proper tile URL
     const tj = await fetchJSON(tilejsonUrl);
     if (!tj.ok) {
-        showNotification('Failed to load TileJSON: ' + (tj.error || 'unknown error'), 'error');
+        showNotification('Failed to load vector tiles for "' + collectionId + '": ' + (tj.error || 'unknown error'), 'error');
+        showLoading(false);
         return;
     }
 
@@ -308,7 +319,8 @@ async function addGeoJsonLayer(collectionId) {
     const limit = document.getElementById('geojson-limit').value;
     const result = await fetchJSON('/vector/collections/' + encodeURIComponent(collectionId) + '/items?limit=' + limit);
     if (!result.ok) {
-        showNotification(result.error || 'Failed to load features', 'error');
+        showNotification('Failed to load features for "' + collectionId + '": ' + (result.error || 'unknown error'), 'error');
+        showLoading(false);
         return;
     }
 
