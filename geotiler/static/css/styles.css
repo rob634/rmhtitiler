@@ -1273,6 +1273,7 @@ tr:hover {
     display: grid;
     grid-template-columns: 1fr 340px;
     height: calc(100vh - 52px);
+    position: relative;
 }
 
 .viewer-sidebar {
@@ -1281,6 +1282,53 @@ tr:hover {
     padding: var(--space-lg);
     background: var(--color-white);
     border-left: 1px solid var(--color-gray-light);
+    transition: margin-right 0.25s ease, opacity 0.2s ease;
+    min-width: 0;
+}
+
+.viewer-layout.sidebar-collapsed {
+    grid-template-columns: 1fr 0px;
+}
+
+.viewer-layout.sidebar-collapsed .viewer-sidebar {
+    margin-right: -340px;
+    opacity: 0;
+    pointer-events: none;
+    overflow: hidden;
+}
+
+/* Sidebar toggle button */
+.sidebar-toggle {
+    position: absolute;
+    top: 12px;
+    right: 340px;
+    z-index: 10;
+    width: 28px;
+    height: 48px;
+    background: var(--color-white);
+    border: 1px solid var(--color-gray-light);
+    border-right: none;
+    border-radius: 6px 0 0 6px;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    box-shadow: -2px 0 6px rgba(0,0,0,0.08);
+    transition: right 0.25s ease;
+    color: var(--color-navy);
+    font-size: 14px;
+    padding: 0;
+    line-height: 1;
+}
+
+.sidebar-toggle:hover {
+    background: var(--color-bg);
+}
+
+.viewer-layout.sidebar-collapsed .sidebar-toggle {
+    right: 0;
+    border-right: 1px solid var(--color-gray-light);
+    border-radius: 6px 0 0 6px;
 }
 
 .map-full {
@@ -2224,13 +2272,38 @@ details.sidebar-panel[open] > summary::after {
     }
 
     .viewer-layout {
-        grid-template-columns: 1fr;
+        grid-template-columns: 1fr 0px;
     }
 
-    .viewer-sidebar {
-        max-height: 50vh;
+    .viewer-layout .viewer-sidebar {
+        margin-right: -340px;
+        opacity: 0;
+        pointer-events: none;
+        overflow: hidden;
+    }
+
+    .viewer-layout .sidebar-toggle {
+        right: 0;
+        border-right: 1px solid var(--color-gray-light);
+    }
+
+    /* When expanded at narrow widths, sidebar overlays the map */
+    .viewer-layout.sidebar-expanded-mobile {
+        grid-template-columns: 1fr 340px;
+    }
+
+    .viewer-layout.sidebar-expanded-mobile .viewer-sidebar {
+        margin-right: 0;
+        opacity: 1;
+        pointer-events: auto;
+        overflow-y: auto;
+        max-height: calc(100vh - 52px);
+        border-left: 1px solid var(--color-gray-light);
+    }
+
+    .viewer-layout.sidebar-expanded-mobile .sidebar-toggle {
+        right: 340px;
         border-right: none;
-        border-bottom: 1px solid var(--color-gray-light);
     }
 
     .grid {

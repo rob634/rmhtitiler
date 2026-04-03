@@ -9,7 +9,8 @@
 {% block main_class %}{% endblock %}
 
 {% block content %}
-<div class="viewer-layout">
+<div class="viewer-layout" id="viewer-layout">
+    <button class="sidebar-toggle" id="sidebar-toggle" onclick="toggleViewerSidebar()" title="Toggle sidebar">&#9654;</button>
     <!-- Sidebar -->
     <div class="viewer-sidebar">
         <div class="sidebar-header">

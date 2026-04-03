@@ -56,6 +56,73 @@ function debounce(func, wait) {
 
 
 // ============================================================================
+// Viewer Sidebar Toggle
+// ============================================================================
+
+/**
+ * Toggle the viewer sidebar open/closed.
+ * At narrow widths (< 768px) or inside iframes, uses overlay mode.
+ * Persists state in sessionStorage so it survives parameter changes.
+ */
+function toggleViewerSidebar() {
+    var layout = document.getElementById('viewer-layout');
+    if (!layout) return;
+
+    var isNarrow = window.innerWidth < 768;
+    var btn = document.getElementById('sidebar-toggle');
+
+    if (isNarrow) {
+        // Narrow: toggle overlay mode
+        var expanding = !layout.classList.contains('sidebar-expanded-mobile');
+        layout.classList.toggle('sidebar-expanded-mobile');
+        if (btn) btn.innerHTML = expanding ? '&#9654;' : '&#9664;';
+        sessionStorage.setItem('viewer-sidebar', expanding ? 'open' : 'closed');
+    } else {
+        // Wide: toggle collapse
+        var collapsing = !layout.classList.contains('sidebar-collapsed');
+        layout.classList.toggle('sidebar-collapsed');
+        if (btn) btn.innerHTML = collapsing ? '&#9664;' : '&#9654;';
+        sessionStorage.setItem('viewer-sidebar', collapsing ? 'closed' : 'open');
+    }
+
+    // Trigger map resize after transition completes
+    setTimeout(function() {
+        window.dispatchEvent(new Event('resize'));
+    }, 300);
+}
+
+/**
+ * Initialize sidebar state on page load.
+ * Auto-collapses when inside an iframe or at narrow widths.
+ */
+function initViewerSidebar() {
+    var layout = document.getElementById('viewer-layout');
+    if (!layout) return;
+
+    var isNarrow = window.innerWidth < 768;
+    var inIframe = window.self !== window.top;
+    var saved = sessionStorage.getItem('viewer-sidebar');
+    var btn = document.getElementById('sidebar-toggle');
+
+    // Default: collapse in iframes and narrow viewports, open otherwise
+    var shouldCollapse = saved ? saved === 'closed' : (inIframe || isNarrow);
+
+    if (shouldCollapse && !isNarrow) {
+        layout.classList.add('sidebar-collapsed');
+        if (btn) btn.innerHTML = '&#9664;';
+    } else if (!shouldCollapse && isNarrow) {
+        // At narrow, start collapsed (CSS handles it), no extra class needed
+        if (btn) btn.innerHTML = '&#9664;';
+    } else {
+        if (btn) btn.innerHTML = '&#9654;';
+    }
+}
+
+// Auto-init when DOM is ready (safe to call before viewer-specific init)
+document.addEventListener('DOMContentLoaded', initViewerSidebar);
+
+
+// ============================================================================
 // Tab Navigation
 // ============================================================================
 

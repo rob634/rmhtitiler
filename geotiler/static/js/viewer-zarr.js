@@ -57,7 +57,7 @@ function updateMapStatus() {
 // ============================================================================
 
 /**
- * Load a Zarr/NetCDF URL: fetch info, populate variable selector, add tile layer.
+ * Load a Zarr/NetCDF URL: fetch variable list, select variable, fetch info, add tile layer.
  */
 async function loadZarr() {
     const url = document.getElementById('zarr-url').value.trim();
@@ -71,8 +71,26 @@ async function loadZarr() {
     showLoading(true);
     const myGen = ++zarrLoadGen;
 
-    // Fetch XArray info
-    const result = await fetchJSON('/xarray/info?url=' + encodeURIComponent(url));
+    // Step 1: Get variable list
+    const keysResult = await fetchJSON('/xarray/dataset/keys?url=' + encodeURIComponent(url));
+    if (myGen !== zarrLoadGen) return;
+    if (!keysResult.ok || !keysResult.data || !keysResult.data.length) {
+        showNotification(keysResult.error || 'No variables found in dataset', 'error');
+        showLoading(false);
+        return;
+    }
+
+    // Step 2: Select variable (from query param or first available)
+    const varParam = getQueryParam('variable');
+    const selectedVar = (varParam && keysResult.data.includes(varParam))
+        ? varParam : keysResult.data[0];
+
+    // Populate variable selector from keys
+    populateVariablesFromKeys(keysResult.data, selectedVar);
+
+    // Step 3: Fetch info WITH selected variable
+    const result = await fetchJSON('/xarray/info?url=' + encodeURIComponent(url)
+        + '&variable=' + encodeURIComponent(selectedVar));
     if (myGen !== zarrLoadGen) return;
     if (!result.ok) {
         showNotification(result.error || 'Failed to load dataset info', 'error');
@@ -82,10 +100,12 @@ async function loadZarr() {
 
     zarrInfo = result.data;
     displayZarrMetadata(zarrInfo);
-    populateVariables(zarrInfo);
     populateTimeSteps(zarrInfo);
 
-    // Auto-load first variable
+    // Auto-populate rescale from statistics
+    autoConfigureRescale(zarrInfo);
+
+    // Auto-load tiles
     updateZarrTiles();
     showLoading(false);
 
@@ -126,26 +146,102 @@ function displayZarrMetadata(info) {
 
 
 /**
- * Populate variable selector from dataset info.
- * @param {object} info - XArray info response
+ * Populate variable selector from a list of variable names.
+ * @param {string[]} varList - Variable names from /xarray/dataset/keys
+ * @param {string} selectedVar - Variable to select
  */
-function populateVariables(info) {
+function populateVariablesFromKeys(varList, selectedVar) {
     const select = document.getElementById('variable-select');
     select.innerHTML = '';
-
-    const variables = info.variables || info.data_vars || [];
-    const varList = Array.isArray(variables) ? variables : Object.keys(variables);
-
-    // Check for variable from query param
-    const varParam = getQueryParam('variable');
 
     varList.forEach(function(v) {
         const option = document.createElement('option');
         option.value = v;
         option.textContent = v;
-        if (v === varParam) option.selected = true;
+        if (v === selectedVar) option.selected = true;
         select.appendChild(option);
     });
+}
+
+
+/**
+ * Auto-configure rescale min/max from dataset info.
+ *
+ * Uses band statistics if available, otherwise falls back to dtype-based heuristics.
+ * @param {object} info - XArray info response (from /xarray/info?variable=...)
+ */
+function autoConfigureRescale(info) {
+    const minInput = document.getElementById('zarr-min');
+    const maxInput = document.getElementById('zarr-max');
+
+    // Try to extract min/max from band statistics
+    if (info.band_metadata && info.band_metadata.length > 0) {
+        const bandMeta = info.band_metadata[0];
+        // band_metadata is [["b1", {metadata}]] — check the metadata dict
+        if (bandMeta.length >= 2 && typeof bandMeta[1] === 'object') {
+            const meta = bandMeta[1];
+            if (meta.min !== undefined && meta.max !== undefined) {
+                minInput.value = meta.min;
+                maxInput.value = meta.max;
+                return;
+            }
+        }
+    }
+
+    // Try statistics object
+    if (info.statistics) {
+        const stats = Object.values(info.statistics)[0];
+        if (stats && stats.min !== undefined && stats.max !== undefined) {
+            minInput.value = stats.min;
+            maxInput.value = stats.max;
+            return;
+        }
+    }
+
+    // Fallback: dtype-based heuristics
+    const dtype = (info.dtype || '').toLowerCase();
+    if (dtype.includes('float')) {
+        // Float data — assume symmetric around 0 as starting point
+        minInput.value = -10;
+        maxInput.value = 10;
+    } else if (dtype.includes('uint8') || dtype === 'u1') {
+        minInput.value = 0;
+        maxInput.value = 255;
+    } else if (dtype.includes('uint16') || dtype === 'u2') {
+        minInput.value = 0;
+        maxInput.value = 65535;
+    } else if (dtype.includes('int16') || dtype === 'i2') {
+        minInput.value = -32768;
+        maxInput.value = 32767;
+    } else {
+        // Generic fallback
+        minInput.value = 0;
+        maxInput.value = 1;
+    }
+}
+
+
+/**
+ * Handle variable selection change: re-fetch info for new variable,
+ * update rescale, then refresh tiles.
+ */
+async function onVariableChange() {
+    const variable = document.getElementById('variable-select').value;
+    if (!variable || !currentZarrUrl) return;
+
+    showLoading(true);
+
+    // Fetch info for the newly selected variable
+    const result = await fetchJSON('/xarray/info?url=' + encodeURIComponent(currentZarrUrl)
+        + '&variable=' + encodeURIComponent(variable));
+
+    if (result.ok) {
+        zarrInfo = result.data;
+        autoConfigureRescale(result.data);
+    }
+
+    updateZarrTiles();
+    showLoading(false);
 }
 
 
