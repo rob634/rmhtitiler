@@ -117,38 +117,39 @@ async function loadCollection(collectionId) {
     showLoading(true);
     const myGen = ++vectorLoadGen;
 
-    // Show collection info
-    const infoPanel = document.getElementById('collection-info');
-    infoPanel.classList.remove('hidden');
+    try {
+        // Show collection info
+        const infoPanel = document.getElementById('collection-info');
+        infoPanel.classList.remove('hidden');
 
-    // Validate collection is accessible
-    const prefix = '/vector/collections/' + encodeURIComponent(collectionId);
-    const itemsResult = await fetchJSON(prefix + '/items?limit=1');
-    if (myGen !== vectorLoadGen) return;
+        // Validate collection is accessible
+        const prefix = '/vector/collections/' + encodeURIComponent(collectionId);
+        const itemsResult = await fetchJSON(prefix + '/items?limit=1');
+        if (myGen !== vectorLoadGen) return;
 
-    if (!itemsResult.ok) {
-        showNotification('Collection "' + collectionId + '" could not be loaded: ' + (itemsResult.error || 'unknown error'), 'error');
+        if (!itemsResult.ok) {
+            showNotification('Collection "' + collectionId + '" could not be loaded: ' + (itemsResult.error || 'unknown error'), 'error');
+            return;
+        }
+
+        displayCollectionMetadata(itemsResult);
+        displaySchema(itemsResult);
+
+        // Set API links
+        document.getElementById('link-tilejson').href = prefix + '/tiles/WebMercatorQuad/tilejson.json';
+        document.getElementById('link-collection').href = prefix;
+        document.getElementById('link-items').href = prefix + '/items?limit=10';
+
+        // Add layer based on current render mode
+        if (currentRenderMode === 'mvt') {
+            await addMvtLayer(collectionId);
+        } else {
+            await addGeoJsonLayer(collectionId);
+        }
+        if (myGen !== vectorLoadGen) return;
+    } finally {
         showLoading(false);
-        return;
     }
-
-    displayCollectionMetadata(itemsResult);
-    displaySchema(itemsResult);
-
-    // Set API links
-    document.getElementById('link-tilejson').href = prefix + '/tiles/WebMercatorQuad/tilejson.json';
-    document.getElementById('link-collection').href = prefix;
-    document.getElementById('link-items').href = prefix + '/items?limit=10';
-
-    // Add layer based on current render mode
-    if (currentRenderMode === 'mvt') {
-        await addMvtLayer(collectionId);
-    } else {
-        await addGeoJsonLayer(collectionId);
-    }
-    if (myGen !== vectorLoadGen) return;
-
-    showLoading(false);
 }
 
 /**

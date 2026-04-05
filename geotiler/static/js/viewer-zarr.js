@@ -71,45 +71,45 @@ async function loadZarr() {
     showLoading(true);
     const myGen = ++zarrLoadGen;
 
-    // Step 1: Get variable list
-    const keysResult = await fetchJSON('/xarray/dataset/keys?url=' + encodeURIComponent(url));
-    if (myGen !== zarrLoadGen) return;
-    if (!keysResult.ok || !keysResult.data || !keysResult.data.length) {
-        showNotification(keysResult.error || 'No variables found in dataset', 'error');
+    try {
+        // Step 1: Get variable list
+        const keysResult = await fetchJSON('/xarray/dataset/keys?url=' + encodeURIComponent(url));
+        if (myGen !== zarrLoadGen) return;
+        if (!keysResult.ok || !keysResult.data || !keysResult.data.length) {
+            showNotification(keysResult.error || 'No variables found in dataset', 'error');
+            return;
+        }
+
+        // Step 2: Select variable (from query param or first available)
+        const varParam = getQueryParam('variable');
+        const selectedVar = (varParam && keysResult.data.includes(varParam))
+            ? varParam : keysResult.data[0];
+
+        // Populate variable selector from keys
+        populateVariablesFromKeys(keysResult.data, selectedVar);
+
+        // Step 3: Fetch info WITH selected variable
+        const result = await fetchJSON('/xarray/info?url=' + encodeURIComponent(url)
+            + '&variable=' + encodeURIComponent(selectedVar));
+        if (myGen !== zarrLoadGen) return;
+        if (!result.ok) {
+            showNotification(result.error || 'Failed to load dataset info', 'error');
+            return;
+        }
+
+        zarrInfo = result.data;
+        displayZarrMetadata(zarrInfo);
+        populateTimeSteps(zarrInfo);
+
+        // Auto-populate rescale from statistics
+        autoConfigureRescale(zarrInfo);
+
+        // Auto-load tiles
+        updateZarrTiles();
+        showNotification('Dataset loaded successfully', 'success');
+    } finally {
         showLoading(false);
-        return;
     }
-
-    // Step 2: Select variable (from query param or first available)
-    const varParam = getQueryParam('variable');
-    const selectedVar = (varParam && keysResult.data.includes(varParam))
-        ? varParam : keysResult.data[0];
-
-    // Populate variable selector from keys
-    populateVariablesFromKeys(keysResult.data, selectedVar);
-
-    // Step 3: Fetch info WITH selected variable
-    const result = await fetchJSON('/xarray/info?url=' + encodeURIComponent(url)
-        + '&variable=' + encodeURIComponent(selectedVar));
-    if (myGen !== zarrLoadGen) return;
-    if (!result.ok) {
-        showNotification(result.error || 'Failed to load dataset info', 'error');
-        showLoading(false);
-        return;
-    }
-
-    zarrInfo = result.data;
-    displayZarrMetadata(zarrInfo);
-    populateTimeSteps(zarrInfo);
-
-    // Auto-populate rescale from statistics
-    autoConfigureRescale(zarrInfo);
-
-    // Auto-load tiles
-    updateZarrTiles();
-    showLoading(false);
-
-    showNotification('Dataset loaded successfully', 'success');
 }
 
 
@@ -196,6 +196,13 @@ function autoConfigureRescale(info) {
             maxInput.value = stats.max;
             return;
         }
+    }
+
+    // Try value_range (valid_min / valid_max from CF metadata)
+    if (info.value_range && info.value_range.valid_min !== undefined && info.value_range.valid_max !== undefined) {
+        minInput.value = Math.round(info.value_range.valid_min * 100) / 100;
+        maxInput.value = Math.round(info.value_range.valid_max * 100) / 100;
+        return;
     }
 
     // Fallback: dtype-based heuristics
