@@ -170,27 +170,28 @@ async function loadRaster() {
     showLoading(true);
     const myGen = ++rasterLoadGen;
 
-    // Fetch COG info
-    const result = await fetchJSON('/cog/info?url=' + encodeURIComponent(url));
-    if (myGen !== rasterLoadGen) return;
-    if (!result.ok) {
-        showNotification(result.error || 'Failed to load COG info', 'error');
+    try {
+        // Fetch COG info
+        const result = await fetchJSON('/cog/info?url=' + encodeURIComponent(url));
+        if (myGen !== rasterLoadGen) return;
+        if (!result.ok) {
+            showNotification(result.error || 'Failed to load COG info', 'error');
+            return;
+        }
+
+        cogInfo = result.data;
+        displayMetadata(cogInfo);
+        buildBandControls(cogInfo);
+
+        // Fetch statistics
+        await fetchStatistics(url);
+        if (myGen !== rasterLoadGen) return;
+
+        addTileLayer(url, cogInfo.bounds);
+        showNotification('Raster loaded successfully', 'success');
+    } finally {
         showLoading(false);
-        return;
     }
-
-    cogInfo = result.data;
-    displayMetadata(cogInfo);
-    buildBandControls(cogInfo);
-
-    // Fetch statistics
-    await fetchStatistics(url);
-    if (myGen !== rasterLoadGen) return;
-
-    addTileLayer(url, cogInfo.bounds);
-    showLoading(false);
-
-    showNotification('Raster loaded successfully', 'success');
 }
 
 

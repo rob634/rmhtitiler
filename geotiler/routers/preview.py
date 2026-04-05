@@ -39,5 +39,5 @@ async def preview_zarr(request: Request):
 async def preview_vector(request: Request):
     """Render the OGC Features vector viewer (iframe-embeddable)."""
     return _with_iframe_headers(
-        render_template(request, "pages/viewer/vector.html", nav_active="/catalog")
+        render_template(request, "pages/viewer/vector.html", nav_active="/catalog", preview_mode=True)
     )

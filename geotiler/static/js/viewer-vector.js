@@ -24,8 +24,9 @@ const VECTOR_POINT_LAYER = 'vector-point';
 /**
  * Initialize the vector viewer. Creates MapLibre map, populates collection dropdown.
  * @param {boolean} tipgEnabled - Whether TiPG is available
+ * @param {boolean} previewMode - If true, lock to the collection from query param (no dropdown)
  */
-async function initVectorViewer(tipgEnabled) {
+async function initVectorViewer(tipgEnabled, previewMode) {
     vectorMap = new maplibregl.Map({
         container: 'map',
         style: { version: 8, sources: { osm: { type: 'raster', tiles: ['https://tile.openstreetmap.org/{z}/{x}/{y}.png'], tileSize: 256, attribution: '&copy; OpenStreetMap contributors' } }, layers: [{ id: 'osm', type: 'raster', source: 'osm' }] },
@@ -48,7 +49,23 @@ async function initVectorViewer(tipgEnabled) {
         return;
     }
 
-    // Populate collection dropdown
+    const collParam = getQueryParam('collection');
+
+    // Preview mode: lock to the single collection from URL, hide the dropdown
+    if (previewMode && collParam) {
+        var select = document.getElementById('collection-select');
+        var option = document.createElement('option');
+        option.value = collParam;
+        option.textContent = collParam;
+        option.selected = true;
+        select.innerHTML = '';
+        select.appendChild(option);
+        select.disabled = true;
+        vectorMap.on('load', function() { loadCollection(collParam); });
+        return;
+    }
+
+    // Full mode: populate collection dropdown
     const result = await fetchJSON('/vector/collections');
     if (result.ok && result.data.collections) {
         const select = document.getElementById('collection-select');
@@ -62,7 +79,6 @@ async function initVectorViewer(tipgEnabled) {
             });
 
         // Auto-select from query parameter
-        const collParam = getQueryParam('collection');
         if (collParam) {
             select.value = collParam;
             if (select.value === collParam) {

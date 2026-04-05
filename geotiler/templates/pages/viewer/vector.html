@@ -165,6 +165,6 @@
 <script src="https://unpkg.com/maplibre-gl@4/dist/maplibre-gl.js"></script>
 <script src="{{ url_for('static', path='js/viewer-vector.js') }}?v={{ version }}"></script>
 <script>
-    document.addEventListener('DOMContentLoaded', () => initVectorViewer({{ tipg_enabled | tojson }}));
+    document.addEventListener('DOMContentLoaded', () => initVectorViewer({{ tipg_enabled | tojson }}, {{ preview_mode | default(false) | tojson }}));
 </script>
 {% endblock %}
